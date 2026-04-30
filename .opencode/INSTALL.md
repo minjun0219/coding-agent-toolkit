@@ -50,12 +50,20 @@ opencode 를 띄운 뒤:
 
 ## Agent (`rocky`)
 
-`agents/rocky.md` 가 plugin 의 config 훅을 통해 opencode agent 경로에 등록된다. primary agent 사이클(Tab) 에 `rocky` 가 보이면 OK.
+`agents/rocky.md` 가 plugin 의 config 훅을 통해 opencode agent 경로에 등록된다. `mode: all` 이라 primary 사이클(Tab) 과 다른 primary 의 subagent 위임 둘 다에서 보인다.
 
-호출 예:
+직접 호출 (컨텍스트 모드):
 
 ```
-@rocky https://www.notion.so/.../<pageId> 이거 끝까지 구현해줘
+@rocky https://www.notion.so/.../<pageId>
 ```
 
-내부적으로 `notion-context` skill → `notion_get` 도구 순으로 흐른다. plugin 이 미등록이거나 `agents.paths` 가 인식되지 않는 opencode 버전이면, 프로젝트의 `.opencode/agents/rocky.md` 로 직접 심볼릭 링크하거나 복사해서 쓴다.
+스펙 모드:
+
+```
+@rocky <Notion URL> 스펙 정리해줘
+```
+
+OmO 같이 자체 primary agent (Sisyphus 등) 를 쓰는 환경에선, primary 가 turn 시작 시 받는 subagent 목록에서 `rocky` 의 description 을 보고 Notion 관련 요청을 자동으로 위임한다 (보장은 안 됨 — primary 가 직접 처리하기로 결정할 수도 있음). Rocky 의 존재를 OmO 측 system prompt 에 박을 필요는 없다.
+
+plugin 이 미등록이거나 `agents.paths` 가 인식되지 않는 opencode 버전이면, 프로젝트의 `.opencode/agents/rocky.md` 로 직접 심볼릭 링크하거나 복사해서 쓴다.

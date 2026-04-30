@@ -1,8 +1,8 @@
 # Agent Toolkit
 
-opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개와, 그 도구로 페이지를 컨텍스트로 가져오거나 한국어 스펙으로 정리하는 skill 1 개, 그리고 그 skill 위에서 끝까지 구현을 밀어붙이는 agent 1 개(`rocky`) 를 제공한다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
+opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개와, 그 도구로 페이지를 컨텍스트로 가져오거나 한국어 스펙으로 정리하는 skill 1 개, 그리고 두 자원을 외부에 노출하는 얇은 게이트웨이 agent 1 개(`rocky`) 를 제공한다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
 
-구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 페르소나는 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 Sisyphus 컨셉을 빌렸다.
+구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸지만, 책임은 게이트웨이 한 줄로 한정한다.
 
 ## 디렉터리
 
@@ -19,7 +19,7 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 ├── skills/
 │   └── notion-context/SKILL.md     # Notion 캐시 우선 읽기 + 한국어 스펙 정리 skill
 ├── agents/
-│   └── rocky.md                    # 끝까지 구현하는 primary agent (OmO Sisyphus 빌림)
+│   └── rocky.md                    # 위 skill / 도구 묶음의 게이트웨이 agent (mode: all)
 ├── .mcp.json                        # context7 MCP 등록 (개발 보조용)
 ├── package.json / tsconfig.json
 ├── AGENTS.md / CLAUDE.md
@@ -65,9 +65,9 @@ plugin 이 opencode 에 다음 3 개를 등록한다:
 
 | 이름 | mode | 역할 |
 | --- | --- | --- |
-| `rocky` | primary | Notion 스펙 → 한국어 정리 → 작업 분해 → 끝까지 구현 + 검증. 멈추지 않는 구현가. |
+| `rocky` | all | agent-toolkit 게이트웨이. Notion URL/page id 를 받아 cached markdown(컨텍스트 모드) 또는 한국어 스펙(스펙 모드) 으로 반환. 코드 작성/구현은 호출자 책임. |
 
-opencode 에서 primary agent 사이클(Tab) 로 전환하거나, 다른 agent 안에서 `@rocky` 로 호출.
+`mode: all` 이라 사용자 직접 호출(primary, Tab 사이클)과 다른 primary agent (e.g. OmO Sisyphus) 의 위임(subagent) 둘 다 가능. 다른 agent 는 turn 시작 시 받는 subagent 목록의 `description` 만으로 라우팅 — Rocky 의 존재를 system prompt 에 박지 않아도 Notion 관련 요청이 알아서 들어온다.
 
 ## 캐시 구조
 

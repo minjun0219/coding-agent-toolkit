@@ -4,14 +4,14 @@ Shared guide for AI coding agents (Claude Code, opencode, codex, etc.) working i
 
 ## Project in one line
 
-opencode-only plugin. Three Notion cache tools + one cache-first context / spec-extraction skill + one persistent implementation agent (`rocky`, persona borrowed from [OmO](https://github.com/code-yeongyu/oh-my-openagent) Sisyphus). **Runtime is Bun (>=1.0). No Node. No build step (Bun runs TS directly).** Layout follows the [obra/superpowers](https://github.com/obra/superpowers) shape.
+opencode-only plugin. Three Notion cache tools + one cache-first context / spec-extraction skill + one thin gateway agent (`rocky`, naming convention borrowed from [OmO](https://github.com/code-yeongyu/oh-my-openagent)'s named-specialist pattern). **Runtime is Bun (>=1.0). No Node. No build step (Bun runs TS directly).** Layout follows the [obra/superpowers](https://github.com/obra/superpowers) shape.
 
 ## Layout
 
 - `.opencode/plugins/agent-toolkit.ts` — plugin entrypoint. `config` hook registers `skills/` and `agents/`, and exposes the three tools (`notion_get` / `notion_refresh` / `notion_status`).
 - `lib/notion-context.ts` — single-file TTL filesystem cache + `resolveCacheKey` + `notionToMarkdown`.
 - `skills/notion-context/SKILL.md` — Notion cache-first read + Korean-language spec extraction skill.
-- `agents/rocky.md` — primary agent that drives a Notion spec to working code without stopping mid-way.
+- `agents/rocky.md` — thin gateway agent (`mode: all`) that exposes the toolkit's Notion flow to users and to other primary agents (e.g. OmO Sisyphus).
 - `.opencode/INSTALL.md` — install guide for opencode users.
 
 ## Common commands
@@ -36,9 +36,9 @@ Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table fo
 
 ## MVP scope (hold the line)
 
-**In**: single-page Notion read + cache + expiry, one skill, one agent (`rocky`), opencode-only.
+**In**: single-page Notion read + cache + expiry, one skill, one gateway agent (`rocky`), opencode-only.
 
-**Out**: database queries, OAuth, child pages, multi-host plugin layouts (`.claude-plugin/`, etc.), UI, codex integration, multi-agent orchestration. Anything beyond this scope ships as a separate PR proposal.
+**Out**: database queries, OAuth, child pages, multi-host plugin layouts (`.claude-plugin/`, etc.), UI, codex integration, agent-side workflow orchestration (that lives in the caller, not in `rocky`). Anything beyond this scope ships as a separate PR proposal.
 
 ## Change checklist
 
