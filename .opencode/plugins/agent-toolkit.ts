@@ -8,7 +8,7 @@ import {
   type RawNotionPage,
   type NotionPageResult,
   type NotionCacheStatus,
-} from "../../lib/notion-cache";
+} from "../../lib/notion-context";
 
 /**
  * opencode plugin entrypoint (Superpowers 형식).
@@ -28,21 +28,21 @@ const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, "..", "..");
 const SKILLS_DIR = resolve(REPO_ROOT, "skills");
 
-/** 환경변수 (필수: NOTION_MCP_URL). */
+/**
+ * remote Notion MCP base URL 기본값.
+ * Notion 공식 remote MCP 가 OAuth 로 인증을 처리하므로 이 plugin 은 토큰을 다루지 않는다.
+ * 로컬 게이트웨이를 쓰거나 다른 endpoint 로 보내려면 `AGENT_TOOLKIT_NOTION_MCP_URL` 로 덮어쓴다.
+ */
+export const DEFAULT_NOTION_MCP_URL = "https://mcp.notion.com/mcp";
+
 function readEnv() {
-  const url = process.env.AGENT_TOOLKIT_NOTION_MCP_URL;
-  if (!url) {
-    throw new Error(
-      "AGENT_TOOLKIT_NOTION_MCP_URL is required (remote Notion MCP base URL)",
-    );
-  }
+  const url = process.env.AGENT_TOOLKIT_NOTION_MCP_URL ?? DEFAULT_NOTION_MCP_URL;
   const timeoutMs = Number.parseInt(
     process.env.AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS ?? "15000",
     10,
   );
   return {
     url: url.replace(/\/$/, ""),
-    token: process.env.AGENT_TOOLKIT_NOTION_MCP_TOKEN,
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15_000,
   };
 }
@@ -55,15 +55,15 @@ function readEnv() {
 export async function callRemoteNotionMcp(
   pageId: string,
 ): Promise<RawNotionPage> {
-  const { url, token, timeoutMs } = readEnv();
+  const { url, timeoutMs } = readEnv();
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
+    // 인증은 remote MCP 측 OAuth 가 처리. 이 plugin 은 헤더에 자격증명을 붙이지 않는다.
     const headers: Record<string, string> = {
       "content-type": "application/json",
       accept: "application/json",
     };
-    if (token) headers.authorization = `Bearer ${token}`;
     const res = await fetch(`${url}/getPage`, {
       method: "POST",
       headers,

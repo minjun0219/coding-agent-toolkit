@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NotionCache } from "../../lib/notion-cache";
+import { NotionCache } from "../../lib/notion-context";
 import {
   handleNotionGet,
   handleNotionRefresh,
@@ -42,7 +42,6 @@ beforeEach(() => {
     },
   });
   process.env.AGENT_TOOLKIT_NOTION_MCP_URL = `http://${server.hostname}:${server.port}`;
-  delete process.env.AGENT_TOOLKIT_NOTION_MCP_TOKEN;
 });
 
 afterEach(() => {

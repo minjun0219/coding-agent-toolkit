@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 
@@ -9,9 +10,12 @@ import { createHash } from "node:crypto";
  * 디스크 레이아웃 (한 페이지당 두 파일):
  *   <baseDir>/<pageId>.json   메타데이터 (NotionCacheEntry)
  *   <baseDir>/<pageId>.md     normalize 된 markdown 본문
+ *
+ * baseDir 기본값은 `~/.cache/notion-context/pages` — 사용자 단위 캐시 위치.
+ * 프로젝트별로 격리하고 싶으면 `AGENT_TOOLKIT_CACHE_DIR` 로 덮어쓴다.
  */
 
-export const DEFAULT_CACHE_DIR = ".agent-cache/notion/pages";
+export const DEFAULT_CACHE_DIR = join(homedir(), ".cache", "notion-context", "pages");
 export const DEFAULT_TTL_SECONDS = 60 * 60 * 24; // 24h
 
 export interface NotionCacheEntry {

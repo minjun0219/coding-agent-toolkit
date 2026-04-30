@@ -9,7 +9,7 @@ opencode 전용 plugin. Notion 캐시 도구 3 개 + 스펙 정리 skill 1 개. 
 ## 레이아웃
 
 - `.opencode/plugins/agent-toolkit.ts` — plugin entrypoint. `config` 훅으로 `skills/` 등록 + `notion_get` / `notion_refresh` / `notion_status` 도구 3 개 등록.
-- `lib/notion-cache.ts` — TTL 파일 캐시 + `resolveCacheKey` + `notionToMarkdown` (단일 파일).
+- `lib/notion-context.ts` — TTL 파일 캐시 + `resolveCacheKey` + `notionToMarkdown` (단일 파일).
 - `skills/notion-spec-reader/SKILL.md` — Notion → 한국어 스펙 skill.
 - `.opencode/INSTALL.md` — opencode 사용자용 설치 안내.
 

@@ -7,7 +7,7 @@ import {
   resolveCacheKey,
   notionToMarkdown,
   contentHash,
-} from "./notion-cache";
+} from "./notion-context";
 
 const PAGE = "1234abcd1234abcd1234abcd1234abcd";
 const PAGE_DASHED = "1234abcd-1234-abcd-1234-abcd1234abcd";

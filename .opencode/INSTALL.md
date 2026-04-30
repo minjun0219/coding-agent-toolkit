@@ -5,7 +5,7 @@
 ```json
 {
   "plugin": [
-    "agent-toolkit@git+https://github.com/<owner>/coding-agent-toolkit.git"
+    "agent-toolkit@git+https://github.com/minjun0219/coding-agent-toolkit.git"
   ]
 }
 ```
@@ -20,13 +20,14 @@
 
 ## 환경변수
 
-| 변수 | 필수 | 설명 |
+전부 옵션이다. 기본값을 바꿔야 할 때만 설정한다.
+
+| 변수 | 기본값 | 설명 |
 | --- | --- | --- |
-| `AGENT_TOOLKIT_NOTION_MCP_URL` | ✅ | remote Notion MCP base URL (`POST {url}/getPage` 가정) |
-| `AGENT_TOOLKIT_NOTION_MCP_TOKEN` | ⛔️ | 있으면 `Authorization: Bearer …` 첨부 |
-| `AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS` | ⛔️ | 기본 `15000` |
-| `AGENT_TOOLKIT_CACHE_DIR` | ⛔️ | 기본 `.agent-cache/notion/pages` |
-| `AGENT_TOOLKIT_CACHE_TTL` | ⛔️ | 초 단위, 기본 `86400` |
+| `AGENT_TOOLKIT_NOTION_MCP_URL` | `https://mcp.notion.com/mcp` | remote Notion MCP base URL. 인증은 OAuth 가 처리하므로 토큰 변수는 없다. |
+| `AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS` | `15000` | remote 호출 timeout (ms) |
+| `AGENT_TOOLKIT_CACHE_DIR` | `~/.cache/notion-context/pages` | 페이지 캐시 디렉터리 |
+| `AGENT_TOOLKIT_CACHE_TTL` | `86400` | 캐시 TTL (초) |
 
 ## 동작 확인
 
