@@ -47,3 +47,15 @@ opencode 를 띄운 뒤:
 ```
 
 첫 호출은 `fromCache: false` 로 remote 가 한 번 불리고, 두 번째 호출은 `fromCache: true` 가 되어야 한다.
+
+## Agent (`rocky`)
+
+`agents/rocky.md` 가 plugin 의 config 훅을 통해 opencode agent 경로에 등록된다. primary agent 사이클(Tab) 에 `rocky` 가 보이면 OK.
+
+호출 예:
+
+```
+@rocky https://www.notion.so/.../<pageId> 이거 끝까지 구현해줘
+```
+
+내부적으로 `notion-spec-reader` skill → `notion_get` 도구 순으로 흐른다. plugin 이 미등록이거나 `agents.paths` 가 인식되지 않는 opencode 버전이면, 프로젝트의 `.opencode/agents/rocky.md` 로 직접 심볼릭 링크하거나 복사해서 쓴다.

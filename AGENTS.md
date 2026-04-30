@@ -4,13 +4,14 @@
 
 ## 프로젝트 한 줄
 
-opencode 전용 plugin. Notion 캐시 도구 3 개 + 스펙 정리 skill 1 개. **런타임은 Bun(>=1.0). Node 미사용. 빌드 단계 없음 (Bun 이 TS 직접 실행).** 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다.
+opencode 전용 plugin. Notion 캐시 도구 3 개 + 스펙 정리 skill 1 개 + 끝까지 구현하는 agent 1 개(`rocky`). **런타임은 Bun(>=1.0). Node 미사용. 빌드 단계 없음 (Bun 이 TS 직접 실행).** 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다. `rocky` 의 페르소나는 [OmO](https://github.com/code-yeongyu/oh-my-openagent) Sisyphus 에서 빌렸다.
 
 ## 레이아웃
 
-- `.opencode/plugins/agent-toolkit.ts` — plugin entrypoint. `config` 훅으로 `skills/` 등록 + `notion_get` / `notion_refresh` / `notion_status` 도구 3 개 등록.
+- `.opencode/plugins/agent-toolkit.ts` — plugin entrypoint. `config` 훅으로 `skills/` + `agents/` 등록 + `notion_get` / `notion_refresh` / `notion_status` 도구 3 개 등록.
 - `lib/notion-context.ts` — TTL 파일 캐시 + `resolveCacheKey` + `notionToMarkdown` (단일 파일).
 - `skills/notion-spec-reader/SKILL.md` — Notion → 한국어 스펙 skill.
+- `agents/rocky.md` — Notion 스펙 → 작업 분해 → 끝까지 구현하는 primary agent.
 - `.opencode/INSTALL.md` — opencode 사용자용 설치 안내.
 
 ## 자주 쓰는 커맨드
@@ -35,16 +36,16 @@ bun run typecheck  # tsc --noEmit
 
 ## MVP 범위 (지키기)
 
-**포함**: Notion 단일 page read + 캐시 + 만료, skill 1 개, opencode 전용.
+**포함**: Notion 단일 page read + 캐시 + 만료, skill 1 개, agent 1 개(`rocky`), opencode 전용.
 
-**제외**: database query, OAuth, child page, multi-host plugin (`.claude-plugin/` 등), UI, codex 통합. 이 범위를 넘는 변경은 별도 PR 로 제안.
+**제외**: database query, OAuth, child page, multi-host plugin (`.claude-plugin/` 등), UI, codex 통합, 멀티 agent 오케스트레이션. 이 범위를 넘는 변경은 별도 PR 로 제안.
 
 ## 변경 시 체크리스트
 
 1. `bun run typecheck` 통과
 2. `bun test` 통과
 3. 사용자 노출(도구 / 환경변수)이 바뀌면 `README.md`, `.opencode/INSTALL.md` 동기화
-4. plugin 의 도구 contract 가 바뀌면 `skills/notion-spec-reader/SKILL.md` 의 도구 사용 규칙도 같이 갱신
+4. plugin 의 도구 contract 가 바뀌면 `skills/notion-spec-reader/SKILL.md` 의 도구 사용 규칙과 `agents/rocky.md` 의 도구 표도 같이 갱신
 
 ## MCP 서버
 

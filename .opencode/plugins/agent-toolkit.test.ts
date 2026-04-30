@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NotionCache } from "../../lib/notion-context";
-import {
+import agentToolkitPlugin, {
   handleNotionGet,
   handleNotionRefresh,
   handleNotionStatus,
@@ -85,5 +85,36 @@ describe("plugin handlers", () => {
     await expect(handleNotionGet(cache, PAGE)).rejects.toThrow(/wrong page/i);
     const s = await handleNotionStatus(cache, PAGE);
     expect(s.exists).toBe(false);
+  });
+});
+
+describe("plugin config hook", () => {
+  it("registers skills/, agents/, and agent/ paths and is idempotent", async () => {
+    const plugin = await agentToolkitPlugin({});
+    const cfg: any = {};
+    plugin.config(cfg);
+    plugin.config(cfg);
+
+    const expectPath = (key: string, suffix: string) => {
+      expect(cfg[key]).toBeDefined();
+      expect(Array.isArray(cfg[key].paths)).toBe(true);
+      const matches = cfg[key].paths.filter((p: string) => p.endsWith(suffix));
+      expect(matches.length).toBe(1);
+    };
+
+    expectPath("skills", "/skills");
+    expectPath("agents", "/agents");
+    expectPath("agent", "/agents");
+  });
+
+  it("preserves existing paths in config", async () => {
+    const plugin = await agentToolkitPlugin({});
+    const cfg: any = {
+      skills: { paths: ["/pre-existing/skills"] },
+      agents: { paths: ["/pre-existing/agents"] },
+    };
+    plugin.config(cfg);
+    expect(cfg.skills.paths).toContain("/pre-existing/skills");
+    expect(cfg.agents.paths).toContain("/pre-existing/agents");
   });
 });

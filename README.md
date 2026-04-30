@@ -1,8 +1,8 @@
 # Agent Toolkit
 
-opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개와, 그 도구를 사용해 한국어 스펙으로 정리하는 skill 1 개를 제공한다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
+opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, 그 도구를 사용해 한국어 스펙으로 정리하는 skill 1 개, 그리고 그 skill 위에서 끝까지 구현을 밀어붙이는 agent 1 개(`rocky`) 를 제공한다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
 
-구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` 디렉터리를 opencode skill 경로에 등록하고 도구를 노출한다.
+구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 페르소나는 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 Sisyphus 컨셉을 빌려 한국어로 옷을 갈아입혔다.
 
 ## 디렉터리
 
@@ -18,6 +18,8 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 │   └── notion-context.test.ts
 ├── skills/
 │   └── notion-spec-reader/SKILL.md # Notion → 한국어 스펙 정리 skill
+├── agents/
+│   └── rocky.md                    # 끝까지 구현하는 한국어 agent (OmO Sisyphus 빌림)
 ├── .mcp.json                        # context7 MCP 등록 (개발 보조용)
 ├── package.json / tsconfig.json
 ├── AGENTS.md / CLAUDE.md
@@ -58,6 +60,14 @@ plugin 이 opencode 에 다음 3 개를 등록한다:
 | `notion_status` | 캐시 메타(저장 시각, TTL, 만료 여부) 만 조회. remote 호출 없음 |
 
 `input` 파라미터는 page id 또는 Notion URL 모두 허용.
+
+## Agent
+
+| 이름 | mode | 역할 |
+| --- | --- | --- |
+| `rocky` | primary | Notion 스펙 → 한국어 정리 → 작업 분해 → 끝까지 구현 + 검증. 멈추지 않는 구현가. |
+
+opencode 에서 primary agent 사이클(Tab) 로 전환하거나, 다른 agent 안에서 `@rocky` 로 호출.
 
 ## 캐시 구조
 
