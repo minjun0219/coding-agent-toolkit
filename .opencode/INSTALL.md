@@ -37,7 +37,7 @@ opencode 를 띄운 뒤:
 > use skill tool to list skills
 ```
 
-목록에 `notion-spec-reader` 가 보이면 skill 로딩 OK.
+목록에 `notion-context` 가 보이면 skill 로딩 OK.
 
 도구 등록도 확인:
 

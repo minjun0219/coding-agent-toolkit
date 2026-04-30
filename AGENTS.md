@@ -4,13 +4,13 @@
 
 ## 프로젝트 한 줄
 
-opencode 전용 plugin. Notion 캐시 도구 3 개 + 스펙 정리 skill 1 개. **런타임은 Bun(>=1.0). Node 미사용. 빌드 단계 없음 (Bun 이 TS 직접 실행).** 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다.
+opencode 전용 plugin. Notion 캐시 도구 3 개 + 캐시 우선 컨텍스트/스펙 정리 skill 1 개. **런타임은 Bun(>=1.0). Node 미사용. 빌드 단계 없음 (Bun 이 TS 직접 실행).** 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다.
 
 ## 레이아웃
 
 - `.opencode/plugins/agent-toolkit.ts` — plugin entrypoint. `config` 훅으로 `skills/` 등록 + `notion_get` / `notion_refresh` / `notion_status` 도구 3 개 등록.
 - `lib/notion-context.ts` — TTL 파일 캐시 + `resolveCacheKey` + `notionToMarkdown` (단일 파일).
-- `skills/notion-spec-reader/SKILL.md` — Notion → 한국어 스펙 skill.
+- `skills/notion-context/SKILL.md` — Notion 캐시 우선 읽기 + 한국어 스펙 정리 skill.
 - `.opencode/INSTALL.md` — opencode 사용자용 설치 안내.
 
 ## 자주 쓰는 커맨드
@@ -44,7 +44,7 @@ bun run typecheck  # tsc --noEmit
 1. `bun run typecheck` 통과
 2. `bun test` 통과
 3. 사용자 노출(도구 / 환경변수)이 바뀌면 `README.md`, `.opencode/INSTALL.md` 동기화
-4. plugin 의 도구 contract 가 바뀌면 `skills/notion-spec-reader/SKILL.md` 의 도구 사용 규칙도 같이 갱신
+4. plugin 의 도구 contract 가 바뀌면 `skills/notion-context/SKILL.md` 의 도구 사용 규칙도 같이 갱신
 
 ## MCP 서버
 
