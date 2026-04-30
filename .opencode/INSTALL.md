@@ -37,7 +37,7 @@ opencode 를 띄운 뒤:
 > use skill tool to list skills
 ```
 
-목록에 `notion-spec-reader` 가 보이면 skill 로딩 OK.
+목록에 `notion-context` 가 보이면 skill 로딩 OK.
 
 도구 등록도 확인:
 
@@ -58,4 +58,4 @@ opencode 를 띄운 뒤:
 @rocky https://www.notion.so/.../<pageId> 이거 끝까지 구현해줘
 ```
 
-내부적으로 `notion-spec-reader` skill → `notion_get` 도구 순으로 흐른다. plugin 이 미등록이거나 `agents.paths` 가 인식되지 않는 opencode 버전이면, 프로젝트의 `.opencode/agents/rocky.md` 로 직접 심볼릭 링크하거나 복사해서 쓴다.
+내부적으로 `notion-context` skill → `notion_get` 도구 순으로 흐른다. plugin 이 미등록이거나 `agents.paths` 가 인식되지 않는 opencode 버전이면, 프로젝트의 `.opencode/agents/rocky.md` 로 직접 심볼릭 링크하거나 복사해서 쓴다.
