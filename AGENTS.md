@@ -44,8 +44,14 @@ bun run typecheck  # tsc --noEmit
 1. `bun run typecheck` 통과
 2. `bun test` 통과
 3. 사용자 노출(도구 / 환경변수)이 바뀌면 `README.md`, `.opencode/INSTALL.md` 동기화
-4. plugin 의 도구 contract 가 바뀌면 `skills/notion-context/SKILL.md` 의 도구 사용 규칙도 같이 갱신
+4. 새 환경변수를 추가했다면 plugin 의 `readEnv()` 도 같이 수정
+5. plugin 의 도구 contract 가 바뀌면 `skills/notion-context/SKILL.md` 의 도구 사용 규칙도 같이 갱신
 
 ## MCP 서버
 
 `.mcp.json` 에 프로젝트 스코프로 [`context7`](https://github.com/upstash/context7) 가 등록되어 있다. 외부 라이브러리(Bun, TypeScript, opencode plugin API 등) 문서를 최신 상태로 가져올 때 활용.
+
+## 출력 / 커뮤니케이션
+
+- 사용자와의 대화는 기본 한국어. 코드 식별자/경로/명령은 영어 그대로.
+- 변경 요약은 짧게 (한 줄 요약 + 필요 시 bullet). 장문 보고서 만들지 말 것.
