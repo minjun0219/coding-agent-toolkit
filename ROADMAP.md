@@ -20,32 +20,32 @@
 
 ## 현재 상태
 
-| # | 항목 | 상태 | 비고 |
-| --- | --- | --- | --- |
-| 1 | 에이전트 자동 기억/기록 | 📋 planned | turn / session / 디스크 어느 층까지 영속할지 결정 필요 |
-| 2 | 상세 주석 | 🚧 부분 | JSDoc 규칙 (`AGENTS.md`) 으로 정책은 박힘; 강제 / 검증은 미구현 |
-| 3 | 한글 주석/설명 | ✅ 정책 | `AGENTS.md` coding rules + output 정책 |
-| 4 | Notion 캐싱 + TTL | ✅ MVP | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
-| 5 | Notion → 개발 스펙 분해 | ✅ MVP | `skills/notion-context/SKILL.md` spec mode |
-| 6 | 스펙 → GitHub Issue 추적 | 📋 planned | GitHub MCP / 자체 도구 어느 쪽으로 갈지 미정 |
-| 7 | OpenAPI 캐시 + client 작성 | 📋 planned | `lib/openapi-context.ts` 형식 후보 |
+| # | 항목 | 상태 | 추적 issue | 비고 |
+| --- | --- | --- | --- | --- |
+| 1 | 에이전트 자동 기억/기록 | 📋 planned | [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5) | turn / session / 디스크 어느 층까지 영속할지 결정 필요 |
+| 2 | 상세 주석 | 🚧 부분 | [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7) | JSDoc 규칙 (`AGENTS.md`) 으로 정책은 박힘; 강제 / 검증은 미구현 |
+| 3 | 한글 주석/설명 | ✅ 정책 (검증 미구현) | [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7) | `AGENTS.md` coding rules + output 정책 |
+| 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
+| 5 | Notion → 개발 스펙 분해 | ✅ MVP | — | `skills/notion-context/SKILL.md` spec mode |
+| 6 | 스펙 → GitHub Issue 추적 | 📋 planned | [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4) | GitHub MCP / 자체 도구 어느 쪽으로 갈지 미정 |
+| 7 | OpenAPI 캐시 + client 작성 | 📋 planned | [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6) | `lib/openapi-context.ts` 형식 후보 |
 
 ## 제안 단계
 
 각 단계는 별도 PR. MVP scope 경계는 `AGENTS.md` 가 들고 있고, 이 ROADMAP 은 그 경계를 넓히는 후보 작업의 모음이다.
 
-- **Phase 1 — 완료**
+- **Phase 1 — 완료** *(PR [#3](https://github.com/minjun0219/coding-agent-toolkit/pull/3))*
   - Notion 캐시 + 스펙 추출 + Rocky 회사 컨텍스트 파트너 (`mode: all`)
-- **Phase 2 — 스펙 → GitHub Issue / Project 동기화** *(memo #6)*
+- **Phase 2 — 스펙 → GitHub Issue / Project 동기화** *(memo #6, issue [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4))*
   - Rocky 의 spec 모드 출력을 그대로 issue 시리즈로 변환하는 skill / 도구
   - 매핑 후보: 한 Notion 페이지 = 한 epic, "TODO" 섹션의 bullet 1 개 = 한 issue
-- **Phase 3 — 에이전트 자동 기억 / 기록** *(memo #1)*
+- **Phase 3 — 에이전트 자동 기억 / 기록** *(memo #1, issue [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5))*
   - turn 단위 결정 / blocker / 사용자 답변을 캐시 디렉터리 옆에 append-only 로 저장
   - Rocky 가 "이전 turn 에 X 로 결정했음" 같은 기억을 인용 가능하게
-- **Phase 4 — OpenAPI 캐시 + client 작성** *(memo #7)*
+- **Phase 4 — OpenAPI 캐시 + client 작성** *(memo #7, issue [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6))*
   - `swagger_get` / `swagger_status` / `swagger_search` 같은 도구
   - skill: 한 endpoint → `fetch` / `axios` 호출 코드 한 덩어리
-- **횡단 — 코드 품질 정책 강화** *(memo #2, #3)*
+- **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7))*
   - 한글 주석 / JSDoc 정책의 lint 단 검증 (필요해지면)
 
 ## 미정 / 결정 필요
