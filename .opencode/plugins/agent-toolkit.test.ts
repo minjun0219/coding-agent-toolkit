@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { NotionCache } from "../../lib/notion-context";
 import agentToolkitPlugin, {
   handleNotionGet,
@@ -95,16 +95,17 @@ describe("plugin config hook", () => {
     plugin.config(cfg);
     plugin.config(cfg);
 
-    const expectPath = (key: string, suffix: string) => {
+    // basename 비교로 cross-platform (Windows `\\` 도 안전).
+    const expectPath = (key: string, leaf: string) => {
       expect(cfg[key]).toBeDefined();
       expect(Array.isArray(cfg[key].paths)).toBe(true);
-      const matches = cfg[key].paths.filter((p: string) => p.endsWith(suffix));
+      const matches = cfg[key].paths.filter((p: string) => basename(p) === leaf);
       expect(matches.length).toBe(1);
     };
 
-    expectPath("skills", "/skills");
-    expectPath("agents", "/agents");
-    expectPath("agent", "/agents");
+    expectPath("skills", "skills");
+    expectPath("agents", "agents");
+    expectPath("agent", "agents");
   });
 
   it("preserves existing paths in config", async () => {

@@ -48,7 +48,7 @@ The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI 
 2. `bun test` passes
 3. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
 4. If a new env var is added, also update the plugin's `readEnv()`
-5. If the plugin's tool contract changes, update the tool-usage rules in `skills/notion-context/SKILL.md` and the tool table in `agents/rocky.md`
+5. If the plugin's tool contract changes, update the tool-usage rules in `skills/notion-context/SKILL.md` and the corresponding tool description/rules in `agents/rocky.md`
 
 ## MCP servers
 
