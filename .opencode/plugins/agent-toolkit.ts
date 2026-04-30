@@ -27,6 +27,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, "..", "..");
 const SKILLS_DIR = resolve(REPO_ROOT, "skills");
+const AGENTS_DIR = resolve(REPO_ROOT, "agents");
 
 /**
  * remote Notion MCP base URL 기본값.
@@ -146,15 +147,21 @@ export default async function agentToolkitPlugin(_input: unknown) {
   const cache = createCacheFromEnv();
 
   return {
-    /** opencode skill 탐색 경로에 우리 skills/ 추가. Superpowers 와 동일한 패턴. */
+    /**
+     * opencode 의 skill / agent 탐색 경로에 자기 저장소의 디렉터리를 절대 경로로 끼워 넣는다.
+     * Superpowers 와 동일한 패턴. plural / singular 키 모두 시도해 둬서 opencode 가 어느
+     * 쪽을 쓰든 안전하게 동작한다 (현재 docs 는 plural 우선).
+     */
     config(config: any) {
-      config.skills ??= { paths: [] };
-      if (!Array.isArray(config.skills.paths)) {
-        config.skills.paths = [];
-      }
-      if (!config.skills.paths.includes(SKILLS_DIR)) {
-        config.skills.paths.push(SKILLS_DIR);
-      }
+      const ensurePath = (host: any, key: string, value: string) => {
+        host[key] ??= { paths: [] };
+        if (!Array.isArray(host[key].paths)) host[key].paths = [];
+        if (!host[key].paths.includes(value)) host[key].paths.push(value);
+      };
+      ensurePath(config, "skills", SKILLS_DIR);
+      ensurePath(config, "agents", AGENTS_DIR);
+      // 일부 버전이 singular `agent` 를 쓰는 경우의 호환 셔틀.
+      ensurePath(config, "agent", AGENTS_DIR);
     },
 
     /** opencode tool 등록. notion_get / notion_refresh / notion_status. */
