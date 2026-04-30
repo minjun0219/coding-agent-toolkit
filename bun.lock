@@ -5,45 +5,12 @@
     "": {
       "name": "agent-toolkit",
       "devDependencies": {
-        "@agent-toolkit/core": "*",
-        "@agent-toolkit/mcp-gateway": "*",
         "@types/bun": "^1.1.0",
         "typescript": "^5.4.5",
       },
     },
-    "packages/agent-toolkit-core": {
-      "name": "@agent-toolkit/core",
-      "version": "0.1.0",
-    },
-    "packages/agent-toolkit-mcp-gateway": {
-      "name": "@agent-toolkit/mcp-gateway",
-      "version": "0.1.0",
-      "bin": {
-        "agent-toolkit-gateway": "src/cli.ts",
-      },
-      "dependencies": {
-        "@agent-toolkit/core": "*",
-      },
-    },
-    "packages/agent-toolkit-opencode-plugin": {
-      "name": "@agent-toolkit/opencode-plugin",
-      "version": "0.1.0",
-      "bin": {
-        "agent-toolkit-plugin": "src/cli.ts",
-      },
-      "dependencies": {
-        "@agent-toolkit/core": "*",
-        "@agent-toolkit/mcp-gateway": "*",
-      },
-    },
   },
   "packages": {
-    "@agent-toolkit/core": ["@agent-toolkit/core@workspace:packages/agent-toolkit-core"],
-
-    "@agent-toolkit/mcp-gateway": ["@agent-toolkit/mcp-gateway@workspace:packages/agent-toolkit-mcp-gateway"],
-
-    "@agent-toolkit/opencode-plugin": ["@agent-toolkit/opencode-plugin@workspace:packages/agent-toolkit-opencode-plugin"],
-
     "@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@types/node": ["@types/node@25.6.0", "", { "dependencies": { "undici-types": "~7.19.0" } }, "sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ=="],

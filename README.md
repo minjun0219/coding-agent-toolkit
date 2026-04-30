@@ -1,100 +1,77 @@
-# Agent Toolkit (MVP)
+# Agent Toolkit
 
-opencode 환경에서 사용하는 Notion 캐싱 게이트웨이 + 플러그인 + 기본 skill 묶음.
-런타임은 **Bun (>=1.0)** 을 기준으로 한다. (Node 는 사용하지 않는다.)
+opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개와, 그 도구를 사용해 한국어 스펙으로 정리하는 skill 1 개를 제공한다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
 
-## 구성
+구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` 디렉터리를 opencode skill 경로에 등록하고 도구를 노출한다.
+
+## 디렉터리
 
 ```
-opencode
-  └─ agent-toolkit-opencode-plugin   (commands: /notion get|refresh|status)
-       └─ agent-toolkit-mcp-gateway  (Bun.serve, TTL 캐시 + remote MCP proxy)
-            └─ remote Notion MCP     (HTTP)
-                 └─ Notion
+.
+├── .opencode/
+│   ├── INSTALL.md                  # opencode 사용자용 설치 안내
+│   └── plugins/
+│       ├── agent-toolkit.ts        # plugin entrypoint + 도구 3 개
+│       └── agent-toolkit.test.ts
+├── lib/
+│   ├── notion-cache.ts             # TTL 파일 캐시 + key 정규화 + normalize
+│   └── notion-cache.test.ts
+├── skills/
+│   └── notion-spec-reader/SKILL.md # Notion → 한국어 스펙 정리 skill
+├── .mcp.json                        # context7 MCP 등록 (개발 보조용)
+├── package.json / tsconfig.json
+├── AGENTS.md / CLAUDE.md
+└── README.md
 ```
 
-* `packages/agent-toolkit-core` — 캐시 키 / TTL / 파일 저장 / Notion → markdown normalize
-* `packages/agent-toolkit-mcp-gateway` — `Bun.serve` HTTP gateway. 캐시 hit 면 즉시 반환, miss 면 remote MCP 호출
-* `packages/agent-toolkit-opencode-plugin` — gateway 를 `Bun.spawn` 으로 띄우고 `/notion` 커맨드를 노출
-* `skills/notion-spec-reader` — Notion 페이지를 한국어 스펙으로 정리하는 기본 skill
+> 다른 host (Claude Code, Cursor, Codex CLI) 호환은 후속 작업 — 필요 시 Superpowers 처럼 `.claude-plugin/`, `.cursor-plugin/` 디렉터리를 추가하면 된다. 지금은 opencode 전용.
 
-## 설치
+## 설치 / 사용
 
-```bash
-bun install
+`opencode.json` 의 `plugin` 배열에 추가하고 opencode 를 재시작:
+
+```json
+{ "plugin": ["agent-toolkit@git+https://github.com/<owner>/coding-agent-toolkit.git"] }
 ```
+
+자세한 환경변수 / 검증 흐름은 [`.opencode/INSTALL.md`](./.opencode/INSTALL.md) 참고.
 
 ## 환경변수
 
 | 변수 | 필수 | 설명 |
 | --- | --- | --- |
-| `AGENT_TOOLKIT_NOTION_MCP_URL` | ✅ | remote Notion MCP base URL |
-| `AGENT_TOOLKIT_NOTION_MCP_TOKEN` | ⛔️ | bearer token (있으면 Authorization 첨부) |
-| `AGENT_TOOLKIT_GATEWAY_PORT` | ⛔️ | 기본 `4319` |
-| `AGENT_TOOLKIT_GATEWAY_HOST` | ⛔️ | 기본 `127.0.0.1` |
+| `AGENT_TOOLKIT_NOTION_MCP_URL` | ✅ | remote Notion MCP base URL (`POST {url}/getPage` 가정) |
+| `AGENT_TOOLKIT_NOTION_MCP_TOKEN` | ⛔️ | bearer token |
+| `AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS` | ⛔️ | 기본 `15000` |
 | `AGENT_TOOLKIT_CACHE_DIR` | ⛔️ | 기본 `.agent-cache/notion/pages` |
 | `AGENT_TOOLKIT_CACHE_TTL` | ⛔️ | 초 단위, 기본 `86400` |
-| `AGENT_TOOLKIT_GATEWAY_URL` | ⛔️ | plugin 이 spawn 대신 외부 gateway 를 쓸 때 사용 |
 
-## 실행
+## 도구
 
-### 1) gateway 단독 실행
+plugin 이 opencode 에 다음 3 개를 등록한다:
 
-```bash
-AGENT_TOOLKIT_NOTION_MCP_URL=https://notion-mcp.example.com \
-  bun run gateway
-```
+| 도구 | 동작 |
+| --- | --- |
+| `notion_get` | 캐시 우선. hit 면 즉시 반환, miss 면 remote MCP 호출 → id 검증 → 캐시 저장 |
+| `notion_refresh` | 캐시 무시하고 remote 강제 fetch → id 검증 → 캐시 갱신 |
+| `notion_status` | 캐시 메타(저장 시각, TTL, 만료 여부) 만 조회. remote 호출 없음 |
 
-`http://127.0.0.1:4319` 에 다음 endpoint 가 노출된다:
-
-```
-GET  /health
-POST /v1/notion/get        { "input": "<pageId or url>" }
-POST /v1/notion/refresh    { "input": "<pageId or url>" }
-POST /v1/notion/status     { "input": "<pageId or url>" }
-```
-
-### 2) plugin CLI 로 한 번 호출
-
-```bash
-AGENT_TOOLKIT_GATEWAY_URL=http://127.0.0.1:4319 \
-  bun run plugin status <pageId-or-url>
-```
-
-`AGENT_TOOLKIT_GATEWAY_URL` 을 비우면 plugin 이 직접 gateway 를 `Bun.spawn` 으로 띄운다 (이 경우 `AGENT_TOOLKIT_NOTION_MCP_URL` 같은 변수는 plugin 프로세스에 그대로 상속된다).
-
-### 3) opencode 에서 사용
-
-opencode plugin 호스트에 `@agent-toolkit/opencode-plugin` 의 `createOpencodePlugin()` 결과를 등록한다. 등록된 후 다음 커맨드를 사용할 수 있다:
-
-```
-/notion get <pageId-or-url>
-/notion refresh <pageId-or-url>
-/notion status <pageId-or-url>
-```
-
-skill 은 `skills/notion-spec-reader/SKILL.md` 를 참조한다 — Notion 접근은 반드시 위 커맨드(=gateway) 를 통해서만 일어난다.
+`input` 파라미터는 page id 또는 Notion URL 모두 허용.
 
 ## 캐시 구조
 
 ```
-.agent-cache/notion/pages/
-  <pageId>.json   # 메타데이터 (pageId, url, cachedAt, ttlSeconds, contentHash, title)
+<AGENT_TOOLKIT_CACHE_DIR>/
+  <pageId>.json   # 메타데이터: pageId, url, cachedAt, ttlSeconds, contentHash, title
   <pageId>.md     # normalize 된 markdown 본문
 ```
+
+`.json` 또는 `.md` 한쪽이 누락되면 `notion_status` 와 `notion_get` 모두 cache miss 로 본다.
 
 ## 개발
 
 ```bash
-bun test                                                  # core 단위 테스트
-bun run typecheck                                         # tsc --noEmit
-bun run packages/agent-toolkit-mcp-gateway/src/cli.ts     # gateway 단독 실행
-bun run scripts/smoke.ts                                  # 가짜 remote MCP + gateway 통합 smoke
+bun install
+bun test          # lib/ + .opencode/plugins/ 단위 테스트
+bun run typecheck
 ```
-
-## Out of Scope (MVP)
-
-* Notion database query
-* multi-page traversal / child page
-* OAuth / 인증 추상화
-* multi-MCP, codex CLI, UI

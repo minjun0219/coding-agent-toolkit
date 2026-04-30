@@ -1,6 +1,8 @@
 ---
 name: notion-spec-reader
-description: Notion 문서를 MCP gateway 를 통해 읽어 한국어 스펙 형태로 정리한다. 사용자가 Notion 페이지 URL 이나 page id 를 주고 "스펙 정리해줘", "요구사항 뽑아줘" 같은 요청을 했을 때 호출한다.
+description: Notion 페이지를 캐시 우선 정책으로 읽고 한국어 스펙(요약/요구사항/화면/API/TODO/확인 필요)으로 정리한다. URL 이나 page id 와 함께 "스펙 정리해줘" / "요구사항 뽑아줘" 같은 요청 시 자동 트리거.
+allowed-tools: [notion_get, notion_status, notion_refresh]
+license: MIT
 version: 0.1.0
 ---
 
@@ -8,17 +10,18 @@ version: 0.1.0
 
 ## 역할
 
-* 주어진 Notion 페이지를 **MCP gateway 를 통해서만** 읽어와 구조화된 한국어 스펙으로 정리한다.
+* 주어진 Notion 페이지를 **`notion_*` 도구를 통해서만** 읽어 구조화된 한국어 스펙으로 정리한다.
 * 단일 page 만 처리한다. child page / database 는 다루지 않는다.
 
 ## 도구 사용 규칙
 
-1. Notion 접근은 **반드시** `@agent-toolkit/opencode-plugin` 의 `notion get` / `notion refresh` / `notion status` 명령(또는 동일 동작의 gateway 호출) 을 통해서만 한다.
-2. 사용자가 명시적으로 "최신화" 또는 "refresh" 를 요청하지 않는 한, 먼저 `notion status` 로 캐시 존재 / 만료 여부를 확인하고:
-   * `exists=true && expired=false` 면 `notion get` 으로만 읽는다 (재조회 금지).
-   * 그 외에는 `notion get` 을 호출한다 (gateway 가 알아서 cache miss 면 remote 를 친다).
-3. 같은 페이지를 한 turn 안에서 두 번 이상 fetch 하지 않는다. 이미 읽은 markdown 은 재사용한다.
-4. 사용자가 "최신화"를 요청한 경우에만 `notion refresh` 를 사용한다.
+1. Notion 접근은 반드시 `notion_get` / `notion_refresh` / `notion_status` 도구로만 한다. 다른 경로(직접 fetch, Read, Bash) 금지.
+2. 사용자가 명시적으로 "최신화" / "refresh" 를 요청하지 않는 한:
+   * 먼저 `notion_status` 로 캐시 상태를 확인.
+   * `exists=true && expired=false` 면 `notion_get` 으로만 읽는다 (재조회 금지).
+   * 그 외에는 `notion_get` 호출 (도구가 알아서 cache miss 면 remote 를 친다).
+3. 같은 페이지를 한 turn 안에서 두 번 이상 fetch 하지 않는다. 이미 받은 markdown 은 재사용.
+4. 사용자가 "최신화" 를 요청한 경우에만 `notion_refresh` 를 사용한다.
 
 ## 출력 포맷 (한국어, 항상 이 순서)
 
@@ -54,6 +57,6 @@ version: 0.1.0
 
 ## 실패/예외 처리
 
-* gateway 가 응답하지 않으면, 사용자에게 gateway 실행 여부를 명확히 묻고 멈춘다.
+* `notion_get` 이 timeout / 네트워크 오류 / 잘못된 응답으로 throw 하면, 사용자에게 환경변수(`AGENT_TOOLKIT_NOTION_MCP_URL` 등) 설정과 remote MCP 가용성을 명확히 묻고 멈춘다.
 * page id 가 추출되지 않으면 입력값을 그대로 인용해 다시 요청한다.
 * 페이지가 비어 있으면 "문서 요약" 섹션에 "본문이 비어 있음" 만 적고 나머지는 비워둔다.
