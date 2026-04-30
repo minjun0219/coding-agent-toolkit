@@ -1,6 +1,6 @@
 # Agent Toolkit
 
-opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개와, 그 도구를 사용해 한국어 스펙으로 정리하는 skill 1 개를 제공한다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
+opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개와, 그 도구로 페이지를 컨텍스트로 가져오거나 한국어 스펙으로 정리하는 skill 1 개를 제공한다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
 
 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` 디렉터리를 opencode skill 경로에 등록하고 도구를 노출한다.
 
@@ -17,7 +17,7 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 │   ├── notion-context.ts           # TTL 파일 캐시 + key 정규화 + normalize
 │   └── notion-context.test.ts
 ├── skills/
-│   └── notion-spec-reader/SKILL.md # Notion → 한국어 스펙 정리 skill
+│   └── notion-context/SKILL.md     # Notion 캐시 우선 읽기 + 한국어 스펙 정리 skill
 ├── .mcp.json                        # context7 MCP 등록 (개발 보조용)
 ├── package.json / tsconfig.json
 ├── AGENTS.md / CLAUDE.md
