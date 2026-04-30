@@ -1,57 +1,57 @@
 # AGENTS.md
 
-이 저장소에서 작업하는 AI 코딩 에이전트(Claude Code, opencode, codex 등) 공통 가이드.
+Shared guide for AI coding agents (Claude Code, opencode, codex, etc.) working in this repository.
 
-## 프로젝트 한 줄
+## Project in one line
 
-opencode 전용 plugin. Notion 캐시 도구 3 개 + 캐시 우선 컨텍스트/스펙 정리 skill 1 개. **런타임은 Bun(>=1.0). Node 미사용. 빌드 단계 없음 (Bun 이 TS 직접 실행).** 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다.
+opencode-only plugin. Three Notion cache tools + one cache-first context / spec-extraction skill. **Runtime is Bun (>=1.0). No Node. No build step (Bun runs TS directly).** Layout follows the [obra/superpowers](https://github.com/obra/superpowers) shape.
 
-## 레이아웃
+## Layout
 
-- `.opencode/plugins/agent-toolkit.ts` — plugin entrypoint. `config` 훅으로 `skills/` 등록 + `notion_get` / `notion_refresh` / `notion_status` 도구 3 개 등록.
-- `lib/notion-context.ts` — TTL 파일 캐시 + `resolveCacheKey` + `notionToMarkdown` (단일 파일).
-- `skills/notion-context/SKILL.md` — Notion 캐시 우선 읽기 + 한국어 스펙 정리 skill.
-- `.opencode/INSTALL.md` — opencode 사용자용 설치 안내.
+- `.opencode/plugins/agent-toolkit.ts` — plugin entrypoint. `config` hook registers `skills/` and exposes the three tools (`notion_get` / `notion_refresh` / `notion_status`).
+- `lib/notion-context.ts` — single-file TTL filesystem cache + `resolveCacheKey` + `notionToMarkdown`.
+- `skills/notion-context/SKILL.md` — Notion cache-first read + Korean-language spec extraction skill.
+- `.opencode/INSTALL.md` — install guide for opencode users.
 
-## 자주 쓰는 커맨드
+## Common commands
 
 ```bash
 bun install
-bun test           # lib/ + .opencode/plugins/ 단위 테스트
+bun test           # unit tests under lib/ + .opencode/plugins/
 bun run typecheck  # tsc --noEmit
 ```
 
-`AGENT_TOOLKIT_NOTION_MCP_URL` 만 필수. 그 외 옵션 변수는 README 환경변수 표 참고.
+Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table for the optional ones.
 
-## 코딩 규칙
+## Coding rules
 
-- **언어**: TypeScript (`type: module`). Bun 이 `.ts` 직접 실행 → 빌드/`dist` 없음.
-- **import**: `.js` / `.ts` 접미사 붙이지 말 것 (`moduleResolution: Bundler` + `allowImportingTsExtensions`).
-- **ESM 안전성**: `__dirname` 대신 `import.meta.url` + `fileURLToPath` 사용.
-- **JSDoc**: export 함수/클래스에 작성. 복잡한 로직에는 한글 주석.
-- **에러**: 메시지에 컨텍스트(입력값, timeout, status code, pageId mismatch 등) 포함.
-- **의존성**: 가능한 한 추가하지 않는다. 표준 라이브러리 + Bun 내장 우선.
-- **테스트**: `*.test.ts` 를 같은 디렉터리에 두고 `bun test` 로 실행. fs 가 필요한 테스트는 `mkdtempSync` 로 격리.
+- **Language**: TypeScript (`type: module`). Bun runs `.ts` directly — no build, no `dist/`.
+- **Imports**: do not append `.js` / `.ts` extensions (`moduleResolution: Bundler` + `allowImportingTsExtensions`).
+- **ESM safety**: never use `__dirname`. Use `import.meta.url` + `fileURLToPath`, or Bun's `import.meta.dir`.
+- **JSDoc**: write JSDoc on exported functions / classes. Korean comments are fine for tricky logic.
+- **Errors**: include context in messages (input value, timeout, status code, pageId mismatch, …).
+- **Dependencies**: avoid adding any if possible. Prefer the standard library and Bun built-ins.
+- **Tests**: keep `*.test.ts` next to the source and run with `bun test`. Isolate fs-dependent tests with `mkdtempSync`.
 
-## MVP 범위 (지키기)
+## MVP scope (hold the line)
 
-**포함**: Notion 단일 page read + 캐시 + 만료, skill 1 개, opencode 전용.
+**In**: single-page Notion read + cache + expiry, one skill, opencode-only.
 
-**제외**: database query, OAuth, child page, multi-host plugin (`.claude-plugin/` 등), UI, codex 통합. 이 범위를 넘는 변경은 별도 PR 로 제안.
+**Out**: database queries, OAuth, child pages, multi-host plugin layouts (`.claude-plugin/`, etc.), UI, codex integration. Anything beyond this scope ships as a separate PR proposal.
 
-## 변경 시 체크리스트
+## Change checklist
 
-1. `bun run typecheck` 통과
-2. `bun test` 통과
-3. 사용자 노출(도구 / 환경변수)이 바뀌면 `README.md`, `.opencode/INSTALL.md` 동기화
-4. 새 환경변수를 추가했다면 plugin 의 `readEnv()` 도 같이 수정
-5. plugin 의 도구 contract 가 바뀌면 `skills/notion-context/SKILL.md` 의 도구 사용 규칙도 같이 갱신
+1. `bun run typecheck` passes
+2. `bun test` passes
+3. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
+4. If a new env var is added, also update the plugin's `readEnv()`
+5. If the plugin's tool contract changes, update the tool-usage rules in `skills/notion-context/SKILL.md`
 
-## MCP 서버
+## MCP servers
 
-`.mcp.json` 에 프로젝트 스코프로 [`context7`](https://github.com/upstash/context7) 가 등록되어 있다. 외부 라이브러리(Bun, TypeScript, opencode plugin API 등) 문서를 최신 상태로 가져올 때 활용.
+`.mcp.json` registers [`context7`](https://github.com/upstash/context7) at project scope. Use it to pull up-to-date documentation for external libraries (Bun, TypeScript, the opencode plugin API, etc.).
 
-## 출력 / 커뮤니케이션
+## Output / communication
 
-- 사용자와의 대화는 기본 한국어. 코드 식별자/경로/명령은 영어 그대로.
-- 변경 요약은 짧게 (한 줄 요약 + 필요 시 bullet). 장문 보고서 만들지 말 것.
+- Default conversation language with the user is Korean. Keep code identifiers / paths / commands in English.
+- Keep change summaries short (one-line summary, bullets only when needed). Do not produce long-form reports.
