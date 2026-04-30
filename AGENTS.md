@@ -40,6 +40,8 @@ Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table fo
 
 **Out**: database queries, OAuth, child pages, multi-host plugin layouts (`.claude-plugin/`, etc.), UI, codex integration, agent-side workflow orchestration (that lives in the caller, not in `rocky`). Anything beyond this scope ships as a separate PR proposal.
 
+The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI client generation, …) live in [`ROADMAP.md`](./ROADMAP.md) — phase-by-phase, one PR at a time. Do not pull roadmap items into MVP unless the user explicitly asks.
+
 ## Change checklist
 
 1. `bun run typecheck` passes

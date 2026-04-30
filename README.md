@@ -86,3 +86,7 @@ bun install
 bun test          # lib/ + .opencode/plugins/ 단위 테스트
 bun run typecheck
 ```
+
+## Roadmap
+
+MVP 너머의 능력 목표 (자동 기억, GitHub Issue 동기화, OpenAPI client 작성 등) 는 [`ROADMAP.md`](./ROADMAP.md) 참고. 한 번에 한 phase 씩 별도 PR 로.
