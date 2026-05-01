@@ -87,26 +87,6 @@ bun test          # lib/ + .opencode/plugins/ 단위 테스트
 bun run typecheck
 ```
 
-## 코드 리뷰 언어 가이드 (Codex / GitHub Copilot)
-
-코드 리뷰 코멘트를 한국어로 받으려면 리뷰 요청 메시지(프롬프트)에 아래 문장을 포함한다.
-
-- `모든 리뷰 코멘트는 한국어로 작성해 주세요.`
-- `리뷰 요약, 인라인 코멘트, 수정 제안까지 전부 한국어로 부탁합니다.`
-
-권장 템플릿:
-
-```text
-이 PR을 리뷰해 주세요.
-모든 리뷰 코멘트는 한국어로 작성해 주세요.
-중요도 순서로 이슈를 정리하고, 가능한 경우 수정 예시도 함께 제안해 주세요.
-```
-
-추가 팁:
-
-- GitHub Copilot Chat / PR Review 에서도 동일하게 첫 줄에 한국어 리뷰 요청을 명시한다.
-- Codex 기반 리뷰에서도 동일 문구를 반복하면 언어 일관성이 높아진다.
-
 ## Roadmap
 
 MVP 너머의 능력 목표 (자동 기억, GitHub Issue 동기화, OpenAPI client 작성 등) 는 [`ROADMAP.md`](./ROADMAP.md) 참고. 한 번에 한 phase 씩 별도 PR 로.
