@@ -4,7 +4,7 @@ Shared guide for AI coding agents (Claude Code, opencode, codex, etc.) working i
 
 ## Project in one line
 
-opencode-only plugin. Three Notion cache tools + five OpenAPI tools (cache, search, environment registry) + four append-only journal tools (turn-spanning agent memory) + two cache-first skills (`notion-context` for context / Korean specs, `openapi-client` for `fetch`/`axios` snippets) + one thin gateway agent (`rocky`, naming convention borrowed from [OmO](https://github.com/code-yeongyu/oh-my-openagent)'s named-specialist pattern). OpenAPI specs can be addressed by URL or by `host:env:spec` handles declared in `agent-toolkit.json` (project > user precedence). **Runtime is Bun (>=1.0). No Node. No build step (Bun runs TS directly).** Layout follows the [obra/superpowers](https://github.com/obra/superpowers) shape.
+opencode-only plugin. Three Notion cache tools + five OpenAPI tools (cache, search, environment registry) + four append-only journal tools (turn-spanning agent memory) + two cache-first skills (`notion-context` for context / Korean specs, `openapi-client` for `fetch`/`axios` snippets) + one work-partner agent (`rocky`, naming convention borrowed from [OmO](https://github.com/code-yeongyu/oh-my-openagent)'s named-specialist pattern) acting as the toolkit's primary conductor and able to delegate to external sub-agents / skills when the work exceeds the toolkit. OpenAPI specs can be addressed by URL or by `host:env:spec` handles declared in `agent-toolkit.json` (project > user precedence). **Runtime is Bun (>=1.0). No Node. No build step (Bun runs TS directly).** Layout follows the [obra/superpowers](https://github.com/obra/superpowers) shape.
 
 ## Layout
 
@@ -17,7 +17,7 @@ opencode-only plugin. Three Notion cache tools + five OpenAPI tools (cache, sear
 - `agent-toolkit.schema.json` — JSON Schema for `agent-toolkit.json` (IDE autocomplete; runtime validation lives in `toolkit-config.ts`).
 - `skills/notion-context/SKILL.md` — Notion cache-first read + Korean-language spec extraction skill.
 - `skills/openapi-client/SKILL.md` — cached OpenAPI spec → `fetch` or `axios` call snippet skill.
-- `agents/rocky.md` — thin gateway agent (`mode: all`) that exposes the toolkit's Notion flow + journal recall / append to users and to other primary agents (e.g. OmO Sisyphus).
+- `agents/rocky.md` — work-partner agent (`mode: all`) that conducts the toolkit's `notion-context` + `openapi-client` flows and the journal for users and other primary agents (e.g. OmO Sisyphus), and may delegate to external sub-agents / skills when a task exceeds the toolkit. Frontend specialty, fullstack range.
 - `.opencode/INSTALL.md` — install guide for opencode users.
 
 ## Common commands
@@ -42,9 +42,9 @@ Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table fo
 
 ## MVP scope (hold the line)
 
-**In**: single-page Notion read + cache + expiry, single OpenAPI / Swagger JSON spec cache + cross-spec endpoint search + `host:env:spec` registry (`agent-toolkit.json`, project > user precedence), append-only agent journal (turn-spanning memory: decisions / blockers / answers / notes — disk only, no TTL, time / page-key / kind / tag-shaped lookup + substring search), two skills (`notion-context`, `openapi-client`), one gateway agent (`rocky`), opencode-only.
+**In**: single-page Notion read + cache + expiry, single OpenAPI / Swagger JSON spec cache + cross-spec endpoint search + `host:env:spec` registry (`agent-toolkit.json`, project > user precedence), append-only agent journal (turn-spanning memory: decisions / blockers / answers / notes — disk only, no TTL, time / page-key / kind / tag-shaped lookup + substring search), two skills (`notion-context`, `openapi-client`), one work-partner agent (`rocky`) that conducts both skills as its primary contract and may delegate to external sub-agents / skills when the task exceeds the toolkit, opencode-only.
 
-**Out**: database queries, OAuth, Notion child pages, OpenAPI YAML parsing, runtime base-URL override (use `spec.servers`), full SDK code generation, multi-spec merge, mock servers, multi-host plugin layouts (`.claude-plugin/`, etc.), UI, codex integration, agent-side workflow orchestration (that lives in the caller, not in `rocky`), cross-machine journal sync, embedding / natural-language journal search, journal compaction or summarization. Anything beyond this scope ships as a separate PR proposal.
+**Out**: database queries, OAuth, Notion child pages, OpenAPI YAML parsing, runtime base-URL override (use `spec.servers`), full SDK code generation, multi-spec merge, mock servers, multi-host plugin layouts (`.claude-plugin/`, etc.), UI, codex integration, **direct multi-step implementation by Rocky** (writing code, refactor, multi-file changes — Rocky may delegate these to a sub-agent / skill, or return them to the caller, but never runs them itself), cross-machine journal sync, embedding / natural-language journal search, journal compaction or summarization. Anything beyond this scope ships as a separate PR proposal.
 
 The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI client generation, …) live in [`ROADMAP.md`](./ROADMAP.md) — phase-by-phase, one PR at a time. Do not pull roadmap items into MVP unless the user explicitly asks.
 
@@ -54,7 +54,7 @@ The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI 
 2. `bun test` passes
 3. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
 4. If a new env var is added, also update the plugin's `readEnv()`
-5. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`) and the corresponding tool description/rules in `agents/rocky.md` when Notion-side or journal-side (`journal_*` is owned by `rocky` directly — no separate skill)
+5. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`) **and** the corresponding routing / tool rules in `agents/rocky.md` (Rocky conducts both skills, so changes on either side propagate to it; `journal_*` is owned by `rocky` directly — no separate skill)
 6. If `agent-toolkit.json` shape changes, update **both** `agent-toolkit.schema.json` (IDE autocomplete) **and** `lib/toolkit-config.ts` (runtime validation) — they must stay in lockstep
 
 ## MCP servers

@@ -1,8 +1,8 @@
 # Agent Toolkit
 
-opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드로 정리하는 skill 2 개, 그리고 회사 컨텍스트를 들고 있는 업무 파트너 agent 1 개(`rocky`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. Notion 은 시작 소스이고, 회사 지식 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
+opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드로 정리하는 skill 2 개, 그리고 프론트엔드 전문성을 가진 풀스택 업무 파트너이자 agent-toolkit 의 1차 지휘자 역할인 agent 1 개(`rocky`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. Notion 은 시작 소스이고, 작업 컨텍스트의 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
 
-구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸지만, 책임은 회사 컨텍스트 파트너 한 줄로 한정한다.
+구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸지만, 책임은 agent-toolkit 1차 지휘 + 필요 시 외부 sub-agent / skill 위임 한 줄로 한정한다.
 
 ## 디렉터리
 
@@ -28,7 +28,7 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 │   ├── notion-context/SKILL.md     # Notion 캐시 우선 읽기 + 한국어 스펙 정리 skill
 │   └── openapi-client/SKILL.md     # 캐시된 OpenAPI spec → fetch / axios 호출 코드 skill
 ├── agents/
-│   └── rocky.md                    # 회사 컨텍스트 업무 파트너 (mode: all, Notion 시작)
+│   └── rocky.md                    # 풀스택 업무 파트너 / agent-toolkit 1차 지휘자 (mode: all)
 ├── agent-toolkit.schema.json        # agent-toolkit.json 의 JSON Schema (IDE 자동완성용)
 ├── .mcp.json                        # context7 MCP 등록 (개발 보조용)
 ├── package.json / tsconfig.json
@@ -141,9 +141,9 @@ OpenAPI registry 를 선언하면 `swagger_*` 도구를 URL 대신 `host:env:spe
 
 | 이름 | mode | 역할 |
 | --- | --- | --- |
-| `rocky` | all | 회사 컨텍스트 업무 파트너. 회사 스펙/요구사항/컨벤션/내부 문서를 들고 있고 모호한 요청에는 어느 페이지인지 되묻는다. 받은 포인터로 cached markdown(컨텍스트) 또는 한국어 스펙(스펙) 반환. Notion 이 현재 소스. 코드 작성/구현은 호출자 책임. |
+| `rocky` | all | 프론트엔드 전문성을 가진 풀스택 업무 파트너 / agent-toolkit 1차 지휘자. Notion URL·page id, OpenAPI spec URL·16-hex 키·`host:env:spec` 핸들을 받아 `notion-context` / `openapi-client` 둘 중 하나로 라우팅, 모호하면 어느 surface 인지 되묻는다. 출력은 cached markdown(컨텍스트) / 한국어 스펙 / `fetch`·`axios` snippet / 위임된 sub-agent 결과 중 하나. 작업이 toolkit 범위를 넘으면 외부 sub-agent / skill 에 위임 가능. **직접** multi-step 구현(코드 작성·리팩터·다파일 변경)은 안 함 — sub-agent 가 굴리거나 호출자에게 돌림. |
 
-`mode: all` 이라 사용자 직접 호출(primary, Tab 사이클)과 다른 primary agent (e.g. OmO Sisyphus) 의 위임(subagent) 둘 다 가능. 다른 agent 는 turn 시작 시 받는 subagent 목록의 `description` 만으로 라우팅 — Rocky 의 존재를 system prompt 에 박지 않아도 회사 컨텍스트 관련 요청이 알아서 들어온다.
+`mode: all` 이라 사용자 직접 호출(primary, Tab 사이클)과 다른 primary agent (e.g. OmO Sisyphus) 의 위임(subagent) 둘 다 가능. 다른 agent 는 turn 시작 시 받는 subagent 목록의 `description` 만으로 라우팅 — Rocky 의 존재를 system prompt 에 박지 않아도 toolkit-shaped / 작업 컨텍스트 관련 요청이 알아서 들어온다.
 
 ## 캐시 구조
 

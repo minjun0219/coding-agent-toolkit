@@ -4,7 +4,7 @@
 
 ## 비전
 
-회사 컨텍스트를 들고 코드까지 굴리는 에이전트 오케스트레이션 toolkit. Rocky (현재 회사 컨텍스트 파트너) 를 시작점으로, 기억 → 추적 → 코드 생성으로 표면을 넓혀 간다.
+작업 컨텍스트를 들고 코드까지 굴리는 에이전트 오케스트레이션 toolkit. Rocky (프론트엔드 전문성을 가진 풀스택 업무 파트너 / agent-toolkit 1차 지휘자, 외부 sub-agent / skill 위임 가능) 를 시작점으로, 기억 → 추적 → 코드 생성으로 표면을 넓혀 간다.
 
 ## 능력 목표
 
@@ -35,7 +35,7 @@
 각 단계는 별도 PR. MVP scope 경계는 `AGENTS.md` 가 들고 있고, 이 ROADMAP 은 그 경계를 넓히는 후보 작업의 모음이다.
 
 - **Phase 1 — 완료** *(PR [#3](https://github.com/minjun0219/coding-agent-toolkit/pull/3))*
-  - Notion 캐시 + 스펙 추출 + Rocky 회사 컨텍스트 파트너 (`mode: all`)
+  - Notion 캐시 + 스펙 추출 + Rocky 업무 파트너 / agent-toolkit 1차 지휘자 (`mode: all`)
 - **Phase 2 — 스펙 → GitHub Issue / Project 동기화** *(memo #6, issue [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4))*
   - Rocky 의 spec 모드 출력을 그대로 issue 시리즈로 변환하는 skill / 도구
   - 매핑 후보: 한 Notion 페이지 = 한 epic, "TODO" 섹션의 bullet 1 개 = 한 issue
@@ -57,4 +57,4 @@
 
 - memo #1 의 "기억" 영속 층은 디스크로 결정 (Phase 3 MVP). cross-machine 동기화 / 자연어 검색 / 자동 요약 / 압축은 후속 phase.
 - memo #6 의 GitHub 연동을 외부 MCP 로 위임할지 자체 도구로 만들지.
-- Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — 현재는 단일 파트너; phase 가 늘면 sub-partner 분리(`linear`, `swagger` 등) 검토.
+- Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — 현재는 단일 파트너이며 `notion-context` + `openapi-client` 두 skill 을 모두 1차 지휘하고, 필요 시 외부 sub-agent / skill 위임도 허용한다. 분리(`linear`, `swagger` 등 sub-partner) 트리거의 임계는 그만큼 높아졌고, 분리는 "특정 surface 가 충분히 두꺼워져 별도 persona / 별도 contract 가 필요해질 때" 로 제한한다.
