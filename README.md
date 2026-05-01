@@ -4,7 +4,7 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 
 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸지만, 책임은 agent-toolkit 1차 지휘 + 필요 시 외부 sub-agent / skill 위임 한 줄로 한정한다.
 
-> 개인 프로젝트라 유지보수가 꾸준하지 않을 수 있다. 자유롭게 가져다 쓰거나 fork 해도 되며, 라이선스는 [MIT](./LICENSE).
+> 개인 프로젝트라 유지보수가 꾸준하지 않을 수 있다.
 
 ## 요구사항
 
