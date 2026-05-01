@@ -145,6 +145,59 @@ describe("validateConfig", () => {
       validateConfig({ futureFeature: { foo: "bar" } } as any, "p"),
     ).not.toThrow();
   });
+
+  it("accepts a spec block with all known keys", () => {
+    expect(() =>
+      validateConfig(
+        {
+          spec: {
+            dir: ".agent/specs",
+            scanDirectorySpec: true,
+            indexFile: "INDEX.md",
+          },
+        },
+        "p",
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects spec.dir that is empty / whitespace / non-string", () => {
+    expect(() =>
+      validateConfig({ spec: { dir: "" } } as any, "p"),
+    ).toThrow(/spec\.dir/);
+    expect(() =>
+      validateConfig({ spec: { dir: "  " } } as any, "p"),
+    ).toThrow(/spec\.dir/);
+    expect(() =>
+      validateConfig({ spec: { dir: 42 } } as any, "p"),
+    ).toThrow(/spec\.dir/);
+  });
+
+  it("rejects spec.scanDirectorySpec that is not boolean", () => {
+    expect(() =>
+      validateConfig({ spec: { scanDirectorySpec: "yes" } } as any, "p"),
+    ).toThrow(/spec\.scanDirectorySpec/);
+  });
+
+  it("rejects spec.indexFile that is empty / non-string", () => {
+    expect(() =>
+      validateConfig({ spec: { indexFile: "" } } as any, "p"),
+    ).toThrow(/spec\.indexFile/);
+  });
+
+  it("rejects unsupported spec keys (typo guard, schema lockstep)", () => {
+    // 오타 — 'scanDirectorySpec' 가 아닌 'scanDirectorySpecs'
+    expect(() =>
+      validateConfig(
+        { spec: { scanDirectorySpecs: true } } as any,
+        "p",
+      ),
+    ).toThrow(/unsupported key "scanDirectorySpecs"/);
+    // 알지 못하는 미래 키도 거부 — 단, top-level 미지원 키는 forward-compat 으로 통과해야.
+    expect(() =>
+      validateConfig({ spec: { unknown: 1 } } as any, "p"),
+    ).toThrow(/unsupported key "unknown"/);
+  });
 });
 
 describe("mergeConfigs", () => {

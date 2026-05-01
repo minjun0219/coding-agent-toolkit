@@ -121,13 +121,23 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
 
 /**
  * `spec` 객체 모양 검증. 모든 필드 optional + 빈 문자열 / 잘못된 타입은 reject.
+ * 미지원 key (오타 포함) 도 reject — schema 의 `additionalProperties: false` 와 lockstep.
  * grace sub-agent 가 SPEC-합의 lifecycle 의 storage 위치를 잡을 때 사용.
  */
+const ALLOWED_SPEC_KEYS = new Set(["dir", "scanDirectorySpec", "indexFile"]);
+
 function validateSpec(spec: unknown, source: string): asserts spec is SpecConfig {
   if (spec === null || typeof spec !== "object" || Array.isArray(spec)) {
     throw new Error(`${source}: spec must be an object`);
   }
   const s = spec as Record<string, unknown>;
+  for (const key of Object.keys(s)) {
+    if (!ALLOWED_SPEC_KEYS.has(key)) {
+      throw new Error(
+        `${source}: spec has unsupported key "${key}" — allowed: ${[...ALLOWED_SPEC_KEYS].join(", ")}`,
+      );
+    }
+  }
   if (s.dir !== undefined) {
     if (typeof s.dir !== "string" || s.dir.trim().length === 0) {
       throw new Error(`${source}: spec.dir must be a non-empty string`);
