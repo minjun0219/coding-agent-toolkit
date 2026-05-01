@@ -12,8 +12,6 @@
 2. **외부 primary 와의 시너지.** OmO Sisyphus / Superpowers 같은 외부 primary agent 가 동일 opencode 세션에 있을 때, agent-toolkit 의 description-driven routing 이 깨지지 않고 자연스럽게 위임이 흘러가도록 coexistence 규약을 둔다. agent-toolkit 은 이들과 경쟁하지 않고 (Notion / OpenAPI / SPEC 등) 토킷 고유 surface 를 책임진다. (자세한 단계는 **Phase 8**.)
 3. **회사 맞춤 토킷의 base.** 회사 / 팀이 agent-toolkit 을 의존성으로 들고 자기네 tool / skill / agent 를 얹는 커스텀 토킷을 만들 수 있도록 plugin (현재 형태) + library (`lib/*` exports) 두 형태로 패키징한다. 의존하는 쪽은 Notion 캐시 / OpenAPI / 저널 / SPEC lifecycle 같은 공통 인프라를 재사용하고, 회사 고유 surface 만 추가한다. (자세한 단계는 **Phase 9**.)
 
-저장소 이름은 이 세 갈래에 맞춰 `coding-agent-toolkit` → `agent-toolkit` 으로 rename 완료 (GitHub redirect 로 기존 URL / clone / PR / issue link 는 그대로 유지).
-
 ## 능력 목표
 
 원본 메모 — 분리 단위 그대로 유지.
