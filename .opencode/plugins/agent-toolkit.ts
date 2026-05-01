@@ -20,6 +20,18 @@ import {
   type OpenapiSpec,
   type OpenapiSpecResult,
 } from "../../lib/openapi-context";
+import {
+  isFullHandle,
+  listRegistry,
+  resolveHandleToUrl,
+  resolveScopeToUrls,
+  type OpenapiRegistryEntry,
+} from "../../lib/openapi-registry";
+import {
+  loadConfig,
+  type OpenapiRegistry,
+  type ToolkitConfig,
+} from "../../lib/toolkit-config";
 
 /**
  * opencode plugin entrypoint (Superpowers 형식).
@@ -249,44 +261,90 @@ async function fetchAndCacheSpec(
   return { ...written, fromCache: false };
 }
 
+/**
+ * 입력을 spec URL (또는 16-hex 디스크 key) 로 정규화한다.
+ *
+ * - URL 또는 16-hex 키 → 그대로 반환
+ * - `host:env:spec` handle → registry 에서 URL 로 해석. 미등록이면 throw.
+ *
+ * URL / key 의 구분은 cache 단의 `resolveSpecKey` 가 isKeyInput 으로 처리하므로
+ * 여기서는 그대로 흘려보낸다.
+ */
+function resolveSwaggerInput(
+  input: string,
+  registry: OpenapiRegistry | undefined,
+): string {
+  if (isFullHandle(input)) {
+    return resolveHandleToUrl(input, registry);
+  }
+  return input;
+}
+
+/** swagger_search 옵션 — `scope` 는 host / host:env / host:env:spec 중 하나. */
+export interface SwaggerSearchOptions {
+  limit?: number;
+  scope?: string;
+}
+
 /** 도구 핸들러: 캐시 우선. 단위 테스트에서 직접 호출 가능하도록 export. */
 export async function handleSwaggerGet(
   cache: OpenapiCache,
   input: string,
+  registry?: OpenapiRegistry,
 ): Promise<OpenapiSpecResult> {
-  const cached = await cache.read(input);
+  const url = resolveSwaggerInput(input, registry);
+  const cached = await cache.read(url);
   if (cached) return { ...cached, fromCache: true };
-  return fetchAndCacheSpec(cache, input);
+  return fetchAndCacheSpec(cache, url);
 }
 
 export async function handleSwaggerRefresh(
   cache: OpenapiCache,
   input: string,
+  registry?: OpenapiRegistry,
 ): Promise<OpenapiSpecResult> {
-  return fetchAndCacheSpec(cache, input);
+  const url = resolveSwaggerInput(input, registry);
+  return fetchAndCacheSpec(cache, url);
 }
 
 export async function handleSwaggerStatus(
   cache: OpenapiCache,
   input: string,
+  registry?: OpenapiRegistry,
 ): Promise<OpenapiCacheStatus> {
-  return cache.status(input);
+  const url = resolveSwaggerInput(input, registry);
+  return cache.status(url);
 }
 
 /**
- * 캐시된 모든 spec 을 가로질러 endpoint substring 검색.
- * - 결과는 caller 가 입력한 `limit` 까지 (기본 20).
- * - 빈 query 는 캐시된 모든 endpoint 를 limit 까지 나열.
+ * 캐시된 spec 을 가로질러 endpoint substring 검색.
+ * - `options.scope` (`host` / `host:env` / `host:env:spec`) 가 주어지면 registry 에서
+ *   해당 URL 들로 좁혀 그 안에서만 검색. 매칭 0 건이면 throw — 사용자가 잘못된 scope 를
+ *   넘겼음을 빨리 알리려고.
+ * - `options.limit` 는 결과 최대 개수 (기본 20).
+ * - 빈 query 는 (scope 안의) 모든 endpoint 를 limit 까지 나열.
  */
 export async function handleSwaggerSearch(
   cache: OpenapiCache,
   query: string,
-  limit?: number,
+  options: SwaggerSearchOptions = {},
+  registry?: OpenapiRegistry,
 ): Promise<OpenapiEndpointMatch[]> {
+  const { limit, scope } = options;
   const cap = Number.isFinite(limit) && (limit as number) > 0 ? (limit as number) : 20;
   const all = await cache.list();
+  let pool = all;
+  if (scope) {
+    const allowed = new Set(resolveScopeToUrls(scope, registry));
+    if (allowed.size === 0) {
+      throw new Error(
+        `swagger_search: scope "${scope}" matched no entries in openapi.registry — check ./.opencode/agent-toolkit.json or ~/.config/opencode/agent-toolkit/agent-toolkit.json`,
+      );
+    }
+    pool = all.filter((r) => allowed.has(r.entry.specUrl));
+  }
   const out: OpenapiEndpointMatch[] = [];
-  for (const { entry, spec } of all) {
+  for (const { entry, spec } of pool) {
     const remaining = cap - out.length;
     if (remaining <= 0) break;
     const matches = searchEndpoints(spec, query, remaining);
@@ -307,6 +365,13 @@ export async function handleSwaggerSearch(
   return out;
 }
 
+/** registry 트리를 평면 (host, env, spec, url) 리스트로 반환. remote 호출 없음. */
+export function handleSwaggerEnvs(
+  config: ToolkitConfig,
+): OpenapiRegistryEntry[] {
+  return listRegistry(config);
+}
+
 /**
  * opencode plugin default export.
  * `directory` 는 opencode 가 plugin 을 로드한 cwd. 우리는 import.meta 기반으로
@@ -315,6 +380,17 @@ export async function handleSwaggerSearch(
 export default async function agentToolkitPlugin(_input: unknown) {
   const cache = createCacheFromEnv();
   const openapi = createOpenapiCacheFromEnv();
+
+  // user / project agent-toolkit.json 로드. loadConfig 는 파일별 try-catch 로 자체
+  // 회복하므로 한 쪽이 손상돼도 다른 쪽은 그대로 살아나 registry 에 들어온다.
+  // 손상된 파일별 에러는 console.error 로 한 줄씩 surfacing.
+  const { config: toolkitConfig, errors: configErrors } = await loadConfig();
+  for (const e of configErrors) {
+    console.error(
+      `agent-toolkit: skipped config file ${e.source} — ${e.message}. Other config sources still apply.`,
+    );
+  }
+  const registry = toolkitConfig.openapi?.registry;
 
   return {
     /**
@@ -362,37 +438,54 @@ export default async function agentToolkitPlugin(_input: unknown) {
       },
       swagger_get: {
         description:
-          "OpenAPI / Swagger JSON spec 을 캐시 우선 정책으로 가져온다. 캐시 hit 이면 remote 호출 없음. miss 면 spec URL 을 GET 으로 받아 형식 검증 후 캐시에 저장. (input: spec URL 또는 이미 캐시된 16-hex key)",
+          "OpenAPI / Swagger JSON spec 을 캐시 우선 정책으로 가져온다. 캐시 hit 이면 remote 호출 없음. miss 면 spec URL 을 GET 으로 받아 형식 검증 후 캐시에 저장. (input: spec URL, agent-toolkit.json 의 host:env:spec handle, 또는 이미 캐시된 16-hex key)",
         parameters: { input: { type: "string", required: true } },
         async handler({ input }: { input: string }) {
-          return handleSwaggerGet(openapi, input);
+          return handleSwaggerGet(openapi, input, registry);
         },
       },
       swagger_refresh: {
         description:
-          "캐시를 무시하고 OpenAPI spec URL 에서 강제로 다시 가져와 캐시를 갱신한다. (input: spec URL)",
+          "캐시를 무시하고 OpenAPI spec URL 에서 강제로 다시 가져와 캐시를 갱신한다. (input: spec URL 또는 host:env:spec handle)",
         parameters: { input: { type: "string", required: true } },
         async handler({ input }: { input: string }) {
-          return handleSwaggerRefresh(openapi, input);
+          return handleSwaggerRefresh(openapi, input, registry);
         },
       },
       swagger_status: {
         description:
-          "캐시된 OpenAPI spec 의 메타(저장 시각, TTL, 만료 여부, title, endpoint 수)만 조회. remote 호출 없음. (input: spec URL 또는 16-hex key)",
+          "캐시된 OpenAPI spec 의 메타(저장 시각, TTL, 만료 여부, title, endpointCount)만 조회. remote 호출 없음. (input: spec URL, host:env:spec handle, 또는 16-hex key)",
         parameters: { input: { type: "string", required: true } },
         async handler({ input }: { input: string }) {
-          return handleSwaggerStatus(openapi, input);
+          return handleSwaggerStatus(openapi, input, registry);
         },
       },
       swagger_search: {
         description:
-          "캐시된 모든 OpenAPI spec 을 가로질러 path / method / tag / operationId / summary 를 substring 으로 검색한다. remote 호출 없음. (query: 검색어, limit?: 결과 최대 개수, 기본 20)",
+          "캐시된 OpenAPI spec 들을 가로질러 path / method / tag / operationId / summary 를 substring 으로 검색한다. remote 호출 없음. (query: 검색어, limit?: 결과 최대 개수 기본 20, scope?: agent-toolkit.json 에 등록된 host / host:env / host:env:spec — 주면 그 안에서만 검색)",
         parameters: {
           query: { type: "string", required: true },
           limit: { type: "number", required: false },
+          scope: { type: "string", required: false },
         },
-        async handler({ query, limit }: { query: string; limit?: number }) {
-          return handleSwaggerSearch(openapi, query, limit);
+        async handler({
+          query,
+          limit,
+          scope,
+        }: {
+          query: string;
+          limit?: number;
+          scope?: string;
+        }) {
+          return handleSwaggerSearch(openapi, query, { limit, scope }, registry);
+        },
+      },
+      swagger_envs: {
+        description:
+          "agent-toolkit.json 의 openapi.registry 를 host:env:spec 평면 리스트로 반환한다. remote 호출 없음. config 가 없거나 비어 있으면 빈 배열.",
+        parameters: {},
+        async handler() {
+          return handleSwaggerEnvs(toolkitConfig);
         },
       },
     },

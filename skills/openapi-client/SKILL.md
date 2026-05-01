@@ -1,9 +1,9 @@
 ---
 name: openapi-client
-description: Read a cached OpenAPI / Swagger spec under a cache-first policy and emit a `fetch` or `axios` call snippet (TypeScript) for one endpoint. Auto-trigger when the user supplies an OpenAPI spec URL or 16-hex spec key together with phrases like "이 endpoint 호출 코드 만들어줘" / "axios 로 작성해줘" / "fetch snippet 줘" / "POST /pets 호출 코드".
-allowed-tools: [swagger_get, swagger_status, swagger_refresh, swagger_search]
+description: Read a cached OpenAPI / Swagger spec under a cache-first policy and emit a `fetch` or `axios` call snippet (TypeScript) for one endpoint. Auto-trigger when the user supplies an OpenAPI spec URL, a 16-hex cache key, or a `host:env:spec` registry handle (configured in `agent-toolkit.json`) together with phrases like "이 endpoint 호출 코드 만들어줘" / "axios 로 작성해줘" / "fetch snippet 줘" / "POST /pets 호출 코드 / acme:dev:users 의 …".
+allowed-tools: [swagger_get, swagger_status, swagger_refresh, swagger_search, swagger_envs]
 license: MIT
-version: 0.1.0
+version: 0.2.0
 ---
 
 # openapi-client
@@ -17,32 +17,52 @@ version: 0.1.0
 
 ```
 agent (you)
+  ├── 0. swagger_envs           ← list registered host:env:spec handles (no remote call)
   ├── 1. swagger_status         ← cache metadata only (no remote call)
   ├── 2. swagger_get            ← cache hit → spec / miss → GET URL + JSON-validate + cache write (one shot)
-  ├── 3. swagger_search         ← search across cached specs to locate the endpoint
+  ├── 3. swagger_search         ← search across cached specs (optionally scoped) to locate the endpoint
   └── 4. swagger_refresh        ← only when the user explicitly asks for "최신화" / refresh
 ```
 
 The cache is a thin TTL layer in front of the spec URL. `swagger_get` already handles cache miss by downloading the spec, validating its shape (`openapi` 3.x or `swagger` 2.x), and persisting it — no separate write step is needed. JSON-only in this version: YAML specs throw, document the limitation when the user hits it.
 
+## Inputs
+
+`swagger_get` / `swagger_status` / `swagger_refresh` accept any of:
+
+- **Spec URL** (`https://…` or `file://…`) — direct download source.
+- **16-hex cache key** — disk key returned by `swagger_status` / `swagger_search`. Resolves via cache metadata; if the metadata is gone, the tool throws with a clear "no recoverable spec URL" message.
+- **`host:env:spec` handle** — symbolic name registered in `agent-toolkit.json` (`./.opencode/agent-toolkit.json` overrides `~/.config/opencode/agent-toolkit/agent-toolkit.json`). Resolves to a spec URL via the registry. Unregistered handles throw.
+
+`swagger_search` accepts an optional `scope`:
+
+- **`host`** — search inside every spec under one host
+- **`host:env`** — search inside one environment
+- **`host:env:spec`** — search inside one spec
+- **omitted** — search across every cached spec
+
+Use `swagger_envs` first when the user does not name a specific handle but talks about "이 환경 / 그 spec".
+
 ## Tool usage rules
 
-1. Reach OpenAPI specs only through `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search`. No direct `fetch`, Read, or Bash to download the spec yourself.
+1. Reach OpenAPI specs only through `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`. No direct `fetch`, Read, or Bash to download the spec yourself.
 2. Unless the user explicitly asks to refresh ("최신화" / "refresh"):
-   * Check cache state first with `swagger_status` when the spec URL or key is given.
+   * Check cache state first with `swagger_status` when the input (URL / key / handle) is given.
    * If `exists=true && expired=false`, use `swagger_get` (it returns instantly from cache) and `swagger_search` to locate the endpoint.
    * Otherwise call `swagger_get` once — it will hit the remote on cache miss automatically.
 3. Do not download the same spec more than once per turn. Reuse the spec object you already have.
 4. Use `swagger_refresh` only when the user explicitly asks to re-download.
-5. `swagger_search` spans **every cached spec**. When the user has multiple specs cached and wants results from one, scope by passing a more specific query (e.g. include the spec title or a unique path prefix).
+5. **Prefer `host:env:spec` handles when the user works with multiple environments.** Resolve the user's environment / service intent by calling `swagger_envs` once, presenting the matching handles, and asking which one if it is ambiguous. Pass the handle as-is to the swagger_* tools — never expand it to a URL yourself.
+6. **Use `swagger_search` `scope` when the user has multiple environments cached.** A scope of `acme:dev` keeps results inside that environment. When the user does not name an environment, leave `scope` off and search across everything.
 
 ## Locating the endpoint
 
 Given an ambiguous request ("POST /pets 호출 코드 만들어줘"):
 
-1. If the user already gave a spec URL / 16-hex key, run `swagger_get` for that spec, then look up the endpoint by `(method, path)` in `spec.paths`.
-2. Otherwise use `swagger_search` with the path and/or operationId substring. If multiple matches come back, surface the candidates (`specTitle` + `method path` + `summary`) and ask the user which one.
-3. If zero matches, do not invent the endpoint — quote what you searched for and ask the user to clarify the spec or the path.
+1. If the user already gave a spec URL / 16-hex key / `host:env:spec` handle, run `swagger_get` for that input, then look up the endpoint by `(method, path)` in `spec.paths`.
+2. If the user names an environment but not a specific spec ("acme:dev 의 POST /pets"), call `swagger_envs` once, identify the matching specs under that scope, and run `swagger_search` with `scope: "acme:dev"`. If multiple candidates remain, surface them (`specTitle` + `method path` + `summary`) and ask the user which one.
+3. Otherwise use `swagger_search` (no scope) with the path and/or operationId substring across every cached spec. If multiple matches come back, surface the candidates and ask the user which one — including the `specTitle` so it is clear which environment / service.
+4. If zero matches, do not invent the endpoint — quote what you searched for and ask the user to clarify the spec, environment, or path.
 
 ## Output format — fetch snippet (default)
 
@@ -107,9 +127,13 @@ export async function <camelCaseOperationId>(
 * Do not invent a response or body type. If the spec does not declare it, use `unknown` and surface the gap in one inline comment.
 * Do not paste the entire spec into the answer. The user wants one snippet plus a usage line.
 * Do not assume YAML support. If `swagger_get` rejects with a non-JSON body, tell the user the spec is YAML and that this skill is JSON-only in MVP.
+* Do not silently pick an environment when the user has more than one (`acme:dev`, `acme:staging`, …). Ask which one before running `swagger_get`.
+* Do not invent registry handles. If a handle is not in `swagger_envs`, surface the available handles and ask the user to pick — do not guess "this looks like dev so I'll try `acme:dev`".
 
 ## Failure / error handling
 
 * `swagger_get` throws on timeout / network error / non-JSON body / missing `openapi` / `swagger` field → surface the error in one sentence and ask the user to verify the spec URL and `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS`.
-* `swagger_search` returns 0 matches → quote the query and ask which spec / path, do not hallucinate.
+* `swagger_get` / `swagger_status` throws when a `host:env:spec` handle is unregistered → ask the user to add it under `openapi.registry` in `agent-toolkit.json`, or quote the available handles from `swagger_envs`.
+* `swagger_search` throws on a scope that matches no entries (typo in `host` / `host:env`) → quote the scope and the available handles from `swagger_envs`, ask the user to correct it.
+* `swagger_search` returns 0 matches with a valid scope → quote the query and ask which spec / path, do not hallucinate.
 * The endpoint exists but lacks `operationId` / response schema → emit the snippet with the documented fallback (path-slug name, `unknown` response) and call out the gap in one inline comment.
