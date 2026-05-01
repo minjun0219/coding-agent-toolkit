@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/minjun0219/coding-agent-toolkit/main/agent-toolkit.schema.json",
+  "title": "agent-toolkit config",
+  "description": "Plugin-wide configuration for the coding-agent-toolkit opencode plugin. Project config (./.opencode/agent-toolkit.json) overrides user config (~/.config/opencode/agent-toolkit/agent-toolkit.json) at the leaf level.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to this JSON Schema. Editors use this for autocomplete and validation."
+    },
+    "openapi": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "OpenAPI / Swagger registry. Maps host:env:spec handles to spec download URLs.",
+      "properties": {
+        "registry": {
+          "type": "object",
+          "description": "host name → environment name → spec name → spec URL. Names must match ^[a-zA-Z0-9_-]+$ (handles are colon-separated, so colons are reserved).",
+          "patternProperties": {
+            "^[a-zA-Z0-9_-]+$": {
+              "type": "object",
+              "description": "Environments under one logical host (project / platform).",
+              "minProperties": 1,
+              "patternProperties": {
+                "^[a-zA-Z0-9_-]+$": {
+                  "type": "object",
+                  "description": "Spec name → spec URL.",
+                  "minProperties": 1,
+                  "patternProperties": {
+                    "^[a-zA-Z0-9_-]+$": {
+                      "type": "string",
+                      "format": "uri",
+                      "minLength": 1,
+                      "description": "Direct URL (https / http / file) to the OpenAPI / Swagger JSON document. YAML is not supported in this MVP."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

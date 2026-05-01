@@ -28,7 +28,7 @@
 | 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
 | 5 | Notion → 개발 스펙 분해 | ✅ MVP | — | `skills/notion-context/SKILL.md` spec mode |
 | 6 | 스펙 → GitHub Issue 추적 | 📋 planned | [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4) | GitHub MCP / 자체 도구 어느 쪽으로 갈지 미정 |
-| 7 | OpenAPI 캐시 + client 작성 | ✅ MVP | [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search`, `lib/openapi-context.ts`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet) |
+| 7 | OpenAPI 캐시 + client 작성 | ✅ MVP+registry | [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`, `lib/openapi-context.ts`, `lib/openapi-registry.ts`, `lib/toolkit-config.ts` + `agent-toolkit.schema.json`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet, host:env:spec 핸들 + scope 검색) |
 
 ## 제안 단계
 
@@ -45,6 +45,10 @@
 - **Phase 4 — OpenAPI 캐시 + client 작성 — 완료** *(memo #7, issue [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6))*
   - `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` 4 도구 + `lib/openapi-context.ts` TTL 파일 캐시 + `skills/openapi-client/SKILL.md`
   - JSON-only (YAML 미지원), 단일 endpoint → `fetch` / `axios` snippet 한 덩어리
+- **Phase 4.5 — OpenAPI environment registry — 완료** *(memo #7 확장)*
+  - `agent-toolkit.json` (project / user 두 위치, project 우선) 으로 host → env → spec 트리 선언
+  - `host:env:spec` 핸들 / `swagger_search` `scope` (host / host:env / host:env:spec) / `swagger_envs` 도구
+  - `agent-toolkit.schema.json` JSON Schema (IDE 자동완성) + `lib/toolkit-config.ts` 런타임 검증 (외부 의존성 0)
 - **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7))*
   - 한글 주석 / JSDoc 정책의 lint 단 검증 (필요해지면)
 

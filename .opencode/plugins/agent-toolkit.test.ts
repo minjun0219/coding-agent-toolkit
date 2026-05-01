@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { NotionCache } from "../../lib/notion-context";
 import { OpenapiCache } from "../../lib/openapi-context";
+import type { OpenapiRegistry } from "../../lib/toolkit-config";
 import agentToolkitPlugin, {
   handleNotionGet,
   handleNotionRefresh,
   handleNotionStatus,
+  handleSwaggerEnvs,
   handleSwaggerGet,
   handleSwaggerRefresh,
   handleSwaggerSearch,
@@ -248,8 +250,115 @@ describe("swagger handlers", () => {
     const all = await handleSwaggerSearch(oaCache, "");
     expect(all.length).toBe(4);
 
-    const limited = await handleSwaggerSearch(oaCache, "", 2);
+    const limited = await handleSwaggerSearch(oaCache, "", { limit: 2 });
     expect(limited.length).toBe(2);
+  });
+});
+
+describe("swagger handlers — registry handles", () => {
+  let oaDir: string;
+  let oaCache: OpenapiCache;
+  let oaServer: ReturnType<typeof Bun.serve>;
+  let baseUrl: string;
+  let registry: OpenapiRegistry;
+
+  const SAMPLE = (title: string) => ({
+    openapi: "3.0.0",
+    info: { title, version: "1.0.0" },
+    paths: {
+      "/pets": {
+        get: { operationId: `${title}-listPets`, summary: "List", tags: ["pet"] },
+      },
+    },
+  });
+
+  beforeEach(() => {
+    oaDir = mkdtempSync(join(tmpdir(), "plugin-oa-reg-"));
+    oaCache = new OpenapiCache({ baseDir: oaDir, defaultTtlSeconds: 60 });
+    oaServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(req) {
+        const u = new URL(req.url);
+        if (u.pathname === "/dev/users.json") return Response.json(SAMPLE("dev-users"));
+        if (u.pathname === "/dev/orders.json") return Response.json(SAMPLE("dev-orders"));
+        if (u.pathname === "/prod/users.json") return Response.json(SAMPLE("prod-users"));
+        return new Response("not found", { status: 404 });
+      },
+    });
+    baseUrl = `http://${oaServer.hostname}:${oaServer.port}`;
+    registry = {
+      acme: {
+        dev: {
+          users: `${baseUrl}/dev/users.json`,
+          orders: `${baseUrl}/dev/orders.json`,
+        },
+        prod: {
+          users: `${baseUrl}/prod/users.json`,
+        },
+      },
+    };
+  });
+
+  afterEach(() => {
+    oaServer.stop(true);
+  });
+
+  it("swagger_get accepts a host:env:spec handle and resolves via registry", async () => {
+    const r = await handleSwaggerGet(oaCache, "acme:dev:users", registry);
+    expect(r.fromCache).toBe(false);
+    expect(r.entry.title).toBe("dev-users");
+    // 캐시에 같은 URL 로 박혀 있어야 — handle 이 아니라.
+    const status = await handleSwaggerStatus(oaCache, `${baseUrl}/dev/users.json`);
+    expect(status.exists).toBe(true);
+  });
+
+  it("swagger_get throws on unregistered handle", async () => {
+    await expect(
+      handleSwaggerGet(oaCache, "acme:dev:missing", registry),
+    ).rejects.toThrow(/acme:dev:missing/);
+  });
+
+  it("swagger_search scope=host:env limits the search to that env", async () => {
+    await handleSwaggerGet(oaCache, "acme:dev:users", registry);
+    await handleSwaggerGet(oaCache, "acme:dev:orders", registry);
+    await handleSwaggerGet(oaCache, "acme:prod:users", registry);
+
+    const dev = await handleSwaggerSearch(
+      oaCache,
+      "pet",
+      { scope: "acme:dev" },
+      registry,
+    );
+    expect(dev.length).toBe(2);
+    expect(dev.every((m) => m.specTitle.startsWith("dev-"))).toBe(true);
+
+    const prod = await handleSwaggerSearch(
+      oaCache,
+      "pet",
+      { scope: "acme:prod" },
+      registry,
+    );
+    expect(prod.length).toBe(1);
+    expect(prod[0]?.specTitle).toBe("prod-users");
+  });
+
+  it("swagger_search throws on unknown scope", async () => {
+    await handleSwaggerGet(oaCache, "acme:dev:users", registry);
+    await expect(
+      handleSwaggerSearch(oaCache, "pet", { scope: "nope" }, registry),
+    ).rejects.toThrow(/scope.*nope/i);
+  });
+
+  it("swagger_envs returns the flat registry list", () => {
+    const flat = handleSwaggerEnvs({ openapi: { registry } });
+    expect(flat.length).toBe(3);
+    const names = flat.map((e) => `${e.host}:${e.env}:${e.spec}`).sort();
+    expect(names).toEqual(["acme:dev:orders", "acme:dev:users", "acme:prod:users"]);
+  });
+
+  it("swagger_envs returns [] for empty config", () => {
+    expect(handleSwaggerEnvs({})).toEqual([]);
   });
 });
 
