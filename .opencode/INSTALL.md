@@ -68,7 +68,7 @@ OmO 같이 자체 primary agent (Sisyphus 등) 를 쓰는 환경에선, primary 
 
 plugin 이 미등록이거나 `agents.paths` 가 인식되지 않는 opencode 버전이면, 프로젝트의 `.opencode/agents/rocky.md` 로 직접 심볼릭 링크하거나 복사해서 쓴다.
 
-## Codex CLI 최소 호환 (선택)
+## Codex CLI/데스크탑 최소 호환 (선택)
 
 opencode 외 환경에서도 같은 Notion 컨텍스트 자산을 쓰고 싶다면, 문서 기반 최소 호환 가이드를 따른다.
 
