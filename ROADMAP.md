@@ -65,6 +65,24 @@
 - **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7))*
   - 한글 주석 / JSDoc 정책의 lint 단 검증 (필요해지면)
 
+## 워크플로 관리
+
+- **ROADMAP.md (이 문서)** — phase 단위 narrative ("왜 이 순서로 / 무엇을 / 무엇을 안 한다"). 능력 목표와 phase 사이의 의존 관계를 잡는다. Reserved agent names 도 여기서 보관.
+- **GitHub Issue (#4 / #5 / #6 / #7 등)** — in-flight 작업 추적, PR/CI 자동 링크, label 기반 triage. 한 phase 진입 시 issue 한 개를 잡고 PR 들이 닫는다.
+- **하이브리드 운영 원칙**: 새 phase 가 시작되거나 새 에이전트가 도입될 때, ROADMAP 의 잠정 매핑을 issue 의 contract (acceptance criteria) 로 옮긴다. `spec-pact` 가 성숙하면 (Phase 2 도달) Notion 기획문서 → grace 의 SPEC body → GitHub Issue body 라인이 자동화 후보.
+
+## Reserved agent names
+
+향후 phase 에서 새 에이전트가 필요할 때 사용할 후보 이름 — Rocky/Grace 와 동일하게 [Andy Weir](https://en.wikipedia.org/wiki/Andy_Weir) 작품 (*Project Hail Mary*, *The Martian*) 의 캐릭터에서 따왔다. **이름은 reservation 일 뿐, 해당 phase 진입 시 별도 GitHub Issue / PR 로 actual contract 를 정의한다.** 매핑이 안 맞으면 후보 캐릭터 (PHM 의 Dimitri/Yáo, Artemis 의 Jazz/Svoboda 등) 로 교체 가능 — 이 표는 잠정안.
+
+| 후보 이름 | 출처 | 캐릭터 특징 | 잠정 매핑 |
+|---|---|---|---|
+| `watney` | *The Martian* — Mark Watney | 식물학자/엔지니어, log-keeper, "science the shit out of this" 식 step-by-step | code authoring / refactor sub-agent — Rocky/Grace 가 직접 안 굴리는 multi-step 구현의 위임 대상 |
+| `stratt` | *Project Hail Mary* — Eva Stratt | 무자비한 결정권자, prioritization | Phase 2 (SPEC → GitHub Issue sync) 의 triage / 우선순위 / open vs close 결정 |
+| `johanssen` | *The Martian* — Beth Johanssen | Hermes 의 sysadmin / programmer | CI / build runner agent — `bun run typecheck` / `bun test` 자동화 + 회귀 가드 |
+| `mindy` | *The Martian* — Mindy Park | 위성 이미지 분석가, pattern detection | Observability / drift detector — repo-wide 상태 점검 (SPEC drift / 캐시 stale / journal 회수 한 방) |
+| `vogel` | *The Martian* — Alex Vogel | 화학자 / 항법사, 외부 자료 탐색 | Research agent — context7 / docs MCP / 외부 문서 탐색을 라우팅 |
+
 ## 미정 / 결정 필요
 
 - memo #1 의 "기억" 영속 층은 디스크로 결정 (Phase 3 MVP). cross-machine 동기화 / 자연어 검색 / 자동 요약 / 압축은 후속 phase.
