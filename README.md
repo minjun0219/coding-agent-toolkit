@@ -1,8 +1,8 @@
 # Agent Toolkit
 
-opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드로 정리하는 skill 2 개, 그리고 프론트엔드 전문성을 가진 풀스택 업무 파트너이자 agent-toolkit 의 1차 지휘자 역할인 agent 1 개(`rocky`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. Notion 은 시작 소스이고, 작업 컨텍스트의 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
+opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드 / Notion ↔ project-local SPEC 합의 lifecycle 로 정리하는 skill 3 개 (`notion-context`, `openapi-client`, `spec-pact`), 그리고 프론트엔드 전문성을 가진 풀스택 업무 파트너이자 agent-toolkit 의 1차 지휘자인 primary agent 1 개 (`rocky`) + SPEC 합의 lifecycle 의 finalize/lock 권한자인 sub-agent 1 개 (`grace`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. SPEC 쪽은 `.agent/specs/INDEX.md` 를 LLM-wiki entry point 로 두고 본문은 `.agent/specs/<slug>.md` (slug 모드) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일) 둘 다 인정. Notion 은 시작 소스이고, 작업 컨텍스트의 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
 
-구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸지만, 책임은 agent-toolkit 1차 지휘 + 필요 시 외부 sub-agent / skill 위임 한 줄로 한정한다.
+구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸고, `grace` 는 [Project Hail Mary](https://en.wikipedia.org/wiki/Project_Hail_Mary) 의 Ryland Grace (Rocky 의 인간 파트너) 에서 따왔다 — toolkit 안에서는 역할이 뒤집혀 Rocky 가 1차 지휘자, Grace 가 SPEC lifecycle 담당. 책임은 agent-toolkit 1차 지휘 / SPEC 합의 lifecycle / 필요 시 외부 sub-agent / skill 위임 세 줄로 한정한다.
 
 ## 디렉터리
 
@@ -26,9 +26,11 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 │   └── agent-journal.test.ts
 ├── skills/
 │   ├── notion-context/SKILL.md     # Notion 캐시 우선 읽기 + 한국어 스펙 정리 skill
-│   └── openapi-client/SKILL.md     # 캐시된 OpenAPI spec → fetch / axios 호출 코드 skill
+│   ├── openapi-client/SKILL.md     # 캐시된 OpenAPI spec → fetch / axios 호출 코드 skill
+│   └── spec-pact/SKILL.md          # Notion ↔ project-local SPEC 합의 lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND)
 ├── agents/
-│   └── rocky.md                    # 풀스택 업무 파트너 / agent-toolkit 1차 지휘자 (mode: all)
+│   ├── rocky.md                    # 풀스택 업무 파트너 / agent-toolkit 1차 지휘자 (mode: all)
+│   └── grace.md                    # SPEC 합의 lifecycle sub-agent / spec-pact 의 finalize/lock 권한자 (mode: subagent)
 ├── agent-toolkit.schema.json        # agent-toolkit.json 의 JSON Schema (IDE 자동완성용)
 ├── .mcp.json                        # context7 MCP 등록 (개발 보조용)
 ├── package.json / tsconfig.json
@@ -137,13 +139,45 @@ OpenAPI registry 를 선언하면 `swagger_*` 도구를 URL 대신 `host:env:spe
 
 `host` / `env` / `spec` 식별자는 `^[a-zA-Z0-9_-]+$` — 콜론은 handle separator 로 예약. URL 은 비어 있지 않은 문자열이어야 한다 (YAML 는 후속 이슈에서 다룬다).
 
-## Agent
+SPEC-합의 lifecycle (grace + spec-pact) 의 storage 위치도 같은 파일에서 잡는다 — 모두 optional, 기본값을 바꿔야 할 때만 선언:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/minjun0219/coding-agent-toolkit/main/agent-toolkit.schema.json",
+  "spec": {
+    "dir": ".agent/specs",      // slug-mode SPEC + INDEX 가 사는 디렉터리
+    "scanDirectorySpec": true,  // **/SPEC.md (AGENTS.md 스타일) 도 INDEX 에 surface
+    "indexFile": "INDEX.md"     // <dir>/<indexFile>
+  }
+}
+```
+
+`spec.dir` / `spec.indexFile` 은 빈 문자열 금지, `spec.scanDirectorySpec` 은 boolean. 같은 leaf 는 project (`./.opencode/agent-toolkit.json`) 가 user 를 덮어쓴다.
+
+## Agents
 
 | 이름 | mode | 역할 |
 | --- | --- | --- |
-| `rocky` | all | 프론트엔드 전문성을 가진 풀스택 업무 파트너 / agent-toolkit 1차 지휘자. Notion URL·page id, OpenAPI spec URL·16-hex 키·`host:env:spec` 핸들을 받아 `notion-context` / `openapi-client` 둘 중 하나로 라우팅, 모호하면 어느 surface 인지 되묻는다. 출력은 cached markdown(컨텍스트) / 한국어 스펙 / `fetch`·`axios` snippet / 위임된 sub-agent 결과 중 하나. 작업이 toolkit 범위를 넘으면 외부 sub-agent / skill 에 위임 가능. **직접** multi-step 구현(코드 작성·리팩터·다파일 변경)은 안 함 — sub-agent 가 굴리거나 호출자에게 돌림. |
+| `rocky` | all | 프론트엔드 전문성을 가진 풀스택 업무 파트너 / agent-toolkit 1차 지휘자. Notion URL·page id, OpenAPI spec URL·16-hex 키·`host:env:spec` 핸들을 받아 `notion-context` / `openapi-client` 중 하나로 라우팅, SPEC 합의 lifecycle 키워드 ("스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영") 면 `@grace` 로 즉시 위임 (passthrough). 모호하면 어느 surface 인지 되묻는다. 출력은 cached markdown(컨텍스트) / 한국어 스펙 / `fetch`·`axios` snippet / `@grace` 결과 / 위임된 sub-agent 결과 중 하나. 작업이 toolkit 범위를 넘으면 외부 sub-agent / skill 에 위임 가능. **직접** multi-step 구현(코드 작성·리팩터·다파일 변경)은 안 함, **`spec-pact` 의 4 모드도 직접 안 굴림 — `@grace` 책임**. |
+| `grace` | subagent | SPEC 합의 lifecycle 의 단일 finalize/lock 권한자. `spec-pact` 스킬을 conduct — DRAFT (Notion → 합의 → SPEC write + INDEX 갱신), VERIFY (SPEC 의 합의 TODO / API 의존성 체크리스트화), DRIFT-CHECK (`source_content_hash` vs `notion_get(pageId).entry.contentHash`), AMEND (drift 항목별 keep / update / reject → SPEC patch + version bump). LLM-wiki entry point 는 `.agent/specs/INDEX.md`. SPEC 본체는 `.agent/specs/<slug>.md` (slug 모드, default) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일). 직접 호출 (`@grace …`) 또는 Rocky 라우팅으로 들어옴. 외부 에이전트가 협의에 참여해도 SPEC frontmatter / INDEX 는 grace 만 쓴다. |
 
-`mode: all` 이라 사용자 직접 호출(primary, Tab 사이클)과 다른 primary agent (e.g. OmO Sisyphus) 의 위임(subagent) 둘 다 가능. 다른 agent 는 turn 시작 시 받는 subagent 목록의 `description` 만으로 라우팅 — Rocky 의 존재를 system prompt 에 박지 않아도 toolkit-shaped / 작업 컨텍스트 관련 요청이 알아서 들어온다.
+Rocky 는 `mode: all` 이라 사용자 직접 호출(primary, Tab 사이클)과 다른 primary agent (e.g. OmO Sisyphus) 의 위임(subagent) 둘 다 가능. Grace 는 `mode: subagent` 라 Rocky / OmO Sisyphus / 사용자가 명시적으로 `@grace` 로 호출할 때만 동작. 다른 agent 는 turn 시작 시 받는 subagent 목록의 `description` 만으로 라우팅 — Rocky / Grace 의 존재를 system prompt 에 박지 않아도 toolkit-shaped / 작업 컨텍스트 / SPEC lifecycle 관련 요청이 알아서 들어온다.
+
+### SPEC layout (`spec-pact` + `grace`)
+
+```
+.agent/specs/
+├── INDEX.md          # LLM-wiki entry point — slug / title / source / status / version / sections / path / tags
+├── user-auth.md      # slug 모드 (default)
+└── ...
+
+apps/web/orders/
+└── SPEC.md           # directory 모드 (AGENTS.md 스타일) — INDEX 가 같이 surface
+```
+
+`INDEX.md` 는 lifecycle 전이 (DRAFT / AMEND 직후, VERIFY 결과 all-pass 시, DRIFT-CHECK 결과 drift 발견 시) 마다 grace 가 자동 재생성. SPEC 본체의 frontmatter `source_page_id` 가 두 위치 (slug + directory) 에서 일치하면 INDEX 는 두 path 를 한 줄로 surface 하고 caller 결정을 기다린다 — 자동 정리 X.
+
+저널은 4 종 kind 만 사용 (`spec_anchor` / `spec_drift` / `spec_amendment` / `spec_verify_result`) — `journal_search "spec-pact"` 한 방으로 lifecycle history 회수.
 
 ## 캐시 구조
 

@@ -43,6 +43,30 @@
           "additionalProperties": false
         }
       }
+    },
+    "spec": {
+      "type": "object",
+      "description": "SPEC-합의 lifecycle (`spec-pact` skill, conducted by the `grace` sub-agent) layout. Controls where SPEC files live, whether `**/SPEC.md` directory-mode files are surfaced, and the INDEX file name.",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".agent/specs",
+          "description": "Directory holding slug-mode SPEC files (`<dir>/<slug>.md`) and the INDEX (`<dir>/<indexFile>`). Project-relative; trailing slash optional."
+        },
+        "scanDirectorySpec": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, `grace` also surfaces every `**/SPEC.md` discovered in the project tree (AGENTS.md-style directory mode) into the INDEX. Set false to restrict the wiki to slug-mode entries only."
+        },
+        "indexFile": {
+          "type": "string",
+          "minLength": 1,
+          "default": "INDEX.md",
+          "description": "File name (inside `spec.dir`) of the LLM-wiki entry-point INDEX that lists every SPEC's slug, source page, status, version, sections, path, and tags."
+        }
+      },
+      "additionalProperties": false
     }
   }
 }
