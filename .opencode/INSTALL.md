@@ -42,7 +42,7 @@ Once opencode is running:
 > use skill tool to list skills
 ```
 
-If `notion-context` and `openapi-client` both show up, skills are loaded.
+If `notion-context`, `openapi-client`, and `spec-pact` all show up, skills are loaded.
 
 Then verify the tools are registered:
 
@@ -86,9 +86,13 @@ After that:
 
 Identifier pattern is `^[a-zA-Z0-9_-]+$` — colons are reserved as the handle separator. URLs must parse and use `http`, `https`, or `file` scheme. If the config violates the schema, the plugin logs a single error line and falls back to an empty registry — the tools themselves keep working.
 
-## Agent (`rocky`)
+## Agents (`rocky` + `grace`)
 
-`agents/rocky.md` is registered into opencode's agent path via the plugin's `config` hook. `mode: all` means it shows up both in the primary cycle (Tab) and as a delegation target from another primary agent. Rocky is a work partner with frontend specialty and fullstack range — it conducts the toolkit's two skills (`notion-context`, `openapi-client`) as its primary contract and may delegate to external sub-agents / skills when the work exceeds the toolkit.
+`agents/rocky.md` and `agents/grace.md` are registered into opencode's agent path via the plugin's `config` hook. Rocky's `mode: all` shows up both in the primary cycle (Tab) and as a delegation target from another primary agent; Grace's `mode: subagent` only shows up as a delegation target (called by Rocky, by an external primary that happens to share the environment, or by the user via an explicit `@grace`). Neither agent pins a `model:` in its frontmatter — both inherit whatever model the user has selected in the opencode session, so prompts can be swapped between models without editing the agent files.
+
+Rocky is a work partner with frontend specialty and fullstack range — it conducts the toolkit's two cache-first skills (`notion-context`, `openapi-client`) and the journal as its primary contract, routes the SPEC 합의 lifecycle to `@grace`, and may delegate to external sub-agents / skills when the work exceeds the toolkit.
+
+Grace is the SPEC 합의 lifecycle owner — it conducts the `spec-pact` skill end-to-end (DRAFT / VERIFY / DRIFT-CHECK / AMEND) and is the single finalize/lock authority over the INDEX file (`<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md`, the LLM-wiki-inspired entry point) + SPEC files (`<spec.dir>/<slug>.md` slug 모드 default `.agent/specs/<slug>.md`, or `**/SPEC.md` directory 모드).
 
 Direct invocation — Notion (context mode):
 
@@ -96,10 +100,19 @@ Direct invocation — Notion (context mode):
 @rocky https://www.notion.so/.../<pageId>
 ```
 
-Notion spec mode:
+Notion spec mode (notion-context, **합의 없음**):
 
 ```
 @rocky <Notion URL> 스펙 정리해줘
+```
+
+SPEC 합의 lifecycle (Rocky 가 `@grace` 로 즉시 위임 + passthrough — 또는 `@grace` 직접 호출):
+
+```
+@rocky <Notion URL> 스펙 합의해줘            # → grace DRAFT
+@grace <slug 또는 Notion URL> SPEC 검증       # → grace VERIFY
+@grace <slug 또는 Notion URL> SPEC drift     # → grace DRIFT-CHECK
+@grace <slug 또는 Notion URL> 변경 반영       # → grace AMEND
 ```
 
 OpenAPI snippet mode (default `fetch`):
@@ -120,8 +133,10 @@ Chained (Notion → OpenAPI in one turn):
 @rocky <Notion URL> 스펙 정리하고 거기 나온 POST /pets 의 axios snippet 도 줘
 ```
 
-In a setup that already has its own primary agent (e.g. OmO Sisyphus), that agent sees `rocky` in its subagent list (turn start) and routes toolkit-shaped or working-context requests to it via the description — no need to hard-code Rocky's existence into the upstream agent's system prompt. Routing is not guaranteed; the primary may decide to handle it directly.
+In a setup that already has its own primary agent (e.g. OmO Sisyphus, Superpowers — these are synergies when present, not dependencies), that agent sees `rocky` (and through Rocky, `grace`) in its subagent list (turn start) and routes toolkit-shaped or working-context requests via the description — no need to hard-code Rocky/Grace existence into the upstream agent's system prompt. Routing is not guaranteed; the primary may decide to handle it directly.
 
-Rocky does not directly run multi-step implementation work (writing code, refactor, multi-file changes). When such work is needed, Rocky delegates to an external sub-agent / skill if one fits, or returns the request to the caller.
+Neither Rocky nor Grace directly run multi-step implementation work (writing code, refactor, multi-file changes). When such work is needed, they delegate to an external sub-agent / skill if one fits, or return the request to the caller.
 
-If the plugin is not registered, or the opencode version does not recognize `agents.paths`, drop a symlink or copy of `agents/rocky.md` into the project's `.opencode/agents/` instead.
+The SPEC layer lives at `<spec.dir>/<spec.indexFile>` (entry point — default `.agent/specs/INDEX.md`) + `<spec.dir>/<slug>.md` (slug 모드 — default `.agent/specs/<slug>.md`) by convention. To park a SPEC inside a directory subtree (AGENTS.md style), drop `<dir>/SPEC.md` instead — `grace` discovers both via the `**/SPEC.md` glob (toggle `spec.scanDirectorySpec` in `agent-toolkit.json` to disable). All three keys (`spec.dir`, `spec.indexFile`, `spec.scanDirectorySpec`) are overridable via `agent-toolkit.json`.
+
+If the plugin is not registered, or the opencode version does not recognize `agents.paths`, drop a symlink or copy of `agents/rocky.md` and `agents/grace.md` into the project's `.opencode/agents/` instead.

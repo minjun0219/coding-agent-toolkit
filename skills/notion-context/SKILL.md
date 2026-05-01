@@ -29,8 +29,8 @@ Notion is the source of truth. The cache exists so the same page does not hit th
 1. Reach Notion only through `notion_get` / `notion_refresh` / `notion_status`. No direct fetch, Read, Bash, or raw MCP calls.
 2. Unless the user explicitly asks to refresh ("최신화" / "refresh"):
    * Check cache state first with `notion_status`.
-   * If `exists=true && expired=false`, only call `notion_get` (do not refresh, do not re-fetch).
-   * Otherwise call `notion_get` — it will hit the remote on cache miss automatically.
+   * When `exists=true && expired=false`, only call `notion_get` (do not refresh, do not re-fetch).
+   * Otherwise call `notion_get` — it hits the remote on cache miss automatically.
 3. Do not fetch the same page more than once per turn. Reuse the markdown you already have.
 4. Use `notion_refresh` only when the user explicitly asks to refresh / force-refresh.
 5. Pass the user-supplied page id or Notion URL into `input` verbatim — the tool normalizes it.
@@ -40,11 +40,11 @@ Notion is the source of truth. The cache exists so the same page does not hit th
 * **Default**: trust the cache for the duration of the turn.
 * **Mutating workflow** (the user just edited the page or explicitly asks "is this up-to-date?"): call `notion_refresh`.
 * `notion_status` reporting `expired=true` is *not* a signal to auto-refresh — the next `notion_get` naturally hits the remote one more time.
-* Seeing `fromCache: false` once does not justify calling again immediately — you'll get the same result.
+* Seeing `fromCache: false` once does not justify calling again immediately — you'd get the same result.
 
 ## Output format — spec mode (Korean, in this exact order)
 
-Apply only when the user asks for a "스펙 정리" / "요구사항 뽑아줘" / "스펙 만들어줘"-style request. For plain grounding questions ("what does this page say?"), quote or summarize the markdown directly.
+Apply only when the user asks for a "스펙 정리" / "요구사항 뽑아줘" / "스펙 만들어줘" style request. For plain grounding questions ("what does this page say?"), quote or summarize the markdown directly.
 
 ```
 # 문서 요약
@@ -70,7 +70,7 @@ Apply only when the user asks for a "스펙 정리" / "요구사항 뽑아줘" /
 
 ## Writing rules (for spec-mode output)
 
-* Body content must be **Korean**. Leave English identifiers, API paths, and library names as-is.
+* The body content is **Korean**. Leave English identifiers, API paths, and library names as-is.
 * No guessing. Anything not stated in the document goes under "확인 필요 사항".
 * Keep sentences short. One bullet, one fact.
 * Wrap code / identifiers in `inline code`.
@@ -79,13 +79,13 @@ Apply only when the user asks for a "스펙 정리" / "요구사항 뽑아줘" /
 ## Do NOT
 
 * **Do not call the remote on every turn** — that is the entire reason this skill exists.
-* Do not call `notion_refresh` while `notion_status` reports `exists=true && expired=false` — you will get the same body back.
-* Do not guess page ids / URLs. If you cannot extract one from the user input, quote the input verbatim and ask again.
+* Do not call `notion_refresh` while `notion_status` reports `exists=true && expired=false` — you'd get the same body back.
+* Do not guess page ids / URLs. When you cannot extract one from the user input, quote the input verbatim and ask again.
 * Do not write content not present in the document into the body / requirements / API sections — surface unknowns under "확인 필요 사항" only.
 * Do not feed an arbitrary slice of the markdown to the LLM. For long pages, summarize key sections rather than dumping the whole document.
 
 ## Failure / error handling
 
-* If `notion_get` throws on timeout / network error / malformed response, ask the user to verify the relevant environment variables (`AGENT_TOOLKIT_NOTION_MCP_URL`, `AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS`, …) and remote MCP availability, then stop.
-* If the page id cannot be extracted, quote the user's input verbatim and ask again.
-* If the page is empty, write only "본문이 비어 있음" under "문서 요약" and leave the rest blank.
+* When `notion_get` throws on timeout / network error / malformed response, ask the user to verify the relevant environment variables (`AGENT_TOOLKIT_NOTION_MCP_URL`, `AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS`, …) and remote MCP availability, then stop.
+* When the page id cannot be extracted, quote the user's input verbatim and ask again.
+* When the page is empty, write only "본문이 비어 있음" under "문서 요약" and leave the rest blank.

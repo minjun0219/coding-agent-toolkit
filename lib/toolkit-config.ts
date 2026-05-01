@@ -23,11 +23,25 @@ export interface OpenapiRegistry {
   };
 }
 
+/**
+ * SPEC-합의 lifecycle (`spec-pact` skill, conducted by the `grace` sub-agent) 설정.
+ * 모든 키 optional — caller (현재는 grace) 가 default 를 적용한다.
+ */
+export interface SpecConfig {
+  /** slug-mode SPEC 디렉터리. default `.agent/specs`. */
+  dir?: string;
+  /** `**\/SPEC.md` directory-mode 디스커버리 활성화. default `true`. */
+  scanDirectorySpec?: boolean;
+  /** `<dir>/<indexFile>` LLM-wiki entry point 파일명. default `INDEX.md`. */
+  indexFile?: string;
+}
+
 export interface ToolkitConfig {
   $schema?: string;
   openapi?: {
     registry?: OpenapiRegistry;
   };
+  spec?: SpecConfig;
 }
 
 export interface LoadConfigOptions {
@@ -85,7 +99,7 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
     throw new Error(`${source}: config must be a JSON object`);
   }
   const config = input as Record<string, unknown>;
-  // openapi 만 검증한다 — 다른 top-level key 는 미래 확장 여지로 둔다.
+  // 알려진 top-level key 만 strict 검증 — 모르는 key 는 forward compatibility 로 통과.
   if (config.openapi !== undefined) {
     if (
       config.openapi === null ||
@@ -99,7 +113,46 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
       validateRegistry(oapi.registry, source);
     }
   }
+  if (config.spec !== undefined) {
+    validateSpec(config.spec, source);
+  }
   return config as ToolkitConfig;
+}
+
+/**
+ * `spec` 객체 모양 검증. 모든 필드 optional + 빈 문자열 / 잘못된 타입은 reject.
+ * 미지원 key (오타 포함) 도 reject — schema 의 `additionalProperties: false` 와 lockstep.
+ * grace sub-agent 가 SPEC-합의 lifecycle 의 storage 위치를 잡을 때 사용.
+ */
+const ALLOWED_SPEC_KEYS = new Set(["dir", "scanDirectorySpec", "indexFile"]);
+
+function validateSpec(spec: unknown, source: string): asserts spec is SpecConfig {
+  if (spec === null || typeof spec !== "object" || Array.isArray(spec)) {
+    throw new Error(`${source}: spec must be an object`);
+  }
+  const s = spec as Record<string, unknown>;
+  for (const key of Object.keys(s)) {
+    if (!ALLOWED_SPEC_KEYS.has(key)) {
+      throw new Error(
+        `${source}: spec has unsupported key "${key}" — allowed: ${[...ALLOWED_SPEC_KEYS].join(", ")}`,
+      );
+    }
+  }
+  if (s.dir !== undefined) {
+    if (typeof s.dir !== "string" || s.dir.trim().length === 0) {
+      throw new Error(`${source}: spec.dir must be a non-empty string`);
+    }
+  }
+  if (s.scanDirectorySpec !== undefined) {
+    if (typeof s.scanDirectorySpec !== "boolean") {
+      throw new Error(`${source}: spec.scanDirectorySpec must be a boolean`);
+    }
+  }
+  if (s.indexFile !== undefined) {
+    if (typeof s.indexFile !== "string" || s.indexFile.trim().length === 0) {
+      throw new Error(`${source}: spec.indexFile must be a non-empty string`);
+    }
+  }
 }
 
 function validateRegistry(reg: unknown, source: string): asserts reg is OpenapiRegistry {
@@ -172,7 +225,7 @@ async function loadOne(path: string): Promise<ToolkitConfig | null> {
 }
 
 /**
- * user → project 순서로 깊이 병합. 같은 leaf (host:env:spec) 는 project 가 이긴다.
+ * user → project 순서로 깊이 병합. 같은 leaf (host:env:spec, spec 의 각 key) 는 project 가 이긴다.
  * 새 host / env / spec 은 project 쪽에서 추가 가능.
  */
 export function mergeConfigs(
@@ -191,6 +244,18 @@ export function mergeConfigs(
         for (const [spec, url] of Object.entries(specs)) {
           out.openapi.registry[host]![env]![spec] = url;
         }
+      }
+    }
+  }
+  if (project.spec) {
+    out.spec ??= {};
+    for (const [key, value] of Object.entries(project.spec) as [
+      keyof SpecConfig,
+      SpecConfig[keyof SpecConfig],
+    ][]) {
+      if (value !== undefined) {
+        // 각 key 는 leaf — project 가 user 를 통째로 덮어쓴다.
+        (out.spec as Record<string, unknown>)[key] = value;
       }
     }
   }

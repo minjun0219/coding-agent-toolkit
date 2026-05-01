@@ -26,8 +26,8 @@
 | 2 | 상세 주석 | 🚧 부분 | [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7) | JSDoc 규칙 (`AGENTS.md`) 으로 정책은 박힘; 강제 / 검증은 미구현 |
 | 3 | 한글 주석/설명 | ✅ 정책 (검증 미구현) | [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7) | `AGENTS.md` coding rules + output 정책 |
 | 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
-| 5 | Notion → 개발 스펙 분해 | ✅ MVP | — | `skills/notion-context/SKILL.md` spec mode |
-| 6 | 스펙 → GitHub Issue 추적 | 📋 planned | [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4) | GitHub MCP / 자체 도구 어느 쪽으로 갈지 미정 |
+| 5 | Notion → 개발 스펙 분해 | ✅ MVP+합의 lifecycle | — | `skills/notion-context/SKILL.md` spec mode (단발성) + `skills/spec-pact/SKILL.md` 4 모드 (`grace` sub-agent 가 conduct, INDEX·SPEC·journal 4 종 kind 로 lock / drift / amend 까지 추적) |
+| 6 | 스펙 → GitHub Issue 추적 | 📋 planned (Phase 5 SPEC 위에 올라감) | [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4) | issue body source-of-truth 를 노션 본문 대신 grace 가 잠근 SPEC body 로 — drift / 양방향 sync 단순화 |
 | 7 | OpenAPI 캐시 + client 작성 | ✅ MVP+registry | [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`, `lib/openapi-context.ts`, `lib/openapi-registry.ts`, `lib/toolkit-config.ts` + `agent-toolkit.schema.json`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet, host:env:spec 핸들 + scope 검색) |
 
 ## 제안 단계
@@ -50,6 +50,18 @@
   - `agent-toolkit.json` (project / user 두 위치, project 우선) 으로 host → env → spec 트리 선언
   - `host:env:spec` 핸들 / `swagger_search` `scope` (host / host:env / host:env:spec) / `swagger_envs` 도구
   - `agent-toolkit.schema.json` JSON Schema (IDE 자동완성) + `lib/toolkit-config.ts` 런타임 검증 (외부 의존성 0)
+- **Phase 5 — 기획문서 ↔ SPEC wiki lifecycle (`grace` + `spec-pact`)** *(memo #5 확장)*
+  - `skills/spec-pact/SKILL.md` 4 모드 — DRAFT (Notion → 합의 → SPEC write + INDEX 갱신) / VERIFY (SPEC TODO·API 의존성 체크리스트화) / DRIFT-CHECK (`source_content_hash` 비교) / AMEND (drift 항목별 keep/update/reject + version bump)
+  - `agents/grace.md` (`mode: subagent`) — 단일 finalize/lock 권한자, Rocky 가 Notion URL + lifecycle 키워드 감지 시 `@grace` 로 즉시 위임 (passthrough)
+  - wiki-style entry point (LLM-wiki 컨셉 차용) — `.agent/specs/INDEX.md` 가 slug 모드 (`.agent/specs/<slug>.md`) + directory 모드 (`**/SPEC.md`, AGENTS.md 스타일) 양쪽을 surface
+  - Journal 4 종 신규 reserved kind (`spec_anchor` / `spec_drift` / `spec_amendment` / `spec_verify_result`) + DRIFT-CHECK clean 케이스는 기존 `note` kind 를 `spec-pact` / `drift-clear` 태그로 재사용 — `journal_search "spec-pact"` 같은 tag 기반 조회 한 방으로 lifecycle history 회수
+  - `agent-toolkit.json` `spec` 객체 (`dir` / `scanDirectorySpec` / `indexFile`) — IDE 자동완성 (`agent-toolkit.schema.json`) + 런타임 검증 (`lib/toolkit-config.ts`) lockstep
+  - **Phase 2 (스펙 → GitHub Issue 동기화) 가 이 SPEC layer 위에 올라간다** — issue body source-of-truth 가 노션 본문이 아니라 grace 가 잠근 SPEC body 가 되면 drift 추적 / 양방향 sync 가 단순해진다
+- **Phase 6 — TS-based dynamic agent / skill / command loader** *(후보)*
+  - 현재 `agents/*.md` / `skills/*/SKILL.md` 는 정적 파일이라 컨텍스트별로 prompt / 위임 규칙을 분기하기 어렵다. OmO 의 [`AgentConfig` TypeScript 정의](https://github.com/code-yeongyu/oh-my-openagent/blob/dev/CONTRIBUTING.md) 처럼 `.ts` 파일에서 prompt / model / temperature / 위임 규칙을 동적으로 산출하는 layer 가 있으면 — 같은 grace 라도 "처음 DRAFT 인지 / drift 검증 turn 인지" 에 따라 다른 prompt 를 줄 수 있다.
+  - **opencode 단독 능력 한계**: opencode plugin API 의 `tool` 만 동적 등록 가능, agent / skill / command 는 path-based (`.md` 정적). 즉 TS-based loader 는 (a) OmO 같은 외부 harness 가 있는 환경에서만 의미가 있거나 (b) 토킷이 자체 loader 를 만들어 `.ts` AgentConfig → runtime `.md` 로 emit 해야 한다.
+  - **방향**: `.md` 가 baseline 으로 남고, `.ts` 정의는 OmO 가 있을 때 옵트인으로 활성화 — 토킷이 OmO 의존을 강제하지 않는다. plugin entrypoint 가 `agents/*.ts` 가 있으면 OmO loader 에 위임, 없으면 `.md` 만 노출.
+  - 의존성 0 의 자체 loader (b) 는 별도 PR 로 검토 — 트리거는 "정적 prompt 로는 부족한 첫 use case 가 등장할 때". 지금은 추적만.
 - **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7))*
   - 한글 주석 / JSDoc 정책의 lint 단 검증 (필요해지면)
 
@@ -57,4 +69,4 @@
 
 - memo #1 의 "기억" 영속 층은 디스크로 결정 (Phase 3 MVP). cross-machine 동기화 / 자연어 검색 / 자동 요약 / 압축은 후속 phase.
 - memo #6 의 GitHub 연동을 외부 MCP 로 위임할지 자체 도구로 만들지.
-- Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — 현재는 단일 파트너이며 `notion-context` + `openapi-client` 두 skill 을 모두 1차 지휘하고, 필요 시 외부 sub-agent / skill 위임도 허용한다. 분리(`linear`, `swagger` 등 sub-partner) 트리거의 임계는 그만큼 높아졌고, 분리는 "특정 surface 가 충분히 두꺼워져 별도 persona / 별도 contract 가 필요해질 때" 로 제한한다.
+- Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — Phase 5 에서 SPEC 합의 lifecycle 이 `@grace` sub-agent 로 분리됨 (`spec-pact` 스킬 + INDEX 자동 갱신). 추가 분리(`linear`, `swagger` 등 sub-partner) 트리거의 임계는 그만큼 높아졌고, 분리는 "특정 surface 가 충분히 두꺼워져 별도 persona / 별도 contract 가 필요해질 때" 로 제한한다 — 이번 Grace 분리도 같은 기준 (lifecycle 의 finalize/lock 권한이 Rocky 의 라우팅 책임과 충돌) 으로 결정됨.
