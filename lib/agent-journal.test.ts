@@ -45,7 +45,8 @@ describe("AgentJournal.append", () => {
     await expect(journal.append({ content: "   " })).rejects.toThrow(/non-empty/i);
   });
 
-  it("rejects non-string pageId via resolveCacheKey", async () => {
+  it("rejects an invalid pageId string via resolveCacheKey", async () => {
+    // 입력은 string 이지만 Notion page id 형식이 아닌 값 — resolveCacheKey 가 거부.
     await expect(
       journal.append({ content: "x", pageId: "not-a-page" }),
     ).rejects.toThrow(/Notion page id/);
@@ -203,6 +204,21 @@ describe("graceful degradation", () => {
     );
     const r = await journal.read();
     expect(r.map((e) => e.content)).toEqual(["first"]);
+  });
+
+  it("does not concatenate a new entry onto an unterminated last line (Codex P1)", async () => {
+    // 직전 프로세스가 mid-write 로 죽어 마지막 줄이 `\n` 없이 끝난 시뮬레이션.
+    appendFileSync(
+      join(dir, JOURNAL_FILE),
+      '{"id":"crashed","timestamp":"',
+      "utf8",
+    );
+    // 새 entry append — leading `\n` 으로 라인 경계가 강제되어야 새 항목이 살아남는다.
+    const fresh = await journal.append({ content: "after-restart" });
+    const r = await journal.read();
+    expect(r.length).toBe(1);
+    expect(r[0]?.id).toBe(fresh.id);
+    expect(r[0]?.content).toBe("after-restart");
   });
 
   it("returns [] on entirely garbage file without throwing", async () => {

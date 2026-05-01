@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -20,9 +20,12 @@ import { resolveCacheKey } from "./notion-context";
  * 캐시와 같은 부모 아래에 두되 디렉터리는 분리한다 (`AGENT_TOOLKIT_JOURNAL_DIR`).
  *
  * 동시 쓰기:
- *   `appendFile` 는 POSIX 의 O_APPEND 로 동작해 한 줄(< PIPE_BUF) 단위 append 는
- *   원자적이다. 정상적인 항목 크기에서는 race 가 라인 경계에서만 발생한다.
- *   라인 단위 손상은 read 단계의 graceful skip 으로 흡수된다.
+ *   `appendFile` 는 append 모드로 기록하지만, 일반 파일에서 라인 단위 비-interleaving
+ *   이 항상 보장된다고 가정하지 않는다 — POSIX 의 보장 범위와 Node/Bun 의 내부 분할
+ *   동작이 다를 수 있다. 동시 append 시 레코드가 섞이거나 부분 줄이 관찰될 수 있고,
+ *   직전 프로세스가 mid-write 로 죽으면 마지막 줄이 `\n` 없이 끝날 수 있다. 그래서
+ *   append 단계에서 마지막 바이트를 peek 해 newline 이 아니면 leading `\n` 을 붙이고,
+ *   read 단계에서는 파싱되지 않는 줄을 graceful skip 으로 흡수한다.
  */
 
 /** 기본 저널 디렉터리 — `AGENT_TOOLKIT_JOURNAL_DIR` 로 덮어쓴다. */
@@ -91,6 +94,7 @@ export interface JournalSearchOptions {
 export interface JournalStatus {
   path: string;
   exists: boolean;
+  /** 파싱 / 정규화에 성공한 유효 항목 수. 손상된 라인은 카운트에 들어가지 않는다. */
   totalEntries: number;
   sizeBytes: number;
   lastEntryAt?: string;
@@ -168,8 +172,36 @@ export class AgentJournal {
     };
     await mkdir(this.dir, { recursive: true });
     // 한 줄 = 한 entry. JSON 안에 줄바꿈이 들어가지 않도록 stringify default 를 쓴다.
-    await appendFile(this.file, `${JSON.stringify(entry)}\n`, "utf8");
+    // 직전 프로세스가 appendFile 도중 죽어 마지막 줄이 `\n` 없이 끝나 있으면, 그 뒤에
+    // 새 entry 를 그대로 붙이면 두 줄이 하나로 합쳐져 둘 다 parse 실패로 손실된다.
+    // 마지막 바이트가 newline 이 아닐 때만 leading `\n` 을 붙여 새 entry 의 라인 경계
+    // 를 강제한다.
+    const prefix = (await this.endsWithNewline()) ? "" : "\n";
+    await appendFile(this.file, `${prefix}${JSON.stringify(entry)}\n`, "utf8");
     return entry;
+  }
+
+  /**
+   * 파일 끝 바이트가 `\n` 인지 한 바이트만 peek. 파일이 없거나 비어 있으면 true
+   * (leading `\n` 불필요). 읽기 실패는 best-effort 로 true 처리해 append 자체가
+   * 막히지 않도록 한다.
+   */
+  private async endsWithNewline(): Promise<boolean> {
+    if (!existsSync(this.file)) return true;
+    try {
+      const st = await stat(this.file);
+      if (st.size === 0) return true;
+      const fh = await open(this.file, "r");
+      try {
+        const buf = Buffer.alloc(1);
+        await fh.read(buf, 0, 1, st.size - 1);
+        return buf[0] === 0x0a;
+      } finally {
+        await fh.close();
+      }
+    } catch {
+      return true;
+    }
   }
 
   /**
@@ -183,25 +215,37 @@ export class AgentJournal {
   async read(options: JournalReadOptions = {}): Promise<JournalEntry[]> {
     const all = await this.readAll();
     let filtered: JournalEntry[] = all;
-    if (typeof options.kind === "string" && options.kind.length > 0) {
-      const k = options.kind;
-      filtered = filtered.filter((e) => e.kind === k);
+    // 모든 옵션은 append 단의 정규화(trim)와 같은 규칙으로 비교 — 사용자가 공백
+    // 섞인 입력을 넘겨도 매칭이 깨지지 않게.
+    if (typeof options.kind === "string") {
+      const k = options.kind.trim();
+      if (k.length > 0) {
+        filtered = filtered.filter((e) => e.kind === k);
+      }
     }
-    if (typeof options.tag === "string" && options.tag.length > 0) {
-      const t = options.tag;
-      filtered = filtered.filter((e) => e.tags.includes(t));
+    if (typeof options.tag === "string") {
+      const t = options.tag.trim();
+      if (t.length > 0) {
+        filtered = filtered.filter((e) => e.tags.includes(t));
+      }
     }
-    if (typeof options.pageId === "string" && options.pageId.length > 0) {
-      const pid = resolveCacheKey(options.pageId).pageId;
-      filtered = filtered.filter((e) => e.pageId === pid);
+    if (typeof options.pageId === "string") {
+      const rawPageId = options.pageId.trim();
+      if (rawPageId.length > 0) {
+        const pid = resolveCacheKey(rawPageId).pageId;
+        filtered = filtered.filter((e) => e.pageId === pid);
+      }
     }
-    if (typeof options.since === "string" && options.since.length > 0) {
-      const sinceMs = Date.parse(options.since);
-      if (Number.isFinite(sinceMs)) {
-        filtered = filtered.filter((e) => {
-          const ms = Date.parse(e.timestamp);
-          return Number.isFinite(ms) && ms > sinceMs;
-        });
+    if (typeof options.since === "string") {
+      const since = options.since.trim();
+      if (since.length > 0) {
+        const sinceMs = Date.parse(since);
+        if (Number.isFinite(sinceMs)) {
+          filtered = filtered.filter((e) => {
+            const ms = Date.parse(e.timestamp);
+            return Number.isFinite(ms) && ms > sinceMs;
+          });
+        }
       }
     }
     // 가장 최근 항목이 앞에 오도록.
@@ -221,9 +265,11 @@ export class AgentJournal {
     const all = await this.readAll();
     const needle = (typeof query === "string" ? query : "").trim().toLowerCase();
     let pool: JournalEntry[] = all;
-    if (typeof options.kind === "string" && options.kind.length > 0) {
-      const k = options.kind;
-      pool = pool.filter((e) => e.kind === k);
+    if (typeof options.kind === "string") {
+      const k = options.kind.trim();
+      if (k.length > 0) {
+        pool = pool.filter((e) => e.kind === k);
+      }
     }
     const matches =
       needle.length === 0
@@ -235,7 +281,10 @@ export class AgentJournal {
   }
 
   /**
-   * 저널 메타 (파일 존재, 라인 수, 바이트 크기, 마지막 항목 시각).
+   * 저널 메타 (파일 존재, 유효 항목 수, 바이트 크기, 마지막 항목 시각).
+   * `totalEntries` 는 파싱 / 정규화를 통과한 유효 entry 수만 센다 — 손상된 라인은
+   * read 단계에서 skip 되므로 카운트에서 빠진다. raw 라인 수가 필요해지면 별도
+   * 필드로 도입.
    * 디스크 IO 는 file stat + 전체 read — 항목 수가 폭증하면 최적화 대상이 되겠지만,
    * MVP 의 사용 패턴(turn 단위 한두 줄 추가) 에서는 충분.
    */
@@ -308,26 +357,43 @@ function entryMatchesNeedle(entry: JournalEntry, needle: string): boolean {
 }
 
 /**
- * raw JSON 한 줄을 JournalEntry 로 정규화. 필수 필드가 비어 있으면 null —
- * read 단에서 그대로 skip 된다.
+ * raw JSON 한 줄을 JournalEntry 로 정규화. 필수 필드가 비어 있거나 유효하지 않으면
+ * null — read 단에서 그대로 skip 된다.
+ *
+ * 손상 / 수동 편집 / 부분 쓰기 라인을 최대한 걸러내려고 append 단의 정규화와 같은
+ * 규칙으로 trim 후 비교한다: id / kind / content 는 trim 후 비어 있으면 reject,
+ * timestamp 는 Date.parse 가능해야 한다.
  */
 function normalizeEntry(value: unknown): JournalEntry | null {
   if (!value || typeof value !== "object") return null;
   const o = value as Record<string, unknown>;
-  if (typeof o.id !== "string" || o.id.length === 0) return null;
-  if (typeof o.timestamp !== "string" || o.timestamp.length === 0) return null;
-  if (typeof o.kind !== "string" || o.kind.length === 0) return null;
+  if (typeof o.id !== "string") return null;
+  if (typeof o.timestamp !== "string") return null;
+  if (typeof o.kind !== "string") return null;
   if (typeof o.content !== "string") return null;
+  const id = o.id.trim();
+  const timestamp = o.timestamp.trim();
+  const kind = o.kind.trim();
+  const content = o.content.trim();
+  if (id.length === 0) return null;
+  if (timestamp.length === 0 || Number.isNaN(Date.parse(timestamp))) return null;
+  if (kind.length === 0) return null;
+  if (content.length === 0) return null;
   const tags = Array.isArray(o.tags)
-    ? o.tags.filter((t): t is string => typeof t === "string")
+    ? o.tags
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0)
     : [];
   const pageId =
-    typeof o.pageId === "string" && o.pageId.length > 0 ? o.pageId : undefined;
+    typeof o.pageId === "string" && o.pageId.trim().length > 0
+      ? o.pageId.trim()
+      : undefined;
   return {
-    id: o.id,
-    timestamp: o.timestamp,
-    kind: o.kind,
-    content: o.content,
+    id,
+    timestamp,
+    kind,
+    content,
     tags,
     ...(pageId ? { pageId } : {}),
   };

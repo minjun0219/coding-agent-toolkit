@@ -539,7 +539,11 @@ export default async function agentToolkitPlugin(_input: unknown) {
         parameters: {
           content: { type: "string", required: true },
           kind: { type: "string", required: false },
-          tags: { type: "array", required: false },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+            required: false,
+          },
           pageId: { type: "string", required: false },
         },
         async handler({
@@ -604,7 +608,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
       },
       journal_status: {
         description:
-          "저널 메타(파일 경로, 존재 여부, 총 라인 수, 바이트 크기, 마지막 항목 시각) 만 조회한다. remote 호출 없음.",
+          "저널 메타(파일 경로, 존재 여부, 유효 항목 수 — 손상 라인 skip, 바이트 크기, 마지막 항목 시각) 만 조회한다. remote 호출 없음.",
         parameters: {},
         async handler() {
           return handleJournalStatus(journal);

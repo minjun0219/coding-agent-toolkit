@@ -104,7 +104,7 @@ turn / session 경계를 넘는 에이전트 메모. 캐시와 달리 **append-o
 | `journal_append` | 한 항목 append. (content 필수, kind?: `decision`/`blocker`/`answer`/`note` 등 자유 문자열·기본 `note`, tags?: 문자열 배열, pageId?: Notion page id/URL — 입력 시 `8-4-4-4-12` 형식으로 정규화 후 저장) |
 | `journal_read` | 최근 항목부터 필터/limit 적용해 반환. (limit?: 기본 20, kind?, tag?, pageId?: page-key 기반 lookup, since?: ISO8601 — 그 시각 이후만) |
 | `journal_search` | content / kind / tags / pageId 를 substring (case-insensitive) 매칭. (query 필수, limit?, kind?) |
-| `journal_status` | 파일 경로 / 존재 여부 / 라인 수 / 바이트 / 마지막 항목 시각만 조회 |
+| `journal_status` | 파일 경로 / 존재 여부 / 유효 항목 수 (손상 라인 제외) / 바이트 / 마지막 항목 시각만 조회 |
 
 손상 / 부분 쓰기 라인은 read 단계에서 자동 skip — 한 줄이 깨져도 다음 turn 의 read 가 throw 하지 않고 나머지를 반환한다.
 
