@@ -1,6 +1,6 @@
 ---
 name: spec-pact
-description: Negotiate, anchor, verify, and amend a project-local SPEC against a Notion 기획문서. Four-mode lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND) on top of a LLM-wiki INDEX (`.agent/specs/INDEX.md`) and per-page SPEC files (`.agent/specs/<slug>.md` slug mode or `**/SPEC.md` directory mode). Conducted by the `grace` sub-agent. Auto-trigger when a Notion URL / page id appears together with phrases like "스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영".
+description: Negotiate, anchor, verify, and amend a project-local SPEC against a Notion 기획문서. Four-mode lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND) on top of an LLM-wiki-inspired INDEX (`.agent/specs/INDEX.md`) and per-page SPEC files (`.agent/specs/<slug>.md` slug mode or `**/SPEC.md` directory mode). Conducted by the `grace` sub-agent. Auto-trigger when a Notion URL / page id appears together with phrases like "스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영".
 allowed-tools: [notion_get, notion_status, notion_refresh, journal_append, journal_read, journal_search, read, write, edit, glob]
 license: MIT
 version: 0.1.0

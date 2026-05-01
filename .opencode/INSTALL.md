@@ -92,7 +92,7 @@ Identifier pattern is `^[a-zA-Z0-9_-]+$` — colons are reserved as the handle s
 
 Rocky is a work partner with frontend specialty and fullstack range — it conducts the toolkit's two cache-first skills (`notion-context`, `openapi-client`) and the journal as its primary contract, routes the SPEC 합의 lifecycle to `@grace`, and may delegate to external sub-agents / skills when the work exceeds the toolkit.
 
-Grace is the SPEC 합의 lifecycle owner — it conducts the `spec-pact` skill end-to-end (DRAFT / VERIFY / DRIFT-CHECK / AMEND) and is the single finalize/lock authority over `.agent/specs/INDEX.md` (LLM-wiki entry point) + SPEC files (`.agent/specs/<slug>.md` slug 모드 또는 `**/SPEC.md` directory 모드).
+Grace is the SPEC 합의 lifecycle owner — it conducts the `spec-pact` skill end-to-end (DRAFT / VERIFY / DRIFT-CHECK / AMEND) and is the single finalize/lock authority over `.agent/specs/INDEX.md` (LLM-wiki-inspired entry point) + SPEC files (`.agent/specs/<slug>.md` slug 모드 또는 `**/SPEC.md` directory 모드).
 
 Direct invocation — Notion (context mode):
 
