@@ -1,18 +1,19 @@
 # Repository instructions for GitHub Copilot
 
-이 저장소에서 Copilot이 PR 리뷰/코드 리뷰를 수행할 때는 아래 규칙을 따른다.
+When Copilot performs PR reviews or code reviews in this repository, follow the rules below.
 
-## 리뷰 언어
+## Review language
 
-- 리뷰 요약, 인라인 코멘트, 수정 제안은 모두 한국어로 작성한다.
-- 필요한 경우 코드 식별자/경로/명령어는 영어 원문을 유지한다.
+- Write review summaries, inline comments, and fix suggestions in Korean.
+- Keep code identifiers, file paths, and commands in English when needed.
 
-## 리뷰 포맷
+## Review format
 
-- 중요도 순서(높음 → 낮음)로 이슈를 정리한다.
-- 각 이슈는 "문제", "영향", "제안"을 짧게 포함한다.
-- 가능하면 바로 적용 가능한 수정 예시를 함께 제시한다.
+- Order issues by severity (high → low).
+- For each issue, briefly include "Problem", "Impact", and "Suggestion".
+- Provide a directly applicable fix example when possible.
 
-## 범위
+## Scope
 
-- 현재 변경(diff) 중심으로 리뷰하고, 범위 밖 제안은 "선택 사항"으로 분리한다.
+- Focus on the current diff.
+- If you include out-of-scope feedback, clearly label it as "Optional".
