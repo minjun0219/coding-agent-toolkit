@@ -2,6 +2,8 @@
   "name": "agent-toolkit",
   "version": "0.1.0",
   "description": "opencode plugin: Notion page cache + skill (Bun)",
+  "license": "MIT",
+  "author": "Minjun Kim",
   "private": true,
   "type": "module",
   "engines": {

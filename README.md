@@ -198,7 +198,7 @@ MVP 너머의 능력 목표 (자동 기억, GitHub Issue 동기화, OpenAPI clie
 
 ## Status / 라이선스
 
-- **개인 프로젝트** — 코드는 자유롭게 가져다 쓰거나 fork·수정·재배포해도 됩니다. 별도 `LICENSE` 파일은 두지 않으며, "as-is" 로 제공되고 어떤 종류의 보증(warranty) 도 하지 않습니다.
-- **유지보수 의무 없음** — 이슈 / PR / 호환성 / 보안 패치 / 외부 의존성(Notion API, opencode plugin API, Bun) 변경 추종을 약속하지 않습니다. 응답은 best-effort 이며, 운영에 의존할 계획이라면 fork 를 권장합니다.
+- **라이선스** — [MIT](./LICENSE). 사용 / 수정 / 재배포 / 상업적 이용 모두 자유, 단 copyright + 라이선스 고지를 함께 담아야 한다. 보증(warranty) 은 제공하지 않으며 "AS IS" 로 배포된다.
+- **개인 프로젝트 — 유지보수 의무 없음** — 이슈 / PR / 호환성 / 보안 패치 / 외부 의존성(Notion API, opencode plugin API, Bun) 변경 추종을 약속하지 않습니다. 응답은 best-effort 이며, 운영에 의존할 계획이라면 fork 를 권장합니다.
 - 사용 중 발견한 문제는 [issue tracker](https://github.com/minjun0219/coding-agent-toolkit/issues) 로 남겨도 됩니다 — 다만 답변·수정 시점은 보장하지 않습니다.
 - 캐시 / 저널 데이터는 모두 **로컬 디스크에만** 저장됩니다 (`AGENT_TOOLKIT_*_DIR` 변수로 위치 변경 가능). Notion 페이지 본문이나 OpenAPI spec, 저널의 결정 / 사용자 답변이 외부로 송신되지 않으니 민감한 페이지를 다루기 전에 한 번 확인할 것.
