@@ -49,8 +49,18 @@ export const USER_CONFIG_PATH = join(
 /** project-level config 의 상대 경로. */
 export const PROJECT_CONFIG_RELATIVE = ".opencode/agent-toolkit.json";
 
-/** host / env / spec 식별자에 허용되는 문자 — 콜론은 handle separator 로 예약. */
-export const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+/**
+ * host / env / spec 식별자 본문 (anchor 없음).
+ * 다른 모듈 (`openapi-registry.ts`) 이 핸들 / 스코프 정규식을 합성할 때 재사용한다 —
+ * 이 한 군데만 바꾸면 schema / registry 둘 다 같이 따라간다.
+ */
+export const ID_BODY = "[a-zA-Z0-9_-]+";
+
+/** host / env / spec 식별자 정규식 (앵커 포함). 콜론은 handle separator 로 예약. */
+export const ID_PATTERN = new RegExp(`^${ID_BODY}$`);
+
+/** 레지스트리 leaf URL 에 허용되는 스킴. spec 다운로드 단이 받는 종류와 동일. */
+const URL_SCHEMES = new Set(["http:", "https:", "file:"]);
 
 /**
  * 파싱된 JSON 값이 ToolkitConfig 인지 검증한다. 어긋나면 throw — 메시지에 source(path) 포함.
@@ -110,9 +120,22 @@ function validateRegistry(reg: unknown, source: string): asserts reg is OpenapiR
             `${source}: spec name "${host}:${env}:${spec}" must match ${ID_PATTERN}`,
           );
         }
-        if (typeof url !== "string" || url.length === 0) {
+        if (typeof url !== "string" || url.trim().length === 0) {
           throw new Error(
             `${source}: openapi.registry["${host}"]["${env}"]["${spec}"] must be a non-empty URL string`,
+          );
+        }
+        let parsed: URL;
+        try {
+          parsed = new URL(url);
+        } catch {
+          throw new Error(
+            `${source}: openapi.registry["${host}"]["${env}"]["${spec}"] is not a valid URL — got "${url}"`,
+          );
+        }
+        if (!URL_SCHEMES.has(parsed.protocol)) {
+          throw new Error(
+            `${source}: openapi.registry["${host}"]["${env}"]["${spec}"] uses unsupported scheme "${parsed.protocol}" — only http / https / file are accepted`,
           );
         }
       }

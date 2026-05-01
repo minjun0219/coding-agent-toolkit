@@ -4,7 +4,6 @@
   "title": "agent-toolkit config",
   "description": "Plugin-wide configuration for the coding-agent-toolkit opencode plugin. Project config (./.opencode/agent-toolkit.json) overrides user config (~/.config/opencode/agent-toolkit/agent-toolkit.json) at the leaf level.",
   "type": "object",
-  "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
@@ -12,7 +11,6 @@
     },
     "openapi": {
       "type": "object",
-      "additionalProperties": false,
       "description": "OpenAPI / Swagger registry. Maps host:env:spec handles to spec download URLs.",
       "properties": {
         "registry": {

@@ -195,6 +195,9 @@ export function countEndpoints(spec: OpenapiSpec): number {
  * 매칭 대상: path / method / operationId / summary / tags.
  *
  * 빈 query 는 모든 endpoint 를 limit 까지 반환 — "이 spec 에 뭐 있는지 일단 보여줘" 용도.
+ *
+ * 외부 spec 은 종종 부분적으로 깨져 있다 (`operationId` 가 숫자, `tags` 가 배열이 아닌 등).
+ * `.toLowerCase()` 가 TypeError 로 검색 자체를 무너뜨리지 않도록 매 필드마다 typeof 가드.
  */
 export function searchEndpoints(
   spec: OpenapiSpec,
@@ -221,21 +224,29 @@ export function searchEndpoints(
     for (const m of HTTP_METHODS) {
       const op = (item as OpenapiPathItem)[m];
       if (!op || typeof op !== "object") continue;
+
+      // 안전 추출 — 비-string 은 ""/[] 로 떨어뜨려 매칭 / 결과 모두에서 제외한다.
+      const opId = typeof op.operationId === "string" ? op.operationId : "";
+      const summary = typeof op.summary === "string" ? op.summary : "";
+      const tagsArr = Array.isArray(op.tags)
+        ? op.tags.filter((t): t is string => typeof t === "string")
+        : [];
+
       // 빈 query 면 무조건 hit, 그 외에는 한 필드라도 substring 매칭되어야 한다.
       const hit =
         needle.length === 0 ||
         path.toLowerCase().includes(needle) ||
         m.includes(needle) ||
-        (op.operationId ?? "").toLowerCase().includes(needle) ||
-        (op.summary ?? "").toLowerCase().includes(needle) ||
-        (op.tags ?? []).some((t) => t.toLowerCase().includes(needle));
+        opId.toLowerCase().includes(needle) ||
+        summary.toLowerCase().includes(needle) ||
+        tagsArr.some((t) => t.toLowerCase().includes(needle));
       if (!hit) continue;
       out.push({
         method: m.toUpperCase(),
         path,
-        operationId: op.operationId,
-        summary: op.summary,
-        tags: op.tags,
+        operationId: opId !== "" ? opId : undefined,
+        summary: summary !== "" ? summary : undefined,
+        tags: tagsArr.length > 0 ? tagsArr : undefined,
       });
       if (out.length >= limit) return out;
     }

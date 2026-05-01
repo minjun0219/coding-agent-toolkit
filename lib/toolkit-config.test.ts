@@ -75,10 +75,16 @@ describe("validateConfig", () => {
     ).toThrow(/env name/);
   });
 
-  it("rejects empty URL", () => {
+  it("rejects empty / whitespace-only URL", () => {
     expect(() =>
       validateConfig(
         { openapi: { registry: { acme: { dev: { users: "" } } } } },
+        "p",
+      ),
+    ).toThrow(/non-empty URL/);
+    expect(() =>
+      validateConfig(
+        { openapi: { registry: { acme: { dev: { users: "   " } } } } },
         "p",
       ),
     ).toThrow(/non-empty URL/);
@@ -91,6 +97,53 @@ describe("validateConfig", () => {
         "p",
       ),
     ).toThrow(/non-empty URL/);
+  });
+
+  it("rejects unparseable URL string", () => {
+    expect(() =>
+      validateConfig(
+        {
+          openapi: { registry: { acme: { dev: { users: "not a url" } } } },
+        },
+        "p",
+      ),
+    ).toThrow(/not a valid URL/);
+  });
+
+  it("rejects unsupported URL scheme", () => {
+    expect(() =>
+      validateConfig(
+        {
+          openapi: {
+            registry: {
+              acme: { dev: { users: "ftp://example.com/spec.json" } },
+            },
+          },
+        },
+        "p",
+      ),
+    ).toThrow(/unsupported scheme/);
+  });
+
+  it("accepts http / https / file URLs", () => {
+    for (const url of [
+      "http://example.com/spec.json",
+      "https://example.com/spec.json",
+      "file:///tmp/spec.json",
+    ]) {
+      expect(() =>
+        validateConfig(
+          { openapi: { registry: { acme: { dev: { users: url } } } } },
+          "p",
+        ),
+      ).not.toThrow();
+    }
+  });
+
+  it("allows unknown top-level keys for forward compatibility", () => {
+    expect(() =>
+      validateConfig({ futureFeature: { foo: "bar" } } as any, "p"),
+    ).not.toThrow();
   });
 });
 

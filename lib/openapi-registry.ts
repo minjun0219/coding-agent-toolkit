@@ -1,4 +1,4 @@
-import type { OpenapiRegistry, ToolkitConfig } from "./toolkit-config";
+import { ID_BODY, type OpenapiRegistry, type ToolkitConfig } from "./toolkit-config";
 
 /**
  * `agent-toolkit.json` 의 `openapi.registry` 트리를 다루는 helper 모음.
@@ -20,10 +20,11 @@ export interface OpenapiRegistryEntry {
   url: string;
 }
 
-const ID = "[a-zA-Z0-9_-]+";
-const HANDLE_FULL = new RegExp(`^(${ID}):(${ID}):(${ID})$`);
-const HANDLE_HOST_ENV = new RegExp(`^(${ID}):(${ID})$`);
-const HANDLE_HOST = new RegExp(`^${ID}$`);
+// 식별자 본문은 toolkit-config 의 ID_BODY 와 동일해야 한다 (스키마 / config 검증과 동기).
+// drift 방지를 위해 한 곳 (`ID_BODY`) 만 두고 여기서는 그걸로 핸들 / 스코프 정규식을 합성.
+const HANDLE_FULL = new RegExp(`^(${ID_BODY}):(${ID_BODY}):(${ID_BODY})$`);
+const HANDLE_HOST_ENV = new RegExp(`^(${ID_BODY}):(${ID_BODY})$`);
+const HANDLE_HOST = new RegExp(`^${ID_BODY}$`);
 const HEX_KEY = /^[0-9a-f]{16}$/;
 
 /** 입력이 정확히 `host:env:spec` 형태인지. */

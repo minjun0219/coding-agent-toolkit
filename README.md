@@ -62,7 +62,7 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 
 ## 도구
 
-plugin 이 opencode 에 다음 7 개를 등록한다.
+plugin 이 opencode 에 다음 8 개를 등록한다.
 
 ### Notion (`notion_*`)
 

@@ -106,6 +106,36 @@ describe("searchEndpoints", () => {
     expect(searchEndpoints(SAMPLE_SPEC, "").length).toBe(3);
     expect(searchEndpoints(SAMPLE_SPEC, "", 2).length).toBe(2);
   });
+
+  it("does not throw on non-string operationId / summary / tags", () => {
+    const malformed: OpenapiSpec = {
+      openapi: "3.0.0",
+      info: { title: "Bad", version: "0" },
+      paths: {
+        "/bad": {
+          get: {
+            operationId: 42 as unknown as string,
+            summary: null as unknown as string,
+            tags: ["ok", 7 as unknown as string, null as unknown as string],
+          },
+          post: {
+            // tags 가 배열이 아닌 경우.
+            tags: "not-an-array" as unknown as string[],
+          },
+        },
+      },
+    };
+    // 빈 query — 두 endpoint 모두 떨어져 들어와야 한다.
+    const all = searchEndpoints(malformed, "");
+    expect(all.length).toBe(2);
+    // 비-string 필드는 결과에서 omit, string-인 tag 만 살아남아야.
+    expect(all[0]?.operationId).toBeUndefined();
+    expect(all[0]?.summary).toBeUndefined();
+    expect(all[0]?.tags).toEqual(["ok"]);
+    expect(all[1]?.tags).toBeUndefined();
+    // 텍스트 필드 검색도 throw 없이 통과해야.
+    expect(() => searchEndpoints(malformed, "ok")).not.toThrow();
+  });
 });
 
 describe("assertOpenapiShape", () => {

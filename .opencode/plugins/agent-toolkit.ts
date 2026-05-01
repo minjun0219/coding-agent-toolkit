@@ -383,12 +383,14 @@ export default async function agentToolkitPlugin(_input: unknown) {
 
   // user / project agent-toolkit.json 로드. 잘못된 config 가 plugin 로딩 자체를 막지
   // 않도록 try-catch — registry 가 없는 상태로라도 plugin 은 동작해야 한다.
+  // err 가 Error 인스턴스가 아닐 가능성도 막아 컨텍스트 손실 방지.
   let toolkitConfig: ToolkitConfig = {};
   try {
     toolkitConfig = await loadConfig();
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error(
-      `agent-toolkit: failed to load config — ${(err as Error).message}. Continuing with empty registry.`,
+      `agent-toolkit: failed to load config — ${message}. Continuing with empty registry.`,
     );
   }
   const registry = toolkitConfig.openapi?.registry;
