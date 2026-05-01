@@ -11,11 +11,18 @@ import { createHash } from "node:crypto";
  *   <baseDir>/<pageId>.json   메타데이터 (NotionCacheEntry)
  *   <baseDir>/<pageId>.md     normalize 된 markdown 본문
  *
- * baseDir 기본값은 `~/.cache/notion-context/pages` — 사용자 단위 캐시 위치.
+ * baseDir 기본값은 `~/.config/opencode/agent-toolkit/notion-pages` —
+ * 다른 opencode plugin 들이 자기 데이터를 두는 위치 컨벤션을 따른다.
  * 프로젝트별로 격리하고 싶으면 `AGENT_TOOLKIT_CACHE_DIR` 로 덮어쓴다.
  */
 
-export const DEFAULT_CACHE_DIR = join(homedir(), ".cache", "notion-context", "pages");
+export const DEFAULT_CACHE_DIR = join(
+  homedir(),
+  ".config",
+  "opencode",
+  "agent-toolkit",
+  "notion-pages",
+);
 export const DEFAULT_TTL_SECONDS = 60 * 60 * 24; // 24h
 
 export interface NotionCacheEntry {

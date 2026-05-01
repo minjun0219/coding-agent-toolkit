@@ -28,7 +28,7 @@
 | 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
 | 5 | Notion → 개발 스펙 분해 | ✅ MVP | — | `skills/notion-context/SKILL.md` spec mode |
 | 6 | 스펙 → GitHub Issue 추적 | 📋 planned | [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4) | GitHub MCP / 자체 도구 어느 쪽으로 갈지 미정 |
-| 7 | OpenAPI 캐시 + client 작성 | 📋 planned | [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6) | `lib/openapi-context.ts` 형식 후보 |
+| 7 | OpenAPI 캐시 + client 작성 | ✅ MVP | [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search`, `lib/openapi-context.ts`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet) |
 
 ## 제안 단계
 
@@ -42,9 +42,9 @@
 - **Phase 3 — 에이전트 자동 기억 / 기록** *(memo #1, issue [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5))*
   - turn 단위 결정 / blocker / 사용자 답변을 캐시 디렉터리 옆에 append-only 로 저장
   - Rocky 가 "이전 turn 에 X 로 결정했음" 같은 기억을 인용 가능하게
-- **Phase 4 — OpenAPI 캐시 + client 작성** *(memo #7, issue [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6))*
-  - `swagger_get` / `swagger_status` / `swagger_search` 같은 도구
-  - skill: 한 endpoint → `fetch` / `axios` 호출 코드 한 덩어리
+- **Phase 4 — OpenAPI 캐시 + client 작성 — 완료** *(memo #7, issue [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6))*
+  - `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` 4 도구 + `lib/openapi-context.ts` TTL 파일 캐시 + `skills/openapi-client/SKILL.md`
+  - JSON-only (YAML 미지원), 단일 endpoint → `fetch` / `axios` snippet 한 덩어리
 - **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7))*
   - 한글 주석 / JSDoc 정책의 lint 단 검증 (필요해지면)
 

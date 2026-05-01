@@ -25,9 +25,12 @@
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
 | `AGENT_TOOLKIT_NOTION_MCP_URL` | `https://mcp.notion.com/mcp` | remote Notion MCP base URL. 인증은 OAuth 가 처리하므로 토큰 변수는 없다. |
-| `AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS` | `15000` | remote 호출 timeout (ms) |
-| `AGENT_TOOLKIT_CACHE_DIR` | `~/.cache/notion-context/pages` | 페이지 캐시 디렉터리 |
-| `AGENT_TOOLKIT_CACHE_TTL` | `86400` | 캐시 TTL (초) |
+| `AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS` | `15000` | remote Notion 호출 timeout (ms) |
+| `AGENT_TOOLKIT_CACHE_DIR` | `~/.config/opencode/agent-toolkit/notion-pages` | Notion 페이지 캐시 디렉터리 |
+| `AGENT_TOOLKIT_CACHE_TTL` | `86400` | Notion 캐시 TTL (초) |
+| `AGENT_TOOLKIT_OPENAPI_CACHE_DIR` | `~/.config/opencode/agent-toolkit/openapi-specs` | OpenAPI / Swagger spec 캐시 디렉터리 |
+| `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` | `86400` | OpenAPI 캐시 TTL (초) |
+| `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` | `30000` | OpenAPI spec 다운로드 timeout (ms) |
 
 ## 동작 확인
 
@@ -37,16 +40,18 @@ opencode 를 띄운 뒤:
 > use skill tool to list skills
 ```
 
-목록에 `notion-context` 가 보이면 skill 로딩 OK.
+목록에 `notion-context` / `openapi-client` 가 둘 다 보이면 skill 로딩 OK.
 
 도구 등록도 확인:
 
 ```
 > use notion_status tool with input "<pageId or url>"
 > use notion_get tool with input "<pageId or url>"
+> use swagger_status tool with input "<spec URL>"
+> use swagger_get tool with input "<spec URL>"
 ```
 
-첫 호출은 `fromCache: false` 로 remote 가 한 번 불리고, 두 번째 호출은 `fromCache: true` 가 되어야 한다.
+첫 호출은 `fromCache: false` 로 remote 가 한 번 불리고, 두 번째 호출은 `fromCache: true` 가 되어야 한다 (`notion_*` / `swagger_*` 둘 다 동일 정책).
 
 ## Agent (`rocky`)
 
