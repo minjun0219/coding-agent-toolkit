@@ -85,20 +85,40 @@ Identifier pattern is `^[a-zA-Z0-9_-]+$` — colons are reserved as the handle s
 
 ## Agent (`rocky`)
 
-`agents/rocky.md` is registered into opencode's agent path via the plugin's `config` hook. `mode: all` means it shows up both in the primary cycle (Tab) and as a delegation target from another primary agent.
+`agents/rocky.md` is registered into opencode's agent path via the plugin's `config` hook. `mode: all` means it shows up both in the primary cycle (Tab) and as a delegation target from another primary agent. Rocky is a work partner with frontend specialty and fullstack range — it conducts the toolkit's two skills (`notion-context`, `openapi-client`) as its primary contract and may delegate to external sub-agents / skills when the work exceeds the toolkit.
 
-Direct invocation (context mode):
+Direct invocation — Notion (context mode):
 
 ```
 @rocky https://www.notion.so/.../<pageId>
 ```
 
-Spec mode:
+Notion spec mode:
 
 ```
 @rocky <Notion URL> 스펙 정리해줘
 ```
 
-In a setup that already has its own primary agent (e.g. OmO Sisyphus), that agent sees `rocky` in its subagent list (turn start) and routes Notion requests to it via the description — no need to hard-code Rocky's existence into the upstream agent's system prompt. Routing is not guaranteed; the primary may decide to handle it directly.
+OpenAPI snippet mode (default `fetch`):
+
+```
+@rocky https://api.example/openapi.json POST /pets 호출 코드
+```
+
+OpenAPI snippet mode via registered handle (`agent-toolkit.json`):
+
+```
+@rocky acme:dev:users 의 GET /users/{id} axios 로 작성해줘
+```
+
+Chained (Notion → OpenAPI in one turn):
+
+```
+@rocky <Notion URL> 스펙 정리하고 거기 나온 POST /pets 의 axios snippet 도 줘
+```
+
+In a setup that already has its own primary agent (e.g. OmO Sisyphus), that agent sees `rocky` in its subagent list (turn start) and routes toolkit-shaped or working-context requests to it via the description — no need to hard-code Rocky's existence into the upstream agent's system prompt. Routing is not guaranteed; the primary may decide to handle it directly.
+
+Rocky does not directly run multi-step implementation work (writing code, refactor, multi-file changes). When such work is needed, Rocky delegates to an external sub-agent / skill if one fits, or returns the request to the caller.
 
 If the plugin is not registered, or the opencode version does not recognize `agents.paths`, drop a symlink or copy of `agents/rocky.md` into the project's `.opencode/agents/` instead.
