@@ -4,6 +4,14 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 
 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸지만, 책임은 agent-toolkit 1차 지휘 + 필요 시 외부 sub-agent / skill 위임 한 줄로 한정한다.
 
+> **개인 프로젝트입니다.** 자유롭게 가져다 쓰거나 fork 해도 되지만, 유지보수 / 이슈 응답 / 호환성 보장 의무는 없습니다. 자세한 내용은 아래 [Status / 라이선스](#status--라이선스) 참고.
+
+## 요구사항
+
+- [Bun](https://bun.sh) `>=1.0` (Node.js 미지원 — Bun 이 TS 를 직접 실행하므로 별도 빌드 단계가 없다)
+- [opencode](https://opencode.ai) (다른 host — Claude Code / Cursor / Codex CLI — 는 MVP scope 밖)
+- (선택) Notion 페이지를 다룰 경우 opencode 에 [Notion remote MCP](https://developers.notion.com/docs/mcp) 가 OAuth 로 연결되어 있어야 한다
+
 ## 디렉터리
 
 ```
@@ -187,3 +195,10 @@ bun run typecheck
 ## Roadmap
 
 MVP 너머의 능력 목표 (자동 기억, GitHub Issue 동기화, OpenAPI client 작성 등) 는 [`ROADMAP.md`](./ROADMAP.md) 참고. 한 번에 한 phase 씩 별도 PR 로.
+
+## Status / 라이선스
+
+- **개인 프로젝트** — 코드는 자유롭게 가져다 쓰거나 fork·수정·재배포해도 됩니다. 별도 `LICENSE` 파일은 두지 않으며, "as-is" 로 제공되고 어떤 종류의 보증(warranty) 도 하지 않습니다.
+- **유지보수 의무 없음** — 이슈 / PR / 호환성 / 보안 패치 / 외부 의존성(Notion API, opencode plugin API, Bun) 변경 추종을 약속하지 않습니다. 응답은 best-effort 이며, 운영에 의존할 계획이라면 fork 를 권장합니다.
+- 사용 중 발견한 문제는 [issue tracker](https://github.com/minjun0219/coding-agent-toolkit/issues) 로 남겨도 됩니다 — 다만 답변·수정 시점은 보장하지 않습니다.
+- 캐시 / 저널 데이터는 모두 **로컬 디스크에만** 저장됩니다 (`AGENT_TOOLKIT_*_DIR` 변수로 위치 변경 가능). Notion 페이지 본문이나 OpenAPI spec, 저널의 결정 / 사용자 답변이 외부로 송신되지 않으니 민감한 페이지를 다루기 전에 한 번 확인할 것.
