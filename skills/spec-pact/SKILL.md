@@ -1,6 +1,6 @@
 ---
 name: spec-pact
-description: Negotiate, anchor, verify, and amend a project-local SPEC against a Notion 기획문서. Four-mode lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND) on top of an LLM-wiki-inspired INDEX (`.agent/specs/INDEX.md`) and per-page SPEC files (`.agent/specs/<slug>.md` slug mode or `**/SPEC.md` directory mode). Conducted by the `grace` sub-agent. Auto-trigger when a Notion URL / page id appears together with phrases like "스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영".
+description: Negotiate, anchor, verify, and amend a project-local SPEC against a Notion 기획문서. Four-mode lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND) on top of an LLM-wiki-inspired INDEX (`<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md`) and per-page SPEC files (`<spec.dir>/<slug>.md` slug mode, default `.agent/specs/<slug>.md`, or `**/SPEC.md` directory mode). Conducted by the `grace` sub-agent. Auto-trigger when a Notion URL / page id appears together with phrases like "스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영".
 allowed-tools: [notion_get, notion_status, notion_refresh, journal_append, journal_read, journal_search, read, write, edit, glob]
 license: MIT
 version: 0.1.0
@@ -19,7 +19,7 @@ version: 0.1.0
 
 ```
 agent (grace)
-  ├── 0. read INDEX        ← .agent/specs/INDEX.md (entry point)
+  ├── 0. read INDEX        ← <spec.dir>/<spec.indexFile> (default .agent/specs/INDEX.md, entry point)
   ├── 0'. glob '**/SPEC.md'← directory-mode discovery (only when spec.scanDirectorySpec=true)
   ├── 1. journal_read      ← cite spec_anchor / spec_drift / spec_amendment / spec_verify_result for the same pageId
   ├── 2. notion_get        ← cache-first; remote MCP once on cache miss
@@ -61,7 +61,7 @@ Write a new SPEC.
 
 ### Steps
 
-1. **Read the INDEX.** Read `.agent/specs/INDEX.md` and check whether the same `source_page_id` already exists. If yes, jump straight to AMEND ("A SPEC already exists — switching to AMEND." on a single line and switch the mode).
+1. **Read the INDEX.** Resolve the INDEX path from `agent-toolkit.json` — `<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md` — then read it and check whether the same `source_page_id` already exists. If yes, jump straight to AMEND ("A SPEC already exists — switching to AMEND." on a single line and switch the mode).
 2. **Read the journal.** `journal_read({ pageId, kind: "spec_anchor" })` — quote any prior agreement when present.
 3. **Read Notion.** `notion_get(input)` — cache-first.
 4. **Decompose the Notion body using the `notion-context` spec-mode format** — `# 문서 요약 / # 요구사항 / # 화면 단위 / # API 의존성 / # TODO / # 확인 필요 사항`.

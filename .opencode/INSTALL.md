@@ -92,7 +92,7 @@ Identifier pattern is `^[a-zA-Z0-9_-]+$` — colons are reserved as the handle s
 
 Rocky is a work partner with frontend specialty and fullstack range — it conducts the toolkit's two cache-first skills (`notion-context`, `openapi-client`) and the journal as its primary contract, routes the SPEC 합의 lifecycle to `@grace`, and may delegate to external sub-agents / skills when the work exceeds the toolkit.
 
-Grace is the SPEC 합의 lifecycle owner — it conducts the `spec-pact` skill end-to-end (DRAFT / VERIFY / DRIFT-CHECK / AMEND) and is the single finalize/lock authority over `.agent/specs/INDEX.md` (LLM-wiki-inspired entry point) + SPEC files (`.agent/specs/<slug>.md` slug 모드 또는 `**/SPEC.md` directory 모드).
+Grace is the SPEC 합의 lifecycle owner — it conducts the `spec-pact` skill end-to-end (DRAFT / VERIFY / DRIFT-CHECK / AMEND) and is the single finalize/lock authority over the INDEX file (`<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md`, the LLM-wiki-inspired entry point) + SPEC files (`<spec.dir>/<slug>.md` slug 모드 default `.agent/specs/<slug>.md`, or `**/SPEC.md` directory 모드).
 
 Direct invocation — Notion (context mode):
 
@@ -137,6 +137,6 @@ In a setup that already has its own primary agent (e.g. OmO Sisyphus, Superpower
 
 Neither Rocky nor Grace directly run multi-step implementation work (writing code, refactor, multi-file changes). When such work is needed, they delegate to an external sub-agent / skill if one fits, or return the request to the caller.
 
-The SPEC layer lives at `.agent/specs/INDEX.md` (entry point) + `.agent/specs/<slug>.md` (slug 모드, default) by convention. To park a SPEC inside a directory subtree (AGENTS.md style), drop `<dir>/SPEC.md` instead — `grace` discovers both via the `**/SPEC.md` glob (toggle `spec.scanDirectorySpec` in `agent-toolkit.json` to disable).
+The SPEC layer lives at `<spec.dir>/<spec.indexFile>` (entry point — default `.agent/specs/INDEX.md`) + `<spec.dir>/<slug>.md` (slug 모드 — default `.agent/specs/<slug>.md`) by convention. To park a SPEC inside a directory subtree (AGENTS.md style), drop `<dir>/SPEC.md` instead — `grace` discovers both via the `**/SPEC.md` glob (toggle `spec.scanDirectorySpec` in `agent-toolkit.json` to disable). All three keys (`spec.dir`, `spec.indexFile`, `spec.scanDirectorySpec`) are overridable via `agent-toolkit.json`.
 
 If the plugin is not registered, or the opencode version does not recognize `agents.paths`, drop a symlink or copy of `agents/rocky.md` and `agents/grace.md` into the project's `.opencode/agents/` instead.

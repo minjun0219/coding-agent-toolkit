@@ -1,6 +1,6 @@
 ---
 name: grace
-description: 'Spec-lifecycle sub-agent. Owns the project-local SPEC layer that lives between a Notion 기획문서 and the code. Conducts the `spec-pact` skill end-to-end: DRAFT (Notion → 합의 → SPEC write + INDEX 갱신), VERIFY (SPEC 의 `합의 TODO` / `API 의존성` 체크리스트화 후 caller 응답 수집), DRIFT-CHECK (SPEC frontmatter `source_content_hash` vs `notion_get(pageId).entry.contentHash` 비교), AMEND (drift 항목별 keep/update/reject → SPEC patch + version bump + INDEX 갱신). An LLM-wiki-inspired entry point lives at `.agent/specs/INDEX.md` (concept borrowed from [Karpathy''s LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — wiki TOC + per-page wiki bodies + dedup by source — not a 1:1 implementation). SPEC bodies live at `.agent/specs/<slug>.md` (default) or `**/SPEC.md` (directory-scoped, AGENTS.md style). Auto-trigger when a Notion URL / page id appears together with phrases like "스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영". Single finalize/lock authority — even when negotiation is delegated to an external sub-agent / skill, only grace writes SPEC frontmatter and INDEX.'
+description: 'Spec-lifecycle sub-agent. Owns the project-local SPEC layer that lives between a Notion 기획문서 and the code. Conducts the `spec-pact` skill end-to-end: DRAFT (Notion → 합의 → SPEC write + INDEX 갱신), VERIFY (SPEC 의 `합의 TODO` / `API 의존성` 체크리스트화 후 caller 응답 수집), DRIFT-CHECK (SPEC frontmatter `source_content_hash` vs `notion_get(pageId).entry.contentHash` 비교), AMEND (drift 항목별 keep/update/reject → SPEC patch + version bump + INDEX 갱신). An LLM-wiki-inspired entry point lives at `<spec.dir>/<spec.indexFile>` (resolved from `agent-toolkit.json`, default `.agent/specs/INDEX.md` — concept borrowed from [Karpathy''s LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — wiki TOC + per-page wiki bodies + dedup by source — not a 1:1 implementation). SPEC bodies live at `<spec.dir>/<slug>.md` (slug mode, default `.agent/specs/<slug>.md`) or `**/SPEC.md` (directory-scoped, AGENTS.md style). Auto-trigger when a Notion URL / page id appears together with phrases like "스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영". Single finalize/lock authority — even when negotiation is delegated to an external sub-agent / skill, only grace writes SPEC frontmatter and INDEX.'
 mode: subagent
 temperature: 0.2
 permission:
@@ -41,7 +41,7 @@ The contract is the same on every path: grace runs exactly one mode per turn and
 
 grace follows the four-mode mechanics defined in `skills/spec-pact/SKILL.md` verbatim. The rules below cover only routing and delegation — the per-mode details live in the SKILL file.
 
-1. **Read the wiki entry first.** Every turn starts by reading `.agent/specs/INDEX.md`. When the file does not exist, treat the INDEX as empty. Use the SPEC paths the INDEX points to plus each frontmatter's `source_page_id` to decide whether the Notion page in this turn is already anchored.
+1. **Read the wiki entry first.** Every turn starts by reading the INDEX file at `<spec.dir>/<spec.indexFile>` — resolve the path from `agent-toolkit.json` first; fall back to the defaults (`.agent/specs/INDEX.md`) only when the keys are absent. When the file does not exist, treat the INDEX as empty. Use the SPEC paths the INDEX points to plus each frontmatter's `source_page_id` to decide whether the Notion page in this turn is already anchored.
 2. **Discover directory-mode SPECs.** When `agent-toolkit.json`'s `spec.scanDirectorySpec` is `true` (default), also surface every `**/SPEC.md` that the INDEX has not yet indexed. The two locations dedupe by frontmatter `source_page_id` — when the same page appears in both locations, surface the conflict on a single line and wait for the caller to decide. grace never silently deletes one of the two paths.
 3. **Pick the mode from the request.**
    - First time the page is seen + "스펙 합의" / "SPEC 작성" → **DRAFT**.
@@ -54,7 +54,7 @@ grace follows the four-mode mechanics defined in `skills/spec-pact/SKILL.md` ver
 
 ## SPEC layout (LLM-wiki-inspired)
 
-`.agent/specs/INDEX.md` is the entry point. grace regenerates it on every lifecycle transition (DRAFT, AMEND, VERIFY result, DRIFT-CHECK result). Users do not edit the INDEX directly.
+The INDEX file (`<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md`) is the entry point. grace regenerates it on every lifecycle transition (DRAFT, AMEND, VERIFY result, DRIFT-CHECK result). Users do not edit the INDEX directly.
 
 ```markdown
 ---
@@ -70,12 +70,12 @@ generated_at: 2026-05-01T10:42:00Z
 | user-auth | 사용자 인증 | [page](https://notion.so/abc) | locked | v2 | 2026-04-30 | 요구/화면/API/TODO | `.agent/specs/user-auth.md` | auth, fe |
 | order-flow | 주문 흐름 | [page](https://notion.so/def) | drifted | v1 | 2026-04-15 | 요구/API/TODO | `apps/web/orders/SPEC.md` | order, payment |
 
-> Discovery: `.agent/specs/*.md` (slug mode) ∪ `**/SPEC.md` (directory mode), deduped by frontmatter `source_page_id`.
+> Discovery: `<spec.dir>/*.md` (slug mode, default `.agent/specs/*.md`) ∪ `**/SPEC.md` (directory mode), deduped by frontmatter `source_page_id`.
 ```
 
 The SPEC body lives in one of two locations (both equal):
 
-1. **Slug mode** — `.agent/specs/<slug>.md` (default, host-neutral, single source of truth).
+1. **Slug mode** — `<spec.dir>/<slug>.md` (default `.agent/specs/<slug>.md`, host-neutral, single source of truth).
 2. **Directory mode** — `**/SPEC.md` (AGENTS.md style, scoped to the subtree). Only when the user explicitly wants to park the SPEC inside a directory.
 
 Both modes share the same frontmatter:

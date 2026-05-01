@@ -259,6 +259,51 @@ describe("mergeConfigs", () => {
     merged.openapi!.registry!.acme!.dev!.users = "MUTATED";
     expect(user.openapi?.registry?.acme?.dev?.users).toBe("https://u/u.json");
   });
+
+  it("project overrides user at the spec leaf (per-key)", () => {
+    const user: ToolkitConfig = {
+      spec: {
+        dir: ".agent/specs",
+        scanDirectorySpec: true,
+        indexFile: "INDEX.md",
+      },
+    };
+    const project: ToolkitConfig = {
+      // project 만 dir 와 scanDirectorySpec 를 바꿈 — indexFile 은 user 값 유지.
+      spec: { dir: "docs/specs", scanDirectorySpec: false },
+    };
+    const merged = mergeConfigs(user, project);
+    expect(merged.spec?.dir).toBe("docs/specs");
+    expect(merged.spec?.scanDirectorySpec).toBe(false);
+    expect(merged.spec?.indexFile).toBe("INDEX.md");
+  });
+
+  it("preserves project's `false` for spec.scanDirectorySpec (no truthy override)", () => {
+    // 회귀 가드: `if (value)` 패턴을 쓰면 false 가 누락된다 — 명시적 != undefined 검사가 필요.
+    const user: ToolkitConfig = { spec: { scanDirectorySpec: true } };
+    const project: ToolkitConfig = { spec: { scanDirectorySpec: false } };
+    const merged = mergeConfigs(user, project);
+    expect(merged.spec?.scanDirectorySpec).toBe(false);
+  });
+
+  it("project introduces spec when user has none", () => {
+    const user: ToolkitConfig = {};
+    const project: ToolkitConfig = {
+      spec: { dir: ".specs", indexFile: "TOC.md" },
+    };
+    const merged = mergeConfigs(user, project);
+    expect(merged.spec?.dir).toBe(".specs");
+    expect(merged.spec?.indexFile).toBe("TOC.md");
+  });
+
+  it("user-only spec survives empty project", () => {
+    const user: ToolkitConfig = {
+      spec: { dir: ".agent/specs", scanDirectorySpec: false },
+    };
+    const merged = mergeConfigs(user, {});
+    expect(merged.spec?.dir).toBe(".agent/specs");
+    expect(merged.spec?.scanDirectorySpec).toBe(false);
+  });
 });
 
 describe("loadConfig", () => {
@@ -365,5 +410,24 @@ describe("loadConfig", () => {
     const r = await loadConfig({ userPath, projectRoot });
     expect(r.errors.length).toBe(2);
     expect(r.config).toEqual({});
+  });
+
+  it("merges spec block with project taking precedence at the leaf", async () => {
+    writeUser({
+      spec: {
+        dir: ".agent/specs",
+        scanDirectorySpec: true,
+        indexFile: "INDEX.md",
+      },
+    });
+    writeProject({
+      spec: { dir: "docs/specs", scanDirectorySpec: false },
+    });
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.errors).toEqual([]);
+    expect(r.config.spec?.dir).toBe("docs/specs");
+    expect(r.config.spec?.scanDirectorySpec).toBe(false);
+    // user 값 유지 — project 가 indexFile 을 안 줬으면 user 의 값이 살아남는다.
+    expect(r.config.spec?.indexFile).toBe("INDEX.md");
   });
 });
