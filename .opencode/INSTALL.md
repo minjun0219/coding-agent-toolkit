@@ -67,3 +67,11 @@ opencode 를 띄운 뒤:
 OmO 같이 자체 primary agent (Sisyphus 등) 를 쓰는 환경에선, primary 가 turn 시작 시 받는 subagent 목록에서 `rocky` 의 description 을 보고 Notion 관련 요청을 자동으로 위임한다 (보장은 안 됨 — primary 가 직접 처리하기로 결정할 수도 있음). Rocky 의 존재를 OmO 측 system prompt 에 박을 필요는 없다.
 
 plugin 이 미등록이거나 `agents.paths` 가 인식되지 않는 opencode 버전이면, 프로젝트의 `.opencode/agents/rocky.md` 로 직접 심볼릭 링크하거나 복사해서 쓴다.
+
+## Codex CLI/데스크탑 최소 호환 (선택)
+
+opencode 외 환경에서도 같은 Notion 컨텍스트 자산을 쓰고 싶다면, 문서 기반 최소 호환 가이드를 따른다.
+
+- [`.codex-plugin.md`](../.codex-plugin.md)
+
+참고: Codex에서는 `.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json` 조합으로 로컬 플러그인 설치 흐름을 사용할 수 있다. 단, opencode의 `config` 훅과 완전히 동일한 동작을 보장하진 않는다.

@@ -1,0 +1,20 @@
+{
+  "name": "agent-toolkit-local",
+  "interface": {
+    "displayName": "Agent Toolkit Local"
+  },
+  "plugins": [
+    {
+      "name": "agent-toolkit",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

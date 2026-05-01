@@ -26,7 +26,7 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 └── README.md
 ```
 
-> 다른 host (Claude Code, Cursor, Codex CLI) 호환은 후속 작업 — 필요 시 Superpowers 처럼 `.claude-plugin/`, `.cursor-plugin/` 디렉터리를 추가하면 된다. 지금은 opencode 전용.
+> 다른 host 호환은 기본적으로 후속 작업이지만, **Codex CLI/데스크탑 최소 플러그인 호환**을 추가했다. 자세한 내용은 [`.codex-plugin.md`](./.codex-plugin.md), 매니페스트는 [`.codex-plugin/plugin.json`](./.codex-plugin/plugin.json) 참고.
 
 ## 설치 / 사용
 

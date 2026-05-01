@@ -1,0 +1,19 @@
+{
+  "name": "agent-toolkit",
+  "version": "0.1.0",
+  "description": "Notion cache-first toolkit with reusable skill for Codex.",
+  "author": {
+    "name": "agent-toolkit maintainers"
+  },
+  "license": "MIT",
+  "keywords": ["notion", "knowledge", "skill"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Agent Toolkit",
+    "shortDescription": "Notion cache-first context toolkit",
+    "longDescription": "Provides a Notion context skill and MCP server wiring for Codex environments.",
+    "developerName": "agent-toolkit maintainers",
+    "category": "Productivity"
+  }
+}
