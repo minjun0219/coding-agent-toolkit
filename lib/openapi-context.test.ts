@@ -47,16 +47,17 @@ beforeEach(() => {
 });
 
 describe("resolveSpecKey", () => {
-  it("hashes a URL to a 16-hex key", () => {
+  it("hashes a URL to a 16-hex key and reports isKeyInput=false", () => {
     const r = resolveSpecKey(SPEC_URL);
     expect(r.key).toMatch(/^[0-9a-f]{16}$/);
-    expect(r.specUrl).toBe(SPEC_URL);
+    expect(r.isKeyInput).toBe(false);
   });
 
-  it("treats an already-normalized 16-hex input as the key itself", () => {
+  it("treats an already-normalized 16-hex input as the key itself with isKeyInput=true", () => {
     const { key } = resolveSpecKey(SPEC_URL);
     const r = resolveSpecKey(key);
     expect(r.key).toBe(key);
+    expect(r.isKeyInput).toBe(true);
   });
 
   it("rejects empty / whitespace input", () => {
@@ -193,6 +194,46 @@ describe("OpenapiCache", () => {
     await expect(
       cache.write(SPEC_URL, { info: {}, paths: {} } as OpenapiSpec),
     ).rejects.toThrow(/openapi.*swagger/i);
+  });
+
+  it("write rejects 16-hex cache key input (URL required)", async () => {
+    const cache = new OpenapiCache({ baseDir: dir, defaultTtlSeconds: 60 });
+    const w = await cache.write(SPEC_URL, SAMPLE_SPEC);
+    await expect(cache.write(w.entry.key, SAMPLE_SPEC)).rejects.toThrow(
+      /requires a spec URL/i,
+    );
+  });
+
+  it("status includes endpointCount for cache hits", async () => {
+    const cache = new OpenapiCache({ baseDir: dir, defaultTtlSeconds: 60 });
+    await cache.write(SPEC_URL, SAMPLE_SPEC);
+    const s = await cache.status(SPEC_URL);
+    expect(s.exists).toBe(true);
+    expect(s.endpointCount).toBe(3);
+  });
+
+  it("status omits endpointCount for cache miss", async () => {
+    const cache = new OpenapiCache({ baseDir: dir, defaultTtlSeconds: 60 });
+    const s = await cache.status(SPEC_URL);
+    expect(s.exists).toBe(false);
+    expect(s.endpointCount).toBeUndefined();
+  });
+
+  it("peekSpecUrl recovers original URL even after .spec.json is removed", async () => {
+    const cache = new OpenapiCache({ baseDir: dir, defaultTtlSeconds: 60 });
+    const w = await cache.write(SPEC_URL, SAMPLE_SPEC);
+    rmSync(join(dir, `${w.entry.key}.spec.json`));
+    // status now reports miss, but the meta is still on disk.
+    expect((await cache.status(SPEC_URL)).exists).toBe(false);
+    expect(await cache.peekSpecUrl(SPEC_URL)).toBe(SPEC_URL);
+    expect(await cache.peekSpecUrl(w.entry.key)).toBe(SPEC_URL);
+  });
+
+  it("peekSpecUrl returns null when the meta file is gone", async () => {
+    const cache = new OpenapiCache({ baseDir: dir, defaultTtlSeconds: 60 });
+    const w = await cache.write(SPEC_URL, SAMPLE_SPEC);
+    rmSync(join(dir, `${w.entry.key}.json`));
+    expect(await cache.peekSpecUrl(SPEC_URL)).toBeNull();
   });
 
   it("list returns all unexpired (entry, spec) pairs across the cache dir", async () => {

@@ -12,6 +12,7 @@ import {
 import {
   OpenapiCache,
   createOpenapiCacheFromEnv,
+  resolveSpecKey,
   searchEndpoints,
   assertOpenapiShape,
   type OpenapiCacheStatus,
@@ -223,13 +224,28 @@ export async function downloadOpenapiSpec(
 /**
  * 다운로드 → 검증 → 캐시에 기록.
  * Notion 의 `fetchAndCache` 와 같은 모양이지만 id 검증 단은 없다 (URL 자체가 키).
+ *
+ * 16-hex 키 입력 (`swagger_status` / search 결과로 얻은 디스크 key) 으로 들어왔을 때는
+ * 캐시 메타에서 원본 URL 을 복구한다 — 메타까지 사라진 경우엔 키를 fetch URL 로 쓰면
+ * `ERR_INVALID_URL` 이 나므로 명확한 에러로 거부한다.
  */
 async function fetchAndCacheSpec(
   cache: OpenapiCache,
   input: string,
 ): Promise<OpenapiSpecResult> {
-  const spec = await downloadOpenapiSpec(input);
-  const written = await cache.write(input, spec);
+  const { isKeyInput } = resolveSpecKey(input);
+  let specUrl = input;
+  if (isKeyInput) {
+    const recovered = await cache.peekSpecUrl(input);
+    if (!recovered) {
+      throw new Error(
+        `Cached key "${input}" has no recoverable spec URL — pass the original spec URL or use swagger_search to find one.`,
+      );
+    }
+    specUrl = recovered;
+  }
+  const spec = await downloadOpenapiSpec(specUrl);
+  const written = await cache.write(specUrl, spec);
   return { ...written, fromCache: false };
 }
 

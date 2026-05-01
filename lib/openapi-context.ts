@@ -16,8 +16,8 @@ import { createHash } from "node:crypto";
  * 환경변수는 `AGENT_TOOLKIT_OPENAPI_CACHE_*` 로 Notion 쪽과 분리되어 있다.
  *
  * 키 정규화: spec URL 자체는 길이/문자가 다양하므로 sha256 의 앞 16자(hex) 를 디스크 키로
- * 쓰고, 원본 URL 은 entry 의 `specUrl` 에 보관한다. `resolveSpecKey` 는 URL / 짧은 키
- * (32-hex 부분) 둘 다 받아 key 만 통일.
+ * 쓰고, 원본 URL 은 entry 의 `specUrl` 에 보관한다. `resolveSpecKey` 는 spec URL 과 이미
+ * 정규화된 16-hex 키 둘 다 받아 디스크 키만 통일하고 입력 종류는 `isKeyInput` 로 알려준다.
  */
 
 /** 캐시 파일 디렉터리 기본값 — 사용자 단위. `AGENT_TOOLKIT_OPENAPI_CACHE_DIR` 로 덮어쓴다. */
@@ -99,6 +99,8 @@ export interface OpenapiCacheStatus {
   ageSeconds?: number;
   title?: string;
   specUrl?: string;
+  /** spec.paths 의 (path × method) 합. 캐시 hit 일 때만 채워진다. */
+  endpointCount?: number;
 }
 
 export interface OpenapiSpecResult {
@@ -129,15 +131,19 @@ export interface OpenapiEndpointMatch {
   tags?: string[];
 }
 
+/** 16자 hex (sha256 앞 16자 = 디스크 key 형식) 인지 검사. */
+const KEY_PATTERN = /^[0-9a-f]{16}$/;
+
 /**
- * spec URL / 디스크 key 양쪽을 받아 정규화된 key 를 반환.
+ * spec URL / 디스크 key 양쪽을 받아 정규화된 key 와 입력 종류를 반환.
  *
- * - 입력이 16자 hex 면 그대로 key 로 사용 (이미 정규화된 상태).
- * - 그 외에는 sha256(input) 의 앞 16자를 key 로 사용.
+ * - `isKeyInput=true`: 입력이 이미 16자 hex 키 (캐시 lookup 용 — URL 정보 없음).
+ * - `isKeyInput=false`: 입력이 spec URL 또는 그에 준하는 문자열 — sha256 의 앞 16자가 key.
  *
- * 이 함수는 URL 검증을 하지 않는다 — 호출 측이 fetch 단계에서 처리한다.
+ * URL 검증은 하지 않는다 (호출 측 fetch 단계에서 처리). write 처럼 URL 이 반드시
+ * 필요한 경로에서는 `isKeyInput` 을 보고 거부해야 한다.
  */
-export function resolveSpecKey(input: string): { key: string; specUrl: string } {
+export function resolveSpecKey(input: string): { key: string; isKeyInput: boolean } {
   if (!input || typeof input !== "string") {
     throw new Error("resolveSpecKey: input must be a non-empty string");
   }
@@ -145,12 +151,11 @@ export function resolveSpecKey(input: string): { key: string; specUrl: string } 
   if (!trimmed) {
     throw new Error("resolveSpecKey: input must be a non-empty string");
   }
-  // 16자 hex (이미 정규화된 디스크 key) 면 그대로.
-  if (/^[0-9a-f]{16}$/.test(trimmed)) {
-    return { key: trimmed, specUrl: trimmed };
+  if (KEY_PATTERN.test(trimmed)) {
+    return { key: trimmed, isKeyInput: true };
   }
   const key = createHash("sha256").update(trimmed, "utf8").digest("hex").slice(0, 16);
-  return { key, specUrl: trimmed };
+  return { key, isKeyInput: false };
 }
 
 /** 짧은(앞 16자) sha256 — spec 본문 동일성 비교용. */
@@ -160,7 +165,7 @@ export function specHash(content: string): string {
 
 /**
  * spec 의 path × method 합을 센다. malformed 입력은 0.
- * 표준 HTTP method 7 종만 카운트 (`get`/`put`/`post`/`delete`/`patch`/`head`/`options`/`trace`).
+ * OpenAPI 표준 HTTP method 8 종을 카운트 (`get`/`put`/`post`/`delete`/`patch`/`head`/`options`/`trace`).
  */
 const HTTP_METHODS = [
   "get",
@@ -299,14 +304,22 @@ export class OpenapiCache {
   /**
    * raw spec 을 검증 후 캐시에 기록. spec 본문은 안정적인 들여쓰기로 re-stringify
    * 하므로 같은 내용이면 specHash 가 동일하게 유지된다.
+   *
+   * `specUrl` 은 반드시 실제 URL (sha256 의 앞 16자 형식인 디스크 key 입력은 거부) —
+   * 캐시 entry 의 `specUrl` 필드가 후속 fetch 의 source-of-truth 이기 때문이다.
    */
   async write(
-    input: string,
+    specUrl: string,
     spec: OpenapiSpec,
     ttlSeconds?: number,
   ): Promise<{ entry: OpenapiCacheEntry; spec: OpenapiSpec }> {
     assertOpenapiShape(spec);
-    const { key, specUrl } = resolveSpecKey(input);
+    const { key, isKeyInput } = resolveSpecKey(specUrl);
+    if (isKeyInput) {
+      throw new Error(
+        `OpenapiCache.write requires a spec URL, got a 16-hex cache key "${specUrl}" — pass the original URL instead`,
+      );
+    }
     const serialized = `${JSON.stringify(spec, null, 2)}\n`;
     const entry: OpenapiCacheEntry = {
       key,
@@ -362,6 +375,7 @@ export class OpenapiCache {
         ageSeconds,
         title: entry.title,
         specUrl: entry.specUrl,
+        endpointCount: entry.endpointCount,
       };
     } catch {
       return { key, exists: false, expired: false };
@@ -380,6 +394,27 @@ export class OpenapiCache {
     entry.ttlSeconds = 0;
     await writeFile(metaPath, `${JSON.stringify(entry, null, 2)}\n`, "utf8");
     return true;
+  }
+
+  /**
+   * 메타 파일이 (만료 / .spec.json 누락 여부와 무관하게) 존재하면 그 안의 `specUrl` 만 꺼내 반환.
+   * fetchAndCacheSpec 이 16-hex key 입력으로부터 원본 URL 을 복구할 때 쓴다.
+   * 메타 자체가 없거나 파싱이 깨진 경우 null.
+   */
+  async peekSpecUrl(input: string): Promise<string | null> {
+    const { key } = resolveSpecKey(input);
+    const metaPath = join(this.dir, `${key}.json`);
+    if (!existsSync(metaPath)) return null;
+    try {
+      const entry = JSON.parse(
+        await readFile(metaPath, "utf8"),
+      ) as OpenapiCacheEntry;
+      return typeof entry.specUrl === "string" && entry.specUrl.length > 0
+        ? entry.specUrl
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   /**

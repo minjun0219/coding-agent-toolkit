@@ -195,6 +195,42 @@ describe("swagger handlers", () => {
     expect(s.exists).toBe(false);
   });
 
+  it("swagger_get with a 16-hex key recovers the spec URL via meta and refetches", async () => {
+    const url = `${baseUrl}/spec.json`;
+    const first = await handleSwaggerGet(oaCache, url);
+    expect(first.fromCache).toBe(false);
+
+    // 본문만 날리고 메타 유지 → 캐시 miss 지만 specUrl 은 복구 가능.
+    const { rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    rmSync(join(oaDir, `${first.entry.key}.spec.json`));
+
+    const recovered = await handleSwaggerGet(oaCache, first.entry.key);
+    expect(recovered.fromCache).toBe(false);
+    expect(recovered.entry.specUrl).toBe(url);
+    expect(oaCalls).toBe(2);
+  });
+
+  it("swagger_get with a 16-hex key throws clearly when meta is also gone", async () => {
+    const url = `${baseUrl}/spec.json`;
+    const first = await handleSwaggerGet(oaCache, url);
+    const { rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    rmSync(join(oaDir, `${first.entry.key}.spec.json`));
+    rmSync(join(oaDir, `${first.entry.key}.json`));
+
+    await expect(handleSwaggerGet(oaCache, first.entry.key)).rejects.toThrow(
+      /no recoverable spec URL/i,
+    );
+  });
+
+  it("swagger_status returns endpointCount on cache hit", async () => {
+    const url = `${baseUrl}/spec.json`;
+    await handleSwaggerGet(oaCache, url);
+    const s = await handleSwaggerStatus(oaCache, url);
+    expect(s.endpointCount).toBe(3);
+  });
+
   it("swagger_search spans every cached spec", async () => {
     await handleSwaggerGet(oaCache, `${baseUrl}/spec.json`);
     await handleSwaggerGet(oaCache, `${baseUrl}/other.json`);
