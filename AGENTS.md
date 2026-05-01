@@ -4,13 +4,15 @@ Shared guide for AI coding agents (Claude Code, opencode, codex, etc.) working i
 
 ## Project in one line
 
-opencode-only plugin. Three Notion cache tools + one cache-first context / spec-extraction skill + one thin gateway agent (`rocky`, naming convention borrowed from [OmO](https://github.com/code-yeongyu/oh-my-openagent)'s named-specialist pattern). **Runtime is Bun (>=1.0). No Node. No build step (Bun runs TS directly).** Layout follows the [obra/superpowers](https://github.com/obra/superpowers) shape.
+opencode-only plugin. Three Notion cache tools + four OpenAPI cache & search tools + two cache-first skills (`notion-context` for context / Korean specs, `openapi-client` for `fetch`/`axios` snippets) + one thin gateway agent (`rocky`, naming convention borrowed from [OmO](https://github.com/code-yeongyu/oh-my-openagent)'s named-specialist pattern). **Runtime is Bun (>=1.0). No Node. No build step (Bun runs TS directly).** Layout follows the [obra/superpowers](https://github.com/obra/superpowers) shape.
 
 ## Layout
 
-- `.opencode/plugins/agent-toolkit.ts` — plugin entrypoint. `config` hook registers `skills/` and `agents/`, and exposes the three tools (`notion_get` / `notion_refresh` / `notion_status`).
-- `lib/notion-context.ts` — single-file TTL filesystem cache + `resolveCacheKey` + `notionToMarkdown`.
+- `.opencode/plugins/agent-toolkit.ts` — plugin entrypoint. `config` hook registers `skills/` and `agents/`, and exposes seven tools: `notion_get` / `notion_refresh` / `notion_status` plus `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search`.
+- `lib/notion-context.ts` — single-file TTL filesystem cache for Notion pages + `resolveCacheKey` + `notionToMarkdown`.
+- `lib/openapi-context.ts` — single-file TTL filesystem cache for OpenAPI / Swagger JSON specs + `resolveSpecKey` + `searchEndpoints` + shape validation.
 - `skills/notion-context/SKILL.md` — Notion cache-first read + Korean-language spec extraction skill.
+- `skills/openapi-client/SKILL.md` — cached OpenAPI spec → `fetch` or `axios` call snippet skill.
 - `agents/rocky.md` — thin gateway agent (`mode: all`) that exposes the toolkit's Notion flow to users and to other primary agents (e.g. OmO Sisyphus).
 - `.opencode/INSTALL.md` — install guide for opencode users.
 
@@ -36,9 +38,9 @@ Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table fo
 
 ## MVP scope (hold the line)
 
-**In**: single-page Notion read + cache + expiry, one skill, one gateway agent (`rocky`), opencode-only.
+**In**: single-page Notion read + cache + expiry, single OpenAPI / Swagger JSON spec cache + cross-spec endpoint search, two skills (`notion-context`, `openapi-client`), one gateway agent (`rocky`), opencode-only.
 
-**Out**: database queries, OAuth, child pages, multi-host plugin layouts (`.claude-plugin/`, etc.), UI, codex integration, agent-side workflow orchestration (that lives in the caller, not in `rocky`). Anything beyond this scope ships as a separate PR proposal.
+**Out**: database queries, OAuth, Notion child pages, OpenAPI YAML parsing, full SDK code generation, multi-spec merge, mock servers, multi-host plugin layouts (`.claude-plugin/`, etc.), UI, codex integration, agent-side workflow orchestration (that lives in the caller, not in `rocky`). Anything beyond this scope ships as a separate PR proposal.
 
 The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI client generation, …) live in [`ROADMAP.md`](./ROADMAP.md) — phase-by-phase, one PR at a time. Do not pull roadmap items into MVP unless the user explicitly asks.
 
@@ -48,7 +50,7 @@ The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI 
 2. `bun test` passes
 3. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
 4. If a new env var is added, also update the plugin's `readEnv()`
-5. If the plugin's tool contract changes, update the tool-usage rules in `skills/notion-context/SKILL.md` and the corresponding tool description/rules in `agents/rocky.md`
+5. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`) and the corresponding tool description/rules in `agents/rocky.md` when Notion-side
 
 ## MCP servers
 

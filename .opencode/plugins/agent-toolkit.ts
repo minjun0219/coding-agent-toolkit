@@ -9,6 +9,16 @@ import {
   type NotionPageResult,
   type NotionCacheStatus,
 } from "../../lib/notion-context";
+import {
+  OpenapiCache,
+  createOpenapiCacheFromEnv,
+  searchEndpoints,
+  assertOpenapiShape,
+  type OpenapiCacheStatus,
+  type OpenapiEndpointMatch,
+  type OpenapiSpec,
+  type OpenapiSpecResult,
+} from "../../lib/openapi-context";
 
 /**
  * opencode plugin entrypoint (Superpowers 형식).
@@ -36,6 +46,13 @@ const AGENTS_DIR = resolve(REPO_ROOT, "agents");
  */
 export const DEFAULT_NOTION_MCP_URL = "https://mcp.notion.com/mcp";
 
+/**
+ * OpenAPI / Swagger spec 다운로드 timeout 기본값.
+ * Notion 호출보다 spec 본문이 큰 경우가 많아 더 길게 잡는다.
+ * `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` 로 덮어쓴다.
+ */
+export const DEFAULT_OPENAPI_DOWNLOAD_TIMEOUT_MS = 30_000;
+
 function readEnv() {
   const url = process.env.AGENT_TOOLKIT_NOTION_MCP_URL ?? DEFAULT_NOTION_MCP_URL;
   const timeoutMs = Number.parseInt(
@@ -45,6 +62,23 @@ function readEnv() {
   return {
     url: url.replace(/\/$/, ""),
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15_000,
+  };
+}
+
+/**
+ * OpenAPI 다운로드용 env 만 읽는다 — cache dir / TTL 은 cache 모듈이 직접 읽으므로 여기선 timeout 만.
+ */
+function readOpenapiEnv() {
+  const timeoutMs = Number.parseInt(
+    process.env.AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS ??
+      String(DEFAULT_OPENAPI_DOWNLOAD_TIMEOUT_MS),
+    10,
+  );
+  return {
+    timeoutMs:
+      Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? timeoutMs
+        : DEFAULT_OPENAPI_DOWNLOAD_TIMEOUT_MS,
   };
 }
 
@@ -139,12 +173,132 @@ export async function handleNotionStatus(
 }
 
 /**
+ * 공유된 OpenAPI / Swagger JSON spec 을 한 번 다운로드한다.
+ * wire format: GET `${specUrl}` -> JSON OpenAPI document.
+ *
+ * YAML 은 MVP 에서 미지원 — content-type 무관하게 JSON parse 만 시도한다 (parse 실패 → throw).
+ * timeout / 빈 응답 / 잘못된 shape 는 모두 메시지에 URL 과 함께 throw.
+ */
+export async function downloadOpenapiSpec(
+  specUrl: string,
+): Promise<OpenapiSpec> {
+  const { timeoutMs } = readOpenapiEnv();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const res = await fetch(specUrl, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: ac.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `OpenAPI download error ${res.status} ${res.statusText} (url=${specUrl}): ${body.slice(0, 200)}`,
+      );
+    }
+    const text = await res.text();
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      throw new Error(
+        `OpenAPI download from ${specUrl} returned non-JSON body (first 120 chars: ${text.slice(0, 120)})`,
+      );
+    }
+    assertOpenapiShape(data);
+    return data;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        `OpenAPI download timed out after ${timeoutMs}ms (url=${specUrl})`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * 다운로드 → 검증 → 캐시에 기록.
+ * Notion 의 `fetchAndCache` 와 같은 모양이지만 id 검증 단은 없다 (URL 자체가 키).
+ */
+async function fetchAndCacheSpec(
+  cache: OpenapiCache,
+  input: string,
+): Promise<OpenapiSpecResult> {
+  const spec = await downloadOpenapiSpec(input);
+  const written = await cache.write(input, spec);
+  return { ...written, fromCache: false };
+}
+
+/** 도구 핸들러: 캐시 우선. 단위 테스트에서 직접 호출 가능하도록 export. */
+export async function handleSwaggerGet(
+  cache: OpenapiCache,
+  input: string,
+): Promise<OpenapiSpecResult> {
+  const cached = await cache.read(input);
+  if (cached) return { ...cached, fromCache: true };
+  return fetchAndCacheSpec(cache, input);
+}
+
+export async function handleSwaggerRefresh(
+  cache: OpenapiCache,
+  input: string,
+): Promise<OpenapiSpecResult> {
+  return fetchAndCacheSpec(cache, input);
+}
+
+export async function handleSwaggerStatus(
+  cache: OpenapiCache,
+  input: string,
+): Promise<OpenapiCacheStatus> {
+  return cache.status(input);
+}
+
+/**
+ * 캐시된 모든 spec 을 가로질러 endpoint substring 검색.
+ * - 결과는 caller 가 입력한 `limit` 까지 (기본 20).
+ * - 빈 query 는 캐시된 모든 endpoint 를 limit 까지 나열.
+ */
+export async function handleSwaggerSearch(
+  cache: OpenapiCache,
+  query: string,
+  limit?: number,
+): Promise<OpenapiEndpointMatch[]> {
+  const cap = Number.isFinite(limit) && (limit as number) > 0 ? (limit as number) : 20;
+  const all = await cache.list();
+  const out: OpenapiEndpointMatch[] = [];
+  for (const { entry, spec } of all) {
+    const remaining = cap - out.length;
+    if (remaining <= 0) break;
+    const matches = searchEndpoints(spec, query, remaining);
+    for (const m of matches) {
+      out.push({
+        specKey: entry.key,
+        specUrl: entry.specUrl,
+        specTitle: entry.title,
+        method: m.method,
+        path: m.path,
+        operationId: m.operationId,
+        summary: m.summary,
+        tags: m.tags,
+      });
+      if (out.length >= cap) break;
+    }
+  }
+  return out;
+}
+
+/**
  * opencode plugin default export.
  * `directory` 는 opencode 가 plugin 을 로드한 cwd. 우리는 import.meta 기반으로
  * 자기 저장소의 skills/ 를 절대 경로로 잡는다.
  */
 export default async function agentToolkitPlugin(_input: unknown) {
   const cache = createCacheFromEnv();
+  const openapi = createOpenapiCacheFromEnv();
 
   return {
     /**
@@ -188,6 +342,41 @@ export default async function agentToolkitPlugin(_input: unknown) {
         parameters: { input: { type: "string", required: true } },
         async handler({ input }: { input: string }) {
           return handleNotionStatus(cache, input);
+        },
+      },
+      swagger_get: {
+        description:
+          "OpenAPI / Swagger JSON spec 을 캐시 우선 정책으로 가져온다. 캐시 hit 이면 remote 호출 없음. miss 면 spec URL 을 GET 으로 받아 형식 검증 후 캐시에 저장. (input: spec URL 또는 이미 캐시된 16-hex key)",
+        parameters: { input: { type: "string", required: true } },
+        async handler({ input }: { input: string }) {
+          return handleSwaggerGet(openapi, input);
+        },
+      },
+      swagger_refresh: {
+        description:
+          "캐시를 무시하고 OpenAPI spec URL 에서 강제로 다시 가져와 캐시를 갱신한다. (input: spec URL)",
+        parameters: { input: { type: "string", required: true } },
+        async handler({ input }: { input: string }) {
+          return handleSwaggerRefresh(openapi, input);
+        },
+      },
+      swagger_status: {
+        description:
+          "캐시된 OpenAPI spec 의 메타(저장 시각, TTL, 만료 여부, title, endpoint 수)만 조회. remote 호출 없음. (input: spec URL 또는 16-hex key)",
+        parameters: { input: { type: "string", required: true } },
+        async handler({ input }: { input: string }) {
+          return handleSwaggerStatus(openapi, input);
+        },
+      },
+      swagger_search: {
+        description:
+          "캐시된 모든 OpenAPI spec 을 가로질러 path / method / tag / operationId / summary 를 substring 으로 검색한다. remote 호출 없음. (query: 검색어, limit?: 결과 최대 개수, 기본 20)",
+        parameters: {
+          query: { type: "string", required: true },
+          limit: { type: "number", required: false },
+        },
+        async handler({ query, limit }: { query: string; limit?: number }) {
+          return handleSwaggerSearch(openapi, query, limit);
         },
       },
     },
