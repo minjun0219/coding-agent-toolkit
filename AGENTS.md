@@ -60,3 +60,4 @@ The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI 
 - Keep change summaries short (one-line summary, bullets only when needed). Do not produce long-form reports.
 - 코드 리뷰(요약/인라인/수정 제안)는 기본적으로 한국어로 작성한다.
 - PR 리뷰를 요청할 때는 한국어 리뷰를 명시적으로 요청한다. 예: `모든 리뷰 코멘트는 한국어로 작성해 주세요.`
+- PR 제목/본문, 사용자에게 보여 주는 변경 설명도 한국어로 작성한다.
