@@ -6,6 +6,14 @@
 
 작업 컨텍스트를 들고 코드까지 굴리는 에이전트 오케스트레이션 toolkit. Rocky (프론트엔드 전문성을 가진 풀스택 업무 파트너 / agent-toolkit 1차 지휘자, 외부 sub-agent / skill 위임 가능) 를 시작점으로, 기억 → 추적 → 코드 생성으로 표면을 넓혀 간다.
 
+세 갈래의 장기 방향:
+
+1. **업무/코딩 파트너로서 단독으로도 충분한 토대.** opencode 의 다섯 종 primitive (agent / skill / command / MCP / tool) 를 적재적소에 섞어 쓰는 composition foundation 을 만든다 — 새 skillset 이나 tool 이 추가되면 자동 discovery + token-cost 기반 라우팅으로 cheapest path 를 고른다. (자세한 단계는 **Phase 7**.)
+2. **외부 primary 와의 시너지.** OmO Sisyphus / Superpowers 같은 외부 primary agent 가 동일 opencode 세션에 있을 때, agent-toolkit 의 description-driven routing 이 깨지지 않고 자연스럽게 위임이 흘러가도록 coexistence 규약을 둔다. agent-toolkit 은 이들과 경쟁하지 않고 (Notion / OpenAPI / SPEC 등) 토킷 고유 surface 를 책임진다. (자세한 단계는 **Phase 8**.)
+3. **회사 맞춤 토킷의 base.** 회사 / 팀이 agent-toolkit 을 의존성으로 들고 자기네 tool / skill / agent 를 얹는 커스텀 토킷을 만들 수 있도록 plugin (현재 형태) + library (`lib/*` exports) 두 형태로 패키징한다. 의존하는 쪽은 Notion 캐시 / OpenAPI / 저널 / SPEC lifecycle 같은 공통 인프라를 재사용하고, 회사 고유 surface 만 추가한다. (자세한 단계는 **Phase 9**.)
+
+저장소 이름은 이 세 갈래에 맞춰 `coding-agent-toolkit` → `agent-toolkit` 으로 rename 예정 (자세한 sweep 항목은 "미정 / 결정 필요" 절 참고).
+
 ## 능력 목표
 
 원본 메모 — 분리 단위 그대로 유지.
@@ -62,6 +70,49 @@
   - **opencode 단독 능력 한계**: opencode plugin API 의 `tool` 만 동적 등록 가능, agent / skill / command 는 path-based (`.md` 정적). 즉 TS-based loader 는 (a) OmO 같은 외부 harness 가 있는 환경에서만 의미가 있거나 (b) 토킷이 자체 loader 를 만들어 `.ts` AgentConfig → runtime `.md` 로 emit 해야 한다.
   - **방향**: `.md` 가 baseline 으로 남고, `.ts` 정의는 OmO 가 있을 때 옵트인으로 활성화 — 토킷이 OmO 의존을 강제하지 않는다. plugin entrypoint 가 `agents/*.ts` 가 있으면 OmO loader 에 위임, 없으면 `.md` 만 노출.
   - 의존성 0 의 자체 loader (b) 는 별도 PR 로 검토 — 트리거는 "정적 prompt 로는 부족한 첫 use case 가 등장할 때". 지금은 추적만.
+- **Phase 7 — Primitive composition foundation** *(미정 후보, 토대 우선)*
+  - 새 tool / skill / agent / command / MCP 가 추가될 때 자동으로 "어느 자리에 슬롯되는지 / 어떤 token cost 를 갖는지" 를 surface 하는 **manifest 층**.
+  - 각 primitive 가 frontmatter / config 로 다음을 선언:
+    - `requires` — 의존 primitive ID 목록
+    - `tokenClass` — `low` | `medium` | `high` (대략 비용 표시; 정밀 측정은 후속)
+    - `cacheLayer` — `yes` (cache-first) / `no` (remote-first)
+    - `inputShape` / `outputShape` — 입력/출력 패턴 (e.g., `notion-url`, `openapi-handle`, `code-snippet`, `checklist`)
+  - **Composition router** (Rocky 같은 1차 conductor 가 사용) 가 manifest 를 보고 cheapest path 선택 — 같은 비용이면 cache-first 우선. 같은 input shape 에 대해 두 primitive 가 매칭되면 `tokenClass` 가 낮은 쪽이 우선.
+  - **자동 discovery** — 새 skill 이 `skills/` 에 들어오거나 새 plugin 이 등록되면 manifest 를 읽어 라우팅 표 자동 갱신. Rocky / Grace 의 `description` 도 description-driven routing 깨지 않게 동기화.
+  - **트리거**: skill / tool 갯수가 description-driven routing 의 한계를 넘을 때. 현재 3 skill / 2 agent / 12 tool — 5+ skill / 4+ agent / 20+ tool 단계에서 검토. 지금은 토대만 박아두고 routing 자체는 description 으로 충분.
+- **Phase 8 — 외부 primary 와의 coexistence** *(미정 후보, doc-heavy)*
+  - OmO Sisyphus / Hephaestus / Superpowers 같은 외부 primary agent 와 동일 opencode 세션에서 동작할 때의 협조 규약. agent-toolkit 은 이들과 **경쟁하지 않고** Notion / OpenAPI / SPEC 등 토킷 고유 surface 만 책임진다.
+  - In-scope:
+    - 외부 primary 별 trigger keyword set 의 주기 audit (overlap 감지 — agent-toolkit 의 키워드와 충돌하면 한 쪽이 양보)
+    - "input shape → 어느 primary" 라우팅 매트릭스 문서 (`COEXISTENCE.md` 후보)
+    - 외부 primary 가 description 에 토킷 surface 키워드를 박지 않도록 권고 (사용자가 어느 쪽으로 보낼지 직접 선택)
+    - 토킷 sub-agent (`@grace`) 를 외부 primary 가 직접 호출할 때의 contract / 결과 형식 고정
+    - opencode hook (`tool.execute.before`, `experimental.session.compacting`) 에서 plugin 끼리 충돌하지 않는 방어 패턴
+  - Out-of-scope: 외부 primary 의 source 변경, 자동 감지/등록 (opencode plugin API 가 다른 plugin 을 introspect 못 함).
+  - **트리거**: 사용자가 OmO / Superpowers 를 함께 쓰면서 trigger 충돌이 처음 관찰될 때. 현재는 단독 사용이 많아 우선순위 낮음.
+- **Phase 9 — Extensible base for downstream toolkits** *(미정 후보, packaging-heavy)*
+  - 회사 / 팀이 agent-toolkit 을 의존성으로 들고 자기네 tool / skill / agent 를 얹는 커스텀 토킷을 만들 수 있게.
+  - 패키지 형태 두 가지 병행:
+    - **Plugin (현재 형태)** — `opencode.json` 의 `plugin` 배열에 git+ ref 로 추가. 변경 없음.
+    - **Library (신규)** — `lib/*.ts` (`notion-context`, `openapi-context`, `agent-journal`, `toolkit-config`) 을 `package.json` `exports` 로 공개해 downstream 이 직접 `import` 가능.
+  - Downstream 사용 패턴 (예시):
+    ```ts
+    // company-toolkit/.opencode/plugins/company-toolkit.ts
+    import { resolveCacheKey, notionToMarkdown } from "agent-toolkit/notion-context";
+    import { type Plugin } from "@opencode-ai/plugin";
+
+    export const CompanyToolkit: Plugin = async (ctx) => ({
+      tool: { /* 회사 고유 tools */ },
+      // 회사 고유 skills / agents 는 자체 ./skills, ./agents 에서 path-based 로 노출
+    });
+    ```
+  - `opencode.json` 에 두 plugin 모두 등록:
+    ```jsonc
+    { "plugin": ["agent-toolkit@git+https://...", "./company-toolkit"] }
+    ```
+  - 두 plugin 의 tool 이 같은 이름이면 opencode 정책상 후순위가 이긴다 — downstream 이 명시적으로 override 하지 않는 한 agent-toolkit 의 tool 이 그대로 노출.
+  - 함께 결정해야 할 것: npm publish 여부 (`@minjun0219/agent-toolkit` 또는 unscoped `agent-toolkit`) vs git+ 만 유지, semver 정책 (현재 `0.1.0`).
+  - **트리거**: 첫 회사 use case 가 등장할 때 (현재는 사용자 본인 N=1).
 - **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7))*
   - 한글 주석 / JSDoc 정책의 lint 단 검증 (필요해지면)
 
@@ -88,3 +139,15 @@
 - memo #1 의 "기억" 영속 층은 디스크로 결정 (Phase 3 MVP). cross-machine 동기화 / 자연어 검색 / 자동 요약 / 압축은 후속 phase.
 - memo #6 의 GitHub 연동을 외부 MCP 로 위임할지 자체 도구로 만들지.
 - Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — Phase 5 에서 SPEC 합의 lifecycle 이 `@grace` sub-agent 로 분리됨 (`spec-pact` 스킬 + INDEX 자동 갱신). 추가 분리(`linear`, `swagger` 등 sub-partner) 트리거의 임계는 그만큼 높아졌고, 분리는 "특정 surface 가 충분히 두꺼워져 별도 persona / 별도 contract 가 필요해질 때" 로 제한한다 — 이번 Grace 분리도 같은 기준 (lifecycle 의 finalize/lock 권한이 Rocky 의 라우팅 책임과 충돌) 으로 결정됨.
+- **Repo rename: `coding-agent-toolkit` → `agent-toolkit`** *(기술적으로 가능, 트리거 시 sweep)*
+  - GitHub repo settings 에서 rename — 자동 redirect 활성화로 기존 URL / clone / PR / issue link 가 그대로 살아남는다.
+  - 동기화 sweep 대상:
+    - `agent-toolkit.schema.json` 의 `$id` URL (`raw.githubusercontent.com/.../coding-agent-toolkit/...` → `.../agent-toolkit/...`)
+    - `README.md` plugin install URL (`agent-toolkit@git+https://github.com/minjun0219/coding-agent-toolkit.git`)
+    - `.opencode/INSTALL.md` 의 동일 URL
+    - `AGENTS.md` / `ROADMAP.md` / 본 문서 내 issue / PR / repo link 전부
+  - `package.json` `name` 은 이미 `"agent-toolkit"` — 변경 불필요.
+  - **주의**: rename 자체는 1회성이지만 sweep PR 이 별도로 필요하고, npm publish 여부는 Phase 9 와 함께 결정 (`@minjun0219/agent-toolkit` scoped vs unscoped, MIT 유지).
+- **Phase 7 의 composition router 자동 vs 수동** — manifest 기반 라우팅이 description-driven routing 을 자동 대체할지, Rocky 가 명시적으로 manifest 를 lookup 할지. 자동화는 token 절감이 크지만 디버그 가능성 / 사용자 control 이 떨어진다. 첫 도입 시점에 결정.
+- **Phase 8 의 외부 primary 충돌 해소 정책** — agent-toolkit 의 키워드와 외부 primary 의 키워드가 겹칠 때, 어느 쪽이 양보할지의 기본 원칙 (트리거 빈도 vs 해당 surface 책임 vs 사용자 선택권). 첫 충돌 사례가 등장하면 해당 규약을 `COEXISTENCE.md` 에 박는다.
+- **Phase 9 의 license / publish 전략** — npm 공개 vs git+ 내부만, scoped vs unscoped, MIT 유지 vs 회사 정책 대응. Phase 9 진입 시 결정.
