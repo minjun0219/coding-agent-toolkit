@@ -12,7 +12,7 @@
 2. **외부 primary 와의 시너지.** OmO Sisyphus / Superpowers 같은 외부 primary agent 가 동일 opencode 세션에 있을 때, agent-toolkit 의 description-driven routing 이 깨지지 않고 자연스럽게 위임이 흘러가도록 coexistence 규약을 둔다. agent-toolkit 은 이들과 경쟁하지 않고 (Notion / OpenAPI / SPEC 등) 토킷 고유 surface 를 책임진다. (자세한 단계는 **Phase 8**.)
 3. **회사 맞춤 토킷의 base.** 회사 / 팀이 agent-toolkit 을 의존성으로 들고 자기네 tool / skill / agent 를 얹는 커스텀 토킷을 만들 수 있도록 plugin (현재 형태) + library (`lib/*` exports) 두 형태로 패키징한다. 의존하는 쪽은 Notion 캐시 / OpenAPI / 저널 / SPEC lifecycle 같은 공통 인프라를 재사용하고, 회사 고유 surface 만 추가한다. (자세한 단계는 **Phase 9**.)
 
-저장소 이름은 이 세 갈래에 맞춰 `coding-agent-toolkit` → `agent-toolkit` 으로 rename 예정 (자세한 sweep 항목은 "미정 / 결정 필요" 절 참고).
+저장소 이름은 이 세 갈래에 맞춰 `coding-agent-toolkit` → `agent-toolkit` 으로 rename 완료 (GitHub redirect 로 기존 URL / clone / PR / issue link 는 그대로 유지).
 
 ## 능력 목표
 
@@ -30,28 +30,28 @@
 
 | # | 항목 | 상태 | 추적 issue | 비고 |
 | --- | --- | --- | --- | --- |
-| 1 | 에이전트 자동 기억/기록 | ✅ MVP | [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5) | `journal_append` / `journal_read` / `journal_search` / `journal_status`, `lib/agent-journal.ts` (append-only JSONL, 디스크 영속, 시간순 + page-key 기반 lookup) |
-| 2 | 상세 주석 | 🚧 부분 | [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7) | JSDoc 규칙 (`AGENTS.md`) 으로 정책은 박힘; 강제 / 검증은 미구현 |
-| 3 | 한글 주석/설명 | ✅ 정책 (검증 미구현) | [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7) | `AGENTS.md` coding rules + output 정책 |
+| 1 | 에이전트 자동 기억/기록 | ✅ MVP | [#5](https://github.com/minjun0219/agent-toolkit/issues/5) | `journal_append` / `journal_read` / `journal_search` / `journal_status`, `lib/agent-journal.ts` (append-only JSONL, 디스크 영속, 시간순 + page-key 기반 lookup) |
+| 2 | 상세 주석 | 🚧 부분 | [#7](https://github.com/minjun0219/agent-toolkit/issues/7) | JSDoc 규칙 (`AGENTS.md`) 으로 정책은 박힘; 강제 / 검증은 미구현 |
+| 3 | 한글 주석/설명 | ✅ 정책 (검증 미구현) | [#7](https://github.com/minjun0219/agent-toolkit/issues/7) | `AGENTS.md` coding rules + output 정책 |
 | 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
 | 5 | Notion → 개발 스펙 분해 | ✅ MVP+합의 lifecycle | — | `skills/notion-context/SKILL.md` spec mode (단발성) + `skills/spec-pact/SKILL.md` 4 모드 (`grace` sub-agent 가 conduct, INDEX·SPEC·journal 4 종 kind 로 lock / drift / amend 까지 추적) |
-| 6 | 스펙 → GitHub Issue 추적 | 📋 planned (Phase 5 SPEC 위에 올라감) | [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4) | issue body source-of-truth 를 노션 본문 대신 grace 가 잠근 SPEC body 로 — drift / 양방향 sync 단순화 |
-| 7 | OpenAPI 캐시 + client 작성 | ✅ MVP+registry | [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`, `lib/openapi-context.ts`, `lib/openapi-registry.ts`, `lib/toolkit-config.ts` + `agent-toolkit.schema.json`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet, host:env:spec 핸들 + scope 검색) |
+| 6 | 스펙 → GitHub Issue 추적 | 📋 planned (Phase 5 SPEC 위에 올라감) | [#4](https://github.com/minjun0219/agent-toolkit/issues/4) | issue body source-of-truth 를 노션 본문 대신 grace 가 잠근 SPEC body 로 — drift / 양방향 sync 단순화 |
+| 7 | OpenAPI 캐시 + client 작성 | ✅ MVP+registry | [#6](https://github.com/minjun0219/agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`, `lib/openapi-context.ts`, `lib/openapi-registry.ts`, `lib/toolkit-config.ts` + `agent-toolkit.schema.json`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet, host:env:spec 핸들 + scope 검색) |
 
 ## 제안 단계
 
 각 단계는 별도 PR. MVP scope 경계는 `AGENTS.md` 가 들고 있고, 이 ROADMAP 은 그 경계를 넓히는 후보 작업의 모음이다.
 
-- **Phase 1 — 완료** *(PR [#3](https://github.com/minjun0219/coding-agent-toolkit/pull/3))*
+- **Phase 1 — 완료** *(PR [#3](https://github.com/minjun0219/agent-toolkit/pull/3))*
   - Notion 캐시 + 스펙 추출 + Rocky 업무 파트너 / agent-toolkit 1차 지휘자 (`mode: all`)
-- **Phase 2 — 스펙 → GitHub Issue / Project 동기화** *(memo #6, issue [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4))*
+- **Phase 2 — 스펙 → GitHub Issue / Project 동기화** *(memo #6, issue [#4](https://github.com/minjun0219/agent-toolkit/issues/4))*
   - Rocky 의 spec 모드 출력을 그대로 issue 시리즈로 변환하는 skill / 도구
   - 매핑 후보: 한 Notion 페이지 = 한 epic, "TODO" 섹션의 bullet 1 개 = 한 issue
-- **Phase 3 — 에이전트 자동 기억 / 기록 — 완료** *(memo #1, issue [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5))*
+- **Phase 3 — 에이전트 자동 기억 / 기록 — 완료** *(memo #1, issue [#5](https://github.com/minjun0219/agent-toolkit/issues/5))*
   - `journal_append` / `journal_read` / `journal_search` / `journal_status` 4 도구 + `lib/agent-journal.ts` append-only JSONL (TTL 없음, 손상 라인 graceful skip)
   - 시간순 + `kind` / `tag` / `pageId` / `since` 필터 + substring 검색
   - Rocky 본문에 "read 먼저 → append 마지막" 인용 규칙 박힘 (`agents/rocky.md` Memory 절)
-- **Phase 4 — OpenAPI 캐시 + client 작성 — 완료** *(memo #7, issue [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6))*
+- **Phase 4 — OpenAPI 캐시 + client 작성 — 완료** *(memo #7, issue [#6](https://github.com/minjun0219/agent-toolkit/issues/6))*
   - `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` 4 도구 + `lib/openapi-context.ts` TTL 파일 캐시 + `skills/openapi-client/SKILL.md`
   - JSON-only (YAML 미지원), 단일 endpoint → `fetch` / `axios` snippet 한 덩어리
 - **Phase 4.5 — OpenAPI environment registry — 완료** *(memo #7 확장)*
@@ -131,7 +131,7 @@
   - 두 plugin 의 tool 이 같은 이름이면 opencode 정책상 후순위가 이긴다 — downstream 이 명시적으로 override 하지 않는 한 agent-toolkit 의 tool 이 그대로 노출.
   - 함께 결정해야 할 것: npm publish 여부 (`@minjun0219/agent-toolkit` 또는 unscoped `agent-toolkit`) vs git+ 만 유지, semver 정책 (현재 `0.1.0`).
   - **트리거**: 첫 회사 use case 가 등장할 때 (현재는 사용자 본인 N=1).
-- **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7))*
+- **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/agent-toolkit/issues/7))*
   - 한글 주석 / JSDoc 정책의 lint 단 검증 (필요해지면)
 
 ## 워크플로 관리
@@ -157,15 +157,7 @@
 - memo #1 의 "기억" 영속 층은 디스크로 결정 (Phase 3 MVP). cross-machine 동기화 / 자연어 검색 / 자동 요약 / 압축은 후속 phase.
 - memo #6 의 GitHub 연동을 외부 MCP 로 위임할지 자체 도구로 만들지.
 - Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — Phase 5 에서 SPEC 합의 lifecycle 이 `@grace` sub-agent 로 분리됨 (`spec-pact` 스킬 + INDEX 자동 갱신). 추가 분리(`linear`, `swagger` 등 sub-partner) 트리거의 임계는 그만큼 높아졌고, 분리는 "특정 surface 가 충분히 두꺼워져 별도 persona / 별도 contract 가 필요해질 때" 로 제한한다 — 이번 Grace 분리도 같은 기준 (lifecycle 의 finalize/lock 권한이 Rocky 의 라우팅 책임과 충돌) 으로 결정됨.
-- **Repo rename: `coding-agent-toolkit` → `agent-toolkit`** *(기술적으로 가능, 트리거 시 sweep)*
-  - GitHub repo settings 에서 rename — 자동 redirect 활성화로 기존 URL / clone / PR / issue link 가 그대로 살아남는다.
-  - 동기화 sweep 대상:
-    - `agent-toolkit.schema.json` 의 `$id` URL (`raw.githubusercontent.com/.../coding-agent-toolkit/...` → `.../agent-toolkit/...`)
-    - `README.md` plugin install URL (`agent-toolkit@git+https://github.com/minjun0219/coding-agent-toolkit.git`)
-    - `.opencode/INSTALL.md` 의 동일 URL
-    - `AGENTS.md` / `ROADMAP.md` / 본 문서 내 issue / PR / repo link 전부
-  - `package.json` `name` 은 이미 `"agent-toolkit"` — 변경 불필요.
-  - **주의**: rename 자체는 1회성이지만 sweep PR 이 별도로 필요하고, npm publish 여부는 Phase 9 와 함께 결정 (`@minjun0219/agent-toolkit` scoped vs unscoped, MIT 유지).
+- **Repo rename: `coding-agent-toolkit` → `agent-toolkit`** — 완료. GitHub redirect 로 기존 URL / clone / PR / issue link 는 그대로 유지. prose / URL sweep (`agent-toolkit.schema.json` `$id` + description, `README.md` plugin install URL + `$schema`, `.opencode/INSTALL.md` install URL, `ROADMAP.md` issue/PR link) 도 별도 PR 로 반영 완료. `package.json` `name` 은 처음부터 `"agent-toolkit"` 이라 변경 없음. npm publish 여부 (`@minjun0219/agent-toolkit` scoped vs unscoped, MIT 유지) 는 Phase 9 와 함께 결정.
 - **Phase 6.A 의 fragment 분리 단위** — agent 단위 / 모드 단위 / journal 항목 단위 중 어디까지 쪼갤지. 너무 잘게 쪼개면 조립 비용이 fragment 절감을 상쇄하고, 너무 거칠게 쪼개면 token 절감 효과가 미미. 첫 도입 시점에 측정으로 결정.
 - **Phase 6.B 의 OmO 감지 방식** — 환경변수 명시 opt-in (`AGENT_TOOLKIT_OMO_HARNESS=1`) vs `opencode.json` 의 `plugin` 배열 자동 감지. 자동 감지는 매끄럽지만 잘못된 위임 위험 (OmO 와 호환 안 되는 변경이 들어왔을 때 silent fail).
 - **Phase 7 의 composition router 자동 vs 수동** — manifest 기반 라우팅이 description-driven routing 을 자동 대체할지, Rocky 가 명시적으로 manifest 를 lookup 할지. 자동화는 token 절감이 크지만 디버그 가능성 / 사용자 control 이 떨어진다. 첫 도입 시점에 결정.

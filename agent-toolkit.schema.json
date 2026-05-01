@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/minjun0219/coding-agent-toolkit/main/agent-toolkit.schema.json",
+  "$id": "https://raw.githubusercontent.com/minjun0219/agent-toolkit/main/agent-toolkit.schema.json",
   "title": "agent-toolkit config",
-  "description": "Plugin-wide configuration for the coding-agent-toolkit opencode plugin. Project config (./.opencode/agent-toolkit.json) overrides user config (~/.config/opencode/agent-toolkit/agent-toolkit.json) at the leaf level.",
+  "description": "Plugin-wide configuration for the agent-toolkit opencode plugin. Project config (./.opencode/agent-toolkit.json) overrides user config (~/.config/opencode/agent-toolkit/agent-toolkit.json) at the leaf level.",
   "type": "object",
   "properties": {
     "$schema": {

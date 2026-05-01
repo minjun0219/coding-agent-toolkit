@@ -53,7 +53,7 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 `opencode.json` 의 `plugin` 배열에 추가하고 opencode 를 재시작:
 
 ```json
-{ "plugin": ["agent-toolkit@git+https://github.com/minjun0219/coding-agent-toolkit.git"] }
+{ "plugin": ["agent-toolkit@git+https://github.com/minjun0219/agent-toolkit.git"] }
 ```
 
 자세한 환경변수 / 검증 흐름은 [`.opencode/INSTALL.md`](./.opencode/INSTALL.md) 참고.
@@ -132,7 +132,7 @@ OpenAPI registry 를 선언하면 `swagger_*` 도구를 URL 대신 `host:env:spe
 ```jsonc
 // ~/.config/opencode/agent-toolkit/agent-toolkit.json
 {
-  "$schema": "https://raw.githubusercontent.com/minjun0219/coding-agent-toolkit/main/agent-toolkit.schema.json",
+  "$schema": "https://raw.githubusercontent.com/minjun0219/agent-toolkit/main/agent-toolkit.schema.json",
   "openapi": {
     "registry": {
       "acme": {
@@ -151,7 +151,7 @@ SPEC-합의 lifecycle (grace + spec-pact) 의 storage 위치도 같은 파일에
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/minjun0219/coding-agent-toolkit/main/agent-toolkit.schema.json",
+  "$schema": "https://raw.githubusercontent.com/minjun0219/agent-toolkit/main/agent-toolkit.schema.json",
   "spec": {
     "dir": ".agent/specs",      // slug-mode SPEC + INDEX 가 사는 디렉터리
     "scanDirectorySpec": true,  // **/SPEC.md (AGENTS.md 스타일) 도 INDEX 에 surface

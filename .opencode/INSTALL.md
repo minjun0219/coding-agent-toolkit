@@ -5,7 +5,7 @@ Add this repository to the `plugin` array in `opencode.json` and restart opencod
 ```json
 {
   "plugin": [
-    "agent-toolkit@git+https://github.com/minjun0219/coding-agent-toolkit.git"
+    "agent-toolkit@git+https://github.com/minjun0219/agent-toolkit.git"
   ]
 }
 ```
@@ -14,7 +14,7 @@ Or, to use a local checkout directly:
 
 ```json
 {
-  "plugin": ["./path/to/coding-agent-toolkit"]
+  "plugin": ["./path/to/agent-toolkit"]
 }
 ```
 
@@ -64,7 +64,7 @@ Once you write an `agent-toolkit.json`, the swagger tools accept short `host:env
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/minjun0219/coding-agent-toolkit/main/agent-toolkit.schema.json",
+  "$schema": "https://raw.githubusercontent.com/minjun0219/agent-toolkit/main/agent-toolkit.schema.json",
   "openapi": {
     "registry": {
       "acme": {
