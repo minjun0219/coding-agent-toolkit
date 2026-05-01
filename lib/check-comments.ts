@@ -39,6 +39,18 @@ export interface Violation {
 }
 
 /**
+ * lint 가 훑는 디렉터리 단일 소스 — CLI (`tools/check-comments.ts`) 와 통합
+ * 테스트 (`check-comments.integration.test.ts`) 가 이 상수를 import 해 같은
+ * 검사 대상을 공유한다. 둘이 갈라지면 `bun test` 와 `bun run lint:comments`
+ * 결과가 어긋날 수 있어 하나로 모은다.
+ */
+export const COMMENT_LINT_TARGET_DIRS = [
+  "lib",
+  ".opencode/plugins",
+  "tools",
+] as const;
+
+/**
  * 단일 TypeScript 소스를 검사한다.
  *
  * `file` 은 메시지에 그대로 들어가며 — 절대 / 상대 경로 결정은 호출자 책임이다.
@@ -110,7 +122,10 @@ function checkHangul(
   for (const c of extractComments(source)) {
     const inner = stripCommentMarkers(c.text);
     if (!shouldCheckComment(inner)) continue;
-    if (!ENGLISH_WORD_RE.test(inner)) continue;
+    // URL 자체는 영어 단어로 치지 않는다 — 제거 후에도 영어 단어가 남아 있는
+    // 경우에만 한글 부재를 위반으로 본다 (예: `// see https://...` 의 "see").
+    const withoutUrls = stripUrls(inner);
+    if (!ENGLISH_WORD_RE.test(withoutUrls)) continue;
     if (HANGUL_RE.test(inner)) continue;
     const line = sf.getLineAndCharacterOfPosition(c.start).line + 1;
     out.push({
@@ -124,6 +139,11 @@ function checkHangul(
   return out;
 }
 
+/** 흔한 scheme (http/https/ftp/file/git/ssh) URL 토큰을 공백으로 치환. */
+function stripUrls(text: string): string {
+  return text.replace(/\b(?:https?|ftp|file|git|ssh):\/\/\S+/gi, " ");
+}
+
 interface RawComment {
   start: number;
   text: string;
@@ -135,46 +155,79 @@ interface RawComment {
  * `ts.createScanner` 는 template literal 의 `${...}` 와 backtick 짝을 자체적으로
  * 추적하지 못해, 큰 파일에서 backtick 안의 `//` 를 single-line comment 로 잘못
  * 잡는 경우가 있어 (`reScanTemplateToken` 호출이 필요하다) 직접 상태를 tracking
- * 하는 작은 lexer 로 대체했다. 정규식 리터럴은 단순화를 위해 division 으로
- * 취급한다 — `// ` 가 정규식 안에 들어가는 건 매우 드물고, 들어가더라도 escape
- * 가 들어가야 하므로 false positive 가능성은 낮다.
+ * 하는 작은 lexer 로 대체했다. template expression (`${...}`) 안의 주석도
+ * 정책 우회를 막기 위해 똑같이 수집한다 — `scanCode` 가 재귀 호출로 brace
+ * 깊이를 추적하며 한 lexer 가 모든 컨텍스트를 처리한다. 정규식 리터럴은
+ * 단순화를 위해 division 으로 취급한다 — `// ` 가 정규식 안에 들어가는 건
+ * 매우 드물고, 들어가더라도 escape 가 필요하므로 false positive 가능성은 낮다.
  */
 function extractComments(source: string): RawComment[] {
   const out: RawComment[] = [];
-  const n = source.length;
-  let i = 0;
+  scanCode(source, 0, /*tracksClosingBrace 인자*/ false, out);
+  return out;
+}
+
+/**
+ * 코드 본문을 lexing 하면서 만나는 모든 주석을 `out` 에 push 한다.
+ *
+ * `tracksClosingBrace` 가 true 면 brace depth 가 0 이 되는 닫는 `}` 위치 +1
+ * 을 반환해 호출자 (template expression) 가 이어 받게 한다. false 면 EOF
+ * 까지 진행 후 `source.length` 반환.
+ */
+function scanCode(
+  s: string,
+  start: number,
+  tracksClosingBrace: boolean,
+  out: RawComment[],
+): number {
+  const n = s.length;
+  let i = start;
+  let depth = tracksClosingBrace ? 1 : 0;
   while (i < n) {
-    const c = source[i]!;
-    if (c === "/" && i + 1 < n) {
-      const next = source[i + 1];
-      if (next === "/") {
-        const start = i;
-        i += 2;
-        while (i < n && source[i] !== "\n") i++;
-        out.push({ start, text: source.slice(start, i) });
-        continue;
-      }
-      if (next === "*") {
-        const start = i;
-        i += 2;
-        while (i < n - 1 && !(source[i] === "*" && source[i + 1] === "/")) i++;
-        if (i < n - 1) i += 2;
-        else i = n;
-        out.push({ start, text: source.slice(start, i) });
-        continue;
-      }
-    }
+    const c = s[i]!;
     if (c === '"' || c === "'") {
-      i = skipQuotedString(source, i, c);
+      i = skipQuotedString(s, i, c);
       continue;
     }
     if (c === "`") {
-      i = skipTemplateLiteral(source, i);
+      i = scanTemplateLiteral(s, i, out);
       continue;
+    }
+    if (tracksClosingBrace) {
+      if (c === "{") {
+        depth++;
+        i++;
+        continue;
+      }
+      if (c === "}") {
+        depth--;
+        i++;
+        if (depth === 0) return i;
+        continue;
+      }
+    }
+    if (c === "/" && i + 1 < n) {
+      const next = s[i + 1];
+      if (next === "/") {
+        const cstart = i;
+        i += 2;
+        while (i < n && s[i] !== "\n") i++;
+        out.push({ start: cstart, text: s.slice(cstart, i) });
+        continue;
+      }
+      if (next === "*") {
+        const cstart = i;
+        i += 2;
+        while (i < n - 1 && !(s[i] === "*" && s[i + 1] === "/")) i++;
+        if (i < n - 1) i += 2;
+        else i = n;
+        out.push({ start: cstart, text: s.slice(cstart, i) });
+        continue;
+      }
     }
     i++;
   }
-  return out;
+  return i;
 }
 
 /** `'...'` 또는 `"..."` 를 건너뛰고 닫는 quote 다음 위치를 반환한다. */
@@ -195,12 +248,14 @@ function skipQuotedString(s: string, start: number, quote: string): number {
 }
 
 /**
- * `\`...\`` 를 건너뛰는데, `${...}` 안에서는 다시 일반 코드 lexer 로 들어가
- * 중첩된 string / template / comment 는 무시하고 brace depth 만 추적한다.
- *
- * 닫는 backtick 다음 위치를 반환한다 — 닫히지 않으면 EOF.
+ * `\`...\`` 를 건너뛰며 — `${...}` 본문은 `scanCode` 로 재귀 들어가 그 안의
+ * 주석도 동일하게 수집한다. 닫는 backtick 다음 위치를 반환한다.
  */
-function skipTemplateLiteral(s: string, start: number): number {
+function scanTemplateLiteral(
+  s: string,
+  start: number,
+  out: RawComment[],
+): number {
   let i = start + 1;
   const n = s.length;
   while (i < n) {
@@ -211,52 +266,8 @@ function skipTemplateLiteral(s: string, start: number): number {
     }
     if (c === "`") return i + 1;
     if (c === "$" && s[i + 1] === "{") {
-      i = skipTemplateExpression(s, i + 2);
+      i = scanCode(s, i + 2, /*tracksClosingBrace 인자*/ true, out);
       continue;
-    }
-    i++;
-  }
-  return i;
-}
-
-/** template literal 의 `${...}` 본문을 건너뛴다 — brace depth 가 0 이 되면 종료. */
-function skipTemplateExpression(s: string, start: number): number {
-  let i = start;
-  const n = s.length;
-  let depth = 1;
-  while (i < n && depth > 0) {
-    const c = s[i]!;
-    if (c === '"' || c === "'") {
-      i = skipQuotedString(s, i, c);
-      continue;
-    }
-    if (c === "`") {
-      i = skipTemplateLiteral(s, i);
-      continue;
-    }
-    if (c === "{") {
-      depth++;
-      i++;
-      continue;
-    }
-    if (c === "}") {
-      depth--;
-      i++;
-      continue;
-    }
-    if (c === "/" && i + 1 < n) {
-      const next = s[i + 1];
-      if (next === "/") {
-        while (i < n && s[i] !== "\n") i++;
-        continue;
-      }
-      if (next === "*") {
-        i += 2;
-        while (i < n - 1 && !(s[i] === "*" && s[i + 1] === "/")) i++;
-        if (i < n - 1) i += 2;
-        else i = n;
-        continue;
-      }
     }
     i++;
   }

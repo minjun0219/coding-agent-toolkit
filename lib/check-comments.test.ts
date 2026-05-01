@@ -135,6 +135,66 @@ describe("checkSource — hangul-required", () => {
   });
 });
 
+describe("checkSource — URL-only 주석 면제", () => {
+  test("URL 만 있는 // 주석은 통과", () => {
+    const cases = [
+      `// https://developer.mozilla.org/en-US/docs/Web\n`,
+      `// http://example.com/foo/bar\n`,
+      `// 참고 https://x.test\n`,
+      `// ftp://files.example.com/spec.json\n`,
+    ];
+    for (const c of cases) {
+      const v = checkSource("a.ts", `${c}const x = 1;\n`);
+      expect(v.filter((x) => x.rule === "hangul-required")).toHaveLength(0);
+    }
+  });
+
+  test("URL + 영어 prose 가 섞이면 여전히 위반", () => {
+    const src = `// see https://example.com/foo for details\nconst x = 1;\n`;
+    const v = checkSource("a.ts", src);
+    expect(v.some((x) => x.rule === "hangul-required")).toBe(true);
+  });
+
+  test("URL + 한글 설명이 섞이면 통과", () => {
+    const src = `// 참고 자료: https://example.com/foo\nconst x = 1;\n`;
+    expect(checkSource("a.ts", src)).toHaveLength(0);
+  });
+});
+
+describe("checkSource — template expression 안의 주석", () => {
+  test("`${ ... /* english only */ ... }` 안의 영어 전용 주석도 잡아낸다", () => {
+    const src =
+      "const fn = (_x: number) => 1;\n" +
+      "const x = `${fn(/* english only here */ 1)}`;\n";
+    const v = checkSource("a.ts", src);
+    expect(v.some((x) => x.rule === "hangul-required")).toBe(true);
+    const hit = v.find((x) => x.rule === "hangul-required");
+    expect(hit?.line).toBe(2);
+  });
+
+  test("`${ ... // english only }` single-line 도 잡아낸다", () => {
+    const src =
+      "const x = `prefix ${(() => {\n" +
+      "  // english only inside template expression\n" +
+      "  return 1;\n" +
+      "})()}`;\n";
+    const v = checkSource("a.ts", src);
+    expect(v.some((x) => x.rule === "hangul-required" && x.line === 2)).toBe(true);
+  });
+
+  test("template expression 안에서도 한글이 있으면 통과", () => {
+    const src =
+      "const fn = (_x: number) => 1;\n" +
+      "const x = `${fn(/* 한글 주석 */ 1)}`;\n";
+    expect(checkSource("a.ts", src)).toHaveLength(0);
+  });
+
+  test("template literal 본문 (substitution 밖) 의 영어 단어는 검출 대상이 아니다", () => {
+    const src = "const x = `http://${host}:${port}`;\n";
+    expect(checkSource("a.ts", src)).toHaveLength(0);
+  });
+});
+
 describe("checkSource — 위치 / 보고", () => {
   test("위반 line 은 1-based", () => {
     const src = `\n\nexport function f() {}\n`;
