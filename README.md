@@ -4,6 +4,14 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 
 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸지만, 책임은 agent-toolkit 1차 지휘 + 필요 시 외부 sub-agent / skill 위임 한 줄로 한정한다.
 
+> 개인 프로젝트라 유지보수가 꾸준하지 않을 수 있다.
+
+## 요구사항
+
+- [Bun](https://bun.sh) `>=1.0` (Node.js 미지원 — Bun 이 TS 를 직접 실행하므로 별도 빌드 단계가 없다)
+- [opencode](https://opencode.ai) (다른 host — Claude Code / Cursor / Codex CLI — 는 MVP scope 밖)
+- (선택) Notion 페이지를 다룰 경우 opencode 에 [Notion remote MCP](https://developers.notion.com/docs/mcp) 가 OAuth 로 연결되어 있어야 한다
+
 ## 디렉터리
 
 ```
