@@ -37,6 +37,20 @@ export interface LoadConfigOptions {
   projectRoot?: string;
 }
 
+export interface LoadConfigError {
+  /** 실패한 파일의 절대 경로. */
+  source: string;
+  /** 파싱 또는 검증 실패 메시지 (Error.message 또는 stringified). */
+  message: string;
+}
+
+export interface LoadConfigResult {
+  /** user + project 를 leaf 단위로 merge 한 결과. 둘 다 실패 / 둘 다 부재면 빈 객체. */
+  config: ToolkitConfig;
+  /** 파싱 / 검증에 실패한 파일별 에러. caller 가 logging / surfacing 결정. */
+  errors: LoadConfigError[];
+}
+
 /** user-level config 기본 경로. `AGENT_TOOLKIT_CONFIG` 로 오버라이드. */
 export const USER_CONFIG_PATH = join(
   homedir(),
@@ -184,19 +198,43 @@ export function mergeConfigs(
 }
 
 /**
- * user + project config 를 읽어 merge 된 결과를 반환.
- * 두 파일 모두 없으면 빈 객체를 반환한다 (config 가 optional 이므로).
+ * user + project config 를 읽어 merge 된 결과 + 파일별 에러를 반환.
  *
- * `AGENT_TOOLKIT_CONFIG` 환경변수가 있으면 user 경로를 그 값으로 덮어쓴다.
+ * 한 쪽 파일이 손상되어도 다른 쪽은 그대로 살린다 — 즉 잘못된 user 파일이 정상 project
+ * registry 를 무력화하지 않는다 (반대도 마찬가지). caller 는 `errors` 를 보고 logging /
+ * surfacing 을 결정한다 (plugin 은 console.error 로 한 줄씩 흘린다).
+ *
+ * 두 파일 모두 없으면 `{ config: {}, errors: [] }`. `AGENT_TOOLKIT_CONFIG` 환경변수가
+ * 있으면 user 경로를 그 값으로 덮어쓴다.
  */
 export async function loadConfig(
   options: LoadConfigOptions = {},
-): Promise<ToolkitConfig> {
+): Promise<LoadConfigResult> {
   const userPath =
     options.userPath ?? process.env.AGENT_TOOLKIT_CONFIG ?? USER_CONFIG_PATH;
   const projectRoot = options.projectRoot ?? process.cwd();
   const projectPath = resolve(projectRoot, PROJECT_CONFIG_RELATIVE);
-  const user = (await loadOne(userPath)) ?? {};
-  const project = (await loadOne(projectPath)) ?? {};
-  return mergeConfigs(user, project);
+  const errors: LoadConfigError[] = [];
+
+  let user: ToolkitConfig = {};
+  try {
+    user = (await loadOne(userPath)) ?? {};
+  } catch (err) {
+    errors.push({
+      source: userPath,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  let project: ToolkitConfig = {};
+  try {
+    project = (await loadOne(projectPath)) ?? {};
+  } catch (err) {
+    errors.push({
+      source: projectPath,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return { config: mergeConfigs(user, project), errors };
 }

@@ -209,27 +209,30 @@ describe("mergeConfigs", () => {
 });
 
 describe("loadConfig", () => {
-  it("returns {} when neither file exists", async () => {
-    const config = await loadConfig({ userPath, projectRoot });
-    expect(config).toEqual({});
+  it("returns {} with no errors when neither file exists", async () => {
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.config).toEqual({});
+    expect(r.errors).toEqual([]);
   });
 
   it("loads user-only when project is absent", async () => {
     writeUser({
       openapi: { registry: { acme: { dev: { users: "https://u/u.json" } } } },
     });
-    const config = await loadConfig({ userPath, projectRoot });
-    expect(config.openapi?.registry?.acme?.dev?.users).toBe("https://u/u.json");
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.config.openapi?.registry?.acme?.dev?.users).toBe("https://u/u.json");
+    expect(r.errors).toEqual([]);
   });
 
   it("loads project-only when user is absent", async () => {
     writeProject({
       openapi: { registry: { acme: { prod: { users: "https://p/u.json" } } } },
     });
-    const config = await loadConfig({ userPath, projectRoot });
-    expect(config.openapi?.registry?.acme?.prod?.users).toBe(
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.config.openapi?.registry?.acme?.prod?.users).toBe(
       "https://p/u.json",
     );
+    expect(r.errors).toEqual([]);
   });
 
   it("merges with project taking precedence", async () => {
@@ -241,25 +244,73 @@ describe("loadConfig", () => {
         registry: { acme: { dev: { users: "https://project/u.json" } } },
       },
     });
-    const config = await loadConfig({ userPath, projectRoot });
-    expect(config.openapi?.registry?.acme?.dev?.users).toBe(
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.config.openapi?.registry?.acme?.dev?.users).toBe(
       "https://project/u.json",
     );
   });
 
-  it("throws on malformed JSON with the path in the message", async () => {
+  it("reports malformed JSON in errors[] without throwing", async () => {
     writeFileSync(userPath, "{ not json", "utf8");
-    await expect(loadConfig({ userPath, projectRoot })).rejects.toThrow(
-      /Failed to parse/,
-    );
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.errors.length).toBe(1);
+    expect(r.errors[0]?.source).toBe(userPath);
+    expect(r.errors[0]?.message).toMatch(/Failed to parse/);
+    expect(r.config).toEqual({});
   });
 
-  it("throws on schema-violating config with the path in the message", async () => {
+  it("reports schema-violating config in errors[] without throwing", async () => {
     writeUser({
       openapi: { registry: { "bad:host": { dev: { users: "u" } } } } as any,
     });
-    await expect(loadConfig({ userPath, projectRoot })).rejects.toThrow(
-      /host name/,
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.errors.length).toBe(1);
+    expect(r.errors[0]?.message).toMatch(/host name/);
+  });
+
+  it("preserves valid project config when user file is malformed (Codex P1)", async () => {
+    writeFileSync(userPath, "{ broken", "utf8");
+    writeProject({
+      openapi: {
+        registry: { acme: { prod: { users: "https://api.acme/u.json" } } },
+      },
+    });
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.errors.length).toBe(1);
+    expect(r.errors[0]?.source).toBe(userPath);
+    // 핵심: project 의 host:env:spec 이 그대로 살아나야.
+    expect(r.config.openapi?.registry?.acme?.prod?.users).toBe(
+      "https://api.acme/u.json",
     );
+  });
+
+  it("preserves valid user config when project file is malformed", async () => {
+    writeUser({
+      openapi: {
+        registry: { acme: { dev: { users: "https://dev.acme/u.json" } } },
+      },
+    });
+    const projectFile = join(projectRoot, ".opencode", "agent-toolkit.json");
+    mkdirSync(join(projectRoot, ".opencode"), { recursive: true });
+    writeFileSync(projectFile, "{ also broken", "utf8");
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.errors.length).toBe(1);
+    expect(r.errors[0]?.source).toBe(projectFile);
+    expect(r.config.openapi?.registry?.acme?.dev?.users).toBe(
+      "https://dev.acme/u.json",
+    );
+  });
+
+  it("collects errors from both files when both are malformed", async () => {
+    writeFileSync(userPath, "{ user broken", "utf8");
+    mkdirSync(join(projectRoot, ".opencode"), { recursive: true });
+    writeFileSync(
+      join(projectRoot, ".opencode", "agent-toolkit.json"),
+      "{ project broken",
+      "utf8",
+    );
+    const r = await loadConfig({ userPath, projectRoot });
+    expect(r.errors.length).toBe(2);
+    expect(r.config).toEqual({});
   });
 });

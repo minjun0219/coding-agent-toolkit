@@ -381,16 +381,13 @@ export default async function agentToolkitPlugin(_input: unknown) {
   const cache = createCacheFromEnv();
   const openapi = createOpenapiCacheFromEnv();
 
-  // user / project agent-toolkit.json 로드. 잘못된 config 가 plugin 로딩 자체를 막지
-  // 않도록 try-catch — registry 가 없는 상태로라도 plugin 은 동작해야 한다.
-  // err 가 Error 인스턴스가 아닐 가능성도 막아 컨텍스트 손실 방지.
-  let toolkitConfig: ToolkitConfig = {};
-  try {
-    toolkitConfig = await loadConfig();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  // user / project agent-toolkit.json 로드. loadConfig 는 파일별 try-catch 로 자체
+  // 회복하므로 한 쪽이 손상돼도 다른 쪽은 그대로 살아나 registry 에 들어온다.
+  // 손상된 파일별 에러는 console.error 로 한 줄씩 surfacing.
+  const { config: toolkitConfig, errors: configErrors } = await loadConfig();
+  for (const e of configErrors) {
     console.error(
-      `agent-toolkit: failed to load config — ${message}. Continuing with empty registry.`,
+      `agent-toolkit: skipped config file ${e.source} — ${e.message}. Other config sources still apply.`,
     );
   }
   const registry = toolkitConfig.openapi?.registry;
