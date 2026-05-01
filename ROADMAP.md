@@ -157,7 +157,6 @@
 - memo #1 의 "기억" 영속 층은 디스크로 결정 (Phase 3 MVP). cross-machine 동기화 / 자연어 검색 / 자동 요약 / 압축은 후속 phase.
 - memo #6 의 GitHub 연동을 외부 MCP 로 위임할지 자체 도구로 만들지.
 - Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — Phase 5 에서 SPEC 합의 lifecycle 이 `@grace` sub-agent 로 분리됨 (`spec-pact` 스킬 + INDEX 자동 갱신). 추가 분리(`linear`, `swagger` 등 sub-partner) 트리거의 임계는 그만큼 높아졌고, 분리는 "특정 surface 가 충분히 두꺼워져 별도 persona / 별도 contract 가 필요해질 때" 로 제한한다 — 이번 Grace 분리도 같은 기준 (lifecycle 의 finalize/lock 권한이 Rocky 의 라우팅 책임과 충돌) 으로 결정됨.
-- **Repo rename: `coding-agent-toolkit` → `agent-toolkit`** — 완료. GitHub redirect 로 기존 URL / clone / PR / issue link 는 그대로 유지. prose / URL sweep (`agent-toolkit.schema.json` `$id` + description, `README.md` plugin install URL + `$schema`, `.opencode/INSTALL.md` install URL, `ROADMAP.md` issue/PR link) 도 별도 PR 로 반영 완료. `package.json` `name` 은 처음부터 `"agent-toolkit"` 이라 변경 없음. npm publish 여부 (`@minjun0219/agent-toolkit` scoped vs unscoped, MIT 유지) 는 Phase 9 와 함께 결정.
 - **Phase 6.A 의 fragment 분리 단위** — agent 단위 / 모드 단위 / journal 항목 단위 중 어디까지 쪼갤지. 너무 잘게 쪼개면 조립 비용이 fragment 절감을 상쇄하고, 너무 거칠게 쪼개면 token 절감 효과가 미미. 첫 도입 시점에 측정으로 결정.
 - **Phase 6.B 의 OmO 감지 방식** — 환경변수 명시 opt-in (`AGENT_TOOLKIT_OMO_HARNESS=1`) vs `opencode.json` 의 `plugin` 배열 자동 감지. 자동 감지는 매끄럽지만 잘못된 위임 위험 (OmO 와 호환 안 되는 변경이 들어왔을 때 silent fail).
 - **Phase 7 의 composition router 자동 vs 수동** — manifest 기반 라우팅이 description-driven routing 을 자동 대체할지, Rocky 가 명시적으로 manifest 를 lookup 할지. 자동화는 token 절감이 크지만 디버그 가능성 / 사용자 control 이 떨어진다. 첫 도입 시점에 결정.
