@@ -31,7 +31,7 @@ The cache is a thin TTL layer in front of the spec URL. `swagger_get` already ha
 `swagger_get` / `swagger_status` / `swagger_refresh` accept any of:
 
 - **Spec URL** (`https://…` or `file://…`) — direct download source.
-- **16-hex cache key** — disk key returned by `swagger_status` / `swagger_search`. Resolves via cache metadata; if the metadata is gone, the tool throws with a clear "no recoverable spec URL" message.
+- **16-hex cache key** — disk key returned by `swagger_status` / `swagger_search`. Resolves via cache metadata; when the metadata is gone, the tool throws with a clear "no recoverable spec URL" message.
 - **`host:env:spec` handle** — symbolic name registered in `agent-toolkit.json` (`./.opencode/agent-toolkit.json` overrides `~/.config/opencode/agent-toolkit/agent-toolkit.json`). Resolves to a spec URL via the registry. Unregistered handles throw.
 
 `swagger_search` accepts an optional `scope`:
@@ -48,21 +48,21 @@ Use `swagger_envs` first when the user does not name a specific handle but talks
 1. Reach OpenAPI specs only through `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`. No direct `fetch`, Read, or Bash to download the spec yourself.
 2. Unless the user explicitly asks to refresh ("최신화" / "refresh"):
    * Check cache state first with `swagger_status` when the input (URL / key / handle) is given.
-   * If `exists=true && expired=false`, use `swagger_get` (it returns instantly from cache) and `swagger_search` to locate the endpoint.
-   * Otherwise call `swagger_get` once — it will hit the remote on cache miss automatically.
+   * When `exists=true && expired=false`, use `swagger_get` (it returns instantly from cache) and `swagger_search` to locate the endpoint.
+   * Otherwise call `swagger_get` once — it hits the remote on cache miss automatically.
 3. Do not download the same spec more than once per turn. Reuse the spec object you already have.
 4. Use `swagger_refresh` only when the user explicitly asks to re-download.
-5. **Prefer `host:env:spec` handles when the user works with multiple environments.** Resolve the user's environment / service intent by calling `swagger_envs` once, presenting the matching handles, and asking which one if it is ambiguous. Pass the handle as-is to the swagger_* tools — never expand it to a URL yourself.
+5. **Prefer `host:env:spec` handles when the user works with multiple environments.** Resolve the user's environment / service intent by calling `swagger_envs` once, presenting the matching handles, and asking which one when ambiguous. Pass the handle as-is to the swagger_* tools — never expand it to a URL yourself.
 6. **Use `swagger_search` `scope` when the user has multiple environments cached.** A scope of `acme:dev` keeps results inside that environment. When the user does not name an environment, leave `scope` off and search across everything.
 
 ## Locating the endpoint
 
 Given an ambiguous request ("POST /pets 호출 코드 만들어줘"):
 
-1. If the user already gave a spec URL / 16-hex key / `host:env:spec` handle, run `swagger_get` for that input, then look up the endpoint by `(method, path)` in `spec.paths`.
-2. If the user names an environment but not a specific spec ("acme:dev 의 POST /pets"), call `swagger_envs` once, identify the matching specs under that scope, and run `swagger_search` with `scope: "acme:dev"`. If multiple candidates remain, surface them (`specTitle` + `method path` + `summary`) and ask the user which one.
-3. Otherwise use `swagger_search` (no scope) with the path and/or operationId substring across every cached spec. If multiple matches come back, surface the candidates and ask the user which one — including the `specTitle` so it is clear which environment / service.
-4. If zero matches, do not invent the endpoint — quote what you searched for and ask the user to clarify the spec, environment, or path.
+1. When the user already gave a spec URL / 16-hex key / `host:env:spec` handle, run `swagger_get` for that input, then look up the endpoint by `(method, path)` in `spec.paths`.
+2. When the user names an environment but not a specific spec ("acme:dev 의 POST /pets"), call `swagger_envs` once, identify the matching specs under that scope, and run `swagger_search` with `scope: "acme:dev"`. When multiple candidates remain, surface them (`specTitle` + `method path` + `summary`) and ask the user which one.
+3. Otherwise use `swagger_search` (no scope) with the path and/or operationId substring across every cached spec. When multiple matches come back, surface the candidates and ask the user which one — including the `specTitle` so the environment / service is clear.
+4. When zero matches come back, do not invent the endpoint — quote what you searched for and ask the user to clarify the spec, environment, or path.
 
 ## Output format — fetch snippet (default)
 
@@ -112,23 +112,23 @@ export async function <camelCaseOperationId>(
 
 ## Writing rules
 
-* The body of the SKILL output (this skill's user-facing answer) is in Korean; the generated code is in English / TypeScript with English identifiers — no translation of operationIds or paths.
-* Use `operationId` to derive both the function name (camelCase) and response type (PascalCase). If `operationId` is absent, fall back to `<method>_<path-slug>` and call this out in one sentence.
+* The skill's user-facing answer (the prose around the snippet) is in Korean; the generated code is in English / TypeScript with English identifiers — no translation of operationIds or paths.
+* Use `operationId` to derive both the function name (camelCase) and response type (PascalCase). When `operationId` is absent, fall back to `<method>_<path-slug>` and call this out in one sentence.
 * Path parameters → required positional args, in spec declaration order.
 * Query parameters → one trailing `query?: { … }` arg with optional fields by default; required ones explicitly typed as required.
 * Request body → one trailing `body: <type>` arg when the operation declares a body; type pulled from `requestBody.content["application/json"].schema` if present, else `unknown`.
-* Response type → from the first `2xx` response's `application/json` schema. If the spec does not declare it, type as `unknown` and say so in one inline comment.
+* Response type → from the first `2xx` response's `application/json` schema. When the spec does not declare it, type as `unknown` and say so in one inline comment.
 * `BASE_URL` is a placeholder constant; do not bake a hostname into the snippet.
 
 ## Do NOT
 
 * Do not download a spec without going through the `swagger_*` tools — that defeats the cache and skips the shape validation.
 * Do not generate code for an endpoint that is not present in the cached spec — quote the search query and ask.
-* Do not invent a response or body type. If the spec does not declare it, use `unknown` and surface the gap in one inline comment.
+* Do not invent a response or body type. When the spec does not declare it, use `unknown` and surface the gap in one inline comment.
 * Do not paste the entire spec into the answer. The user wants one snippet plus a usage line.
-* Do not assume YAML support. If `swagger_get` rejects with a non-JSON body, tell the user the spec is YAML and that this skill is JSON-only in MVP.
+* Do not assume YAML support. When `swagger_get` rejects with a non-JSON body, tell the user the spec is YAML and that this skill is JSON-only in MVP.
 * Do not silently pick an environment when the user has more than one (`acme:dev`, `acme:staging`, …). Ask which one before running `swagger_get`.
-* Do not invent registry handles. If a handle is not in `swagger_envs`, surface the available handles and ask the user to pick — do not guess "this looks like dev so I'll try `acme:dev`".
+* Do not invent registry handles. When a handle is not in `swagger_envs`, surface the available handles and ask the user to pick — do not guess "this looks like dev so I'll try `acme:dev`".
 
 ## Failure / error handling
 
