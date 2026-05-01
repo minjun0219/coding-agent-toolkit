@@ -32,6 +32,15 @@ import {
   type OpenapiRegistry,
   type ToolkitConfig,
 } from "../../lib/toolkit-config";
+import {
+  AgentJournal,
+  createJournalFromEnv,
+  type JournalAppendInput,
+  type JournalEntry,
+  type JournalReadOptions,
+  type JournalSearchOptions,
+  type JournalStatus,
+} from "../../lib/agent-journal";
 
 /**
  * opencode plugin entrypoint (Superpowers 형식).
@@ -373,6 +382,41 @@ export function handleSwaggerEnvs(
 }
 
 /**
+ * 도구 핸들러: 저널에 한 줄 append. remote 호출 없음.
+ * 입력 검증과 정규화는 `AgentJournal.append` 가 담당한다.
+ */
+export async function handleJournalAppend(
+  journal: AgentJournal,
+  input: JournalAppendInput,
+): Promise<JournalEntry> {
+  return journal.append(input);
+}
+
+/** 도구 핸들러: 가장 최근 항목부터 필터 / limit 적용해 반환. remote 호출 없음. */
+export async function handleJournalRead(
+  journal: AgentJournal,
+  options: JournalReadOptions = {},
+): Promise<JournalEntry[]> {
+  return journal.read(options);
+}
+
+/** 도구 핸들러: substring 검색 (case-insensitive). remote 호출 없음. */
+export async function handleJournalSearch(
+  journal: AgentJournal,
+  query: string,
+  options: JournalSearchOptions = {},
+): Promise<JournalEntry[]> {
+  return journal.search(query, options);
+}
+
+/** 도구 핸들러: 저널 메타 (라인 수, 바이트 수, 마지막 항목 시각). remote 호출 없음. */
+export async function handleJournalStatus(
+  journal: AgentJournal,
+): Promise<JournalStatus> {
+  return journal.status();
+}
+
+/**
  * opencode plugin default export.
  * `directory` 는 opencode 가 plugin 을 로드한 cwd. 우리는 import.meta 기반으로
  * 자기 저장소의 skills/ 를 절대 경로로 잡는다.
@@ -380,6 +424,7 @@ export function handleSwaggerEnvs(
 export default async function agentToolkitPlugin(_input: unknown) {
   const cache = createCacheFromEnv();
   const openapi = createOpenapiCacheFromEnv();
+  const journal = createJournalFromEnv();
 
   // user / project agent-toolkit.json 로드. loadConfig 는 파일별 try-catch 로 자체
   // 회복하므로 한 쪽이 손상돼도 다른 쪽은 그대로 살아나 registry 에 들어온다.
@@ -486,6 +531,87 @@ export default async function agentToolkitPlugin(_input: unknown) {
         parameters: {},
         async handler() {
           return handleSwaggerEnvs(toolkitConfig);
+        },
+      },
+      journal_append: {
+        description:
+          "에이전트 저널에 한 줄을 append-only 로 기록한다. 다음 turn 에 인용할 결정 / blocker / 사용자 답변 / 메모를 남길 때 사용. (content: 본문 필수, kind?: decision/blocker/answer/note 등 자유 문자열, 기본 'note', tags?: 문자열 배열, pageId?: 연결할 Notion page id 또는 URL — 정규화되어 저장)",
+        parameters: {
+          content: { type: "string", required: true },
+          kind: { type: "string", required: false },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+            required: false,
+          },
+          pageId: { type: "string", required: false },
+        },
+        async handler({
+          content,
+          kind,
+          tags,
+          pageId,
+        }: {
+          content: string;
+          kind?: string;
+          tags?: string[];
+          pageId?: string;
+        }) {
+          return handleJournalAppend(journal, { content, kind, tags, pageId });
+        },
+      },
+      journal_read: {
+        description:
+          "저널을 가장 최근 항목부터 필터 / limit 적용해 반환한다. 손상된 라인은 자동 skip. remote 호출 없음. (limit?: 결과 최대 개수 기본 20, kind?: 종류 정확 일치, tag?: 태그 정확 일치, pageId?: Notion page id / URL 로 page 묶인 항목만, since?: ISO8601 — 그 시각 이후 항목만)",
+        parameters: {
+          limit: { type: "number", required: false },
+          kind: { type: "string", required: false },
+          tag: { type: "string", required: false },
+          pageId: { type: "string", required: false },
+          since: { type: "string", required: false },
+        },
+        async handler({
+          limit,
+          kind,
+          tag,
+          pageId,
+          since,
+        }: {
+          limit?: number;
+          kind?: string;
+          tag?: string;
+          pageId?: string;
+          since?: string;
+        }) {
+          return handleJournalRead(journal, { limit, kind, tag, pageId, since });
+        },
+      },
+      journal_search: {
+        description:
+          "저널을 substring (case-insensitive) 으로 검색한다. content / kind / tags / pageId 를 매칭한다. 빈 query 는 (kind 필터 한정) 가장 최근부터 나열. remote 호출 없음. (query: 검색어, limit?: 결과 최대 개수 기본 20, kind?: 종류 필터)",
+        parameters: {
+          query: { type: "string", required: true },
+          limit: { type: "number", required: false },
+          kind: { type: "string", required: false },
+        },
+        async handler({
+          query,
+          limit,
+          kind,
+        }: {
+          query: string;
+          limit?: number;
+          kind?: string;
+        }) {
+          return handleJournalSearch(journal, query, { limit, kind });
+        },
+      },
+      journal_status: {
+        description:
+          "저널 메타(파일 경로, 존재 여부, 유효 항목 수 — 손상 라인 skip, 바이트 크기, 마지막 항목 시각) 만 조회한다. remote 호출 없음.",
+        parameters: {},
+        async handler() {
+          return handleJournalStatus(journal);
         },
       },
     },

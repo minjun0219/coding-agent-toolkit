@@ -5,7 +5,12 @@ import { basename, join } from "node:path";
 import { NotionCache } from "../../lib/notion-context";
 import { OpenapiCache } from "../../lib/openapi-context";
 import type { OpenapiRegistry } from "../../lib/toolkit-config";
+import { AgentJournal } from "../../lib/agent-journal";
 import agentToolkitPlugin, {
+  handleJournalAppend,
+  handleJournalRead,
+  handleJournalSearch,
+  handleJournalStatus,
   handleNotionGet,
   handleNotionRefresh,
   handleNotionStatus,
@@ -359,6 +364,66 @@ describe("swagger handlers — registry handles", () => {
 
   it("swagger_envs returns [] for empty config", () => {
     expect(handleSwaggerEnvs({})).toEqual([]);
+  });
+});
+
+describe("journal handlers", () => {
+  let jDir: string;
+  let journal: AgentJournal;
+
+  beforeEach(() => {
+    jDir = mkdtempSync(join(tmpdir(), "plugin-journal-"));
+    journal = new AgentJournal({ baseDir: jDir });
+  });
+
+  it("journal_append: writes a normalized entry", async () => {
+    const entry = await handleJournalAppend(journal, {
+      content: "decided to ship phase 3",
+      kind: "decision",
+      tags: ["phase3"],
+    });
+    expect(entry.kind).toBe("decision");
+    expect(entry.tags).toEqual(["phase3"]);
+    expect(entry.content).toBe("decided to ship phase 3");
+  });
+
+  it("journal_read: returns most recent first across turns", async () => {
+    await handleJournalAppend(journal, { content: "turn-1 decision", kind: "decision" });
+    await handleJournalAppend(journal, { content: "turn-2 blocker", kind: "blocker" });
+    // 시뮬레이션: 다음 turn 에서 새 인스턴스로 읽기.
+    const next = new AgentJournal({ baseDir: jDir });
+    const r = await handleJournalRead(next);
+    expect(r.length).toBe(2);
+    expect(r[0]?.content).toBe("turn-2 blocker");
+    expect(r[1]?.content).toBe("turn-1 decision");
+  });
+
+  it("journal_read: kind filter narrows the result", async () => {
+    await handleJournalAppend(journal, { content: "a", kind: "decision" });
+    await handleJournalAppend(journal, { content: "b", kind: "blocker" });
+    const r = await handleJournalRead(journal, { kind: "decision" });
+    expect(r.length).toBe(1);
+    expect(r[0]?.content).toBe("a");
+  });
+
+  it("journal_search: matches across content and tags", async () => {
+    await handleJournalAppend(journal, { content: "use Bun for runtime", tags: ["infra"] });
+    await handleJournalAppend(journal, { content: "auth blocker", kind: "blocker" });
+    expect((await handleJournalSearch(journal, "bun")).length).toBe(1);
+    expect((await handleJournalSearch(journal, "infra")).length).toBe(1);
+    expect((await handleJournalSearch(journal, "MISSING")).length).toBe(0);
+  });
+
+  it("journal_status: reflects journal state", async () => {
+    const before = await handleJournalStatus(journal);
+    expect(before.exists).toBe(false);
+    expect(before.totalEntries).toBe(0);
+
+    const last = await handleJournalAppend(journal, { content: "first" });
+    const after = await handleJournalStatus(journal);
+    expect(after.exists).toBe(true);
+    expect(after.totalEntries).toBe(1);
+    expect(after.lastEntryAt).toBe(last.timestamp);
   });
 });
 

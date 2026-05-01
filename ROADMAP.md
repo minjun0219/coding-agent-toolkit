@@ -22,7 +22,7 @@
 
 | # | 항목 | 상태 | 추적 issue | 비고 |
 | --- | --- | --- | --- | --- |
-| 1 | 에이전트 자동 기억/기록 | 📋 planned | [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5) | turn / session / 디스크 어느 층까지 영속할지 결정 필요 |
+| 1 | 에이전트 자동 기억/기록 | ✅ MVP | [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5) | `journal_append` / `journal_read` / `journal_search` / `journal_status`, `lib/agent-journal.ts` (append-only JSONL, 디스크 영속, 시간순 + page-key 기반 lookup) |
 | 2 | 상세 주석 | 🚧 부분 | [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7) | JSDoc 규칙 (`AGENTS.md`) 으로 정책은 박힘; 강제 / 검증은 미구현 |
 | 3 | 한글 주석/설명 | ✅ 정책 (검증 미구현) | [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7) | `AGENTS.md` coding rules + output 정책 |
 | 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
@@ -39,9 +39,10 @@
 - **Phase 2 — 스펙 → GitHub Issue / Project 동기화** *(memo #6, issue [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4))*
   - Rocky 의 spec 모드 출력을 그대로 issue 시리즈로 변환하는 skill / 도구
   - 매핑 후보: 한 Notion 페이지 = 한 epic, "TODO" 섹션의 bullet 1 개 = 한 issue
-- **Phase 3 — 에이전트 자동 기억 / 기록** *(memo #1, issue [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5))*
-  - turn 단위 결정 / blocker / 사용자 답변을 캐시 디렉터리 옆에 append-only 로 저장
-  - Rocky 가 "이전 turn 에 X 로 결정했음" 같은 기억을 인용 가능하게
+- **Phase 3 — 에이전트 자동 기억 / 기록 — 완료** *(memo #1, issue [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5))*
+  - `journal_append` / `journal_read` / `journal_search` / `journal_status` 4 도구 + `lib/agent-journal.ts` append-only JSONL (TTL 없음, 손상 라인 graceful skip)
+  - 시간순 + `kind` / `tag` / `pageId` / `since` 필터 + substring 검색
+  - Rocky 본문에 "read 먼저 → append 마지막" 인용 규칙 박힘 (`agents/rocky.md` Memory 절)
 - **Phase 4 — OpenAPI 캐시 + client 작성 — 완료** *(memo #7, issue [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6))*
   - `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` 4 도구 + `lib/openapi-context.ts` TTL 파일 캐시 + `skills/openapi-client/SKILL.md`
   - JSON-only (YAML 미지원), 단일 endpoint → `fetch` / `axios` snippet 한 덩어리
@@ -54,6 +55,6 @@
 
 ## 미정 / 결정 필요
 
-- memo #1 의 "기억" 이 얼마나 영속적이어야 하는지 (turn → session → 디스크).
+- memo #1 의 "기억" 영속 층은 디스크로 결정 (Phase 3 MVP). cross-machine 동기화 / 자연어 검색 / 자동 요약 / 압축은 후속 phase.
 - memo #6 의 GitHub 연동을 외부 MCP 로 위임할지 자체 도구로 만들지.
 - Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — 현재는 단일 파트너이며 `notion-context` + `openapi-client` 두 skill 을 모두 1차 지휘하고, 필요 시 외부 sub-agent / skill 위임도 허용한다. 분리(`linear`, `swagger` 등 sub-partner) 트리거의 임계는 그만큼 높아졌고, 분리는 "특정 surface 가 충분히 두꺼워져 별도 persona / 별도 contract 가 필요해질 때" 로 제한한다.

@@ -31,6 +31,7 @@ All optional. Set only when the defaults do not fit.
 | `AGENT_TOOLKIT_OPENAPI_CACHE_DIR` | `~/.config/opencode/agent-toolkit/openapi-specs` | OpenAPI / Swagger spec cache directory. |
 | `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` | `86400` | OpenAPI cache TTL (seconds). |
 | `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` | `30000` | OpenAPI spec download timeout (ms). |
+| `AGENT_TOOLKIT_JOURNAL_DIR` | `~/.config/opencode/agent-toolkit/journal` | Agent journal directory. Holds a single `journal.jsonl` (append-only, no TTL). |
 | `AGENT_TOOLKIT_CONFIG` | `~/.config/opencode/agent-toolkit/agent-toolkit.json` | User-level `agent-toolkit.json` path. The project-level `./.opencode/agent-toolkit.json` overrides it at the leaf level. |
 
 ## Smoke test
@@ -51,9 +52,11 @@ Then verify the tools are registered:
 > use swagger_status tool with input "<spec URL or host:env:spec handle>"
 > use swagger_get tool with input "<spec URL or host:env:spec handle>"
 > use swagger_envs tool   # flatten the registry from agent-toolkit.json
+> use journal_append tool with content "decided to ship Phase 3" kind "decision"
+> use journal_read tool   # most recent first
 ```
 
-The first call returns `fromCache: false` — remote is hit once. The second call returns `fromCache: true` (same policy for `notion_*` and `swagger_*`).
+The first call returns `fromCache: false` — remote is hit once. The second call returns `fromCache: true` (same policy for `notion_*` and `swagger_*`). `journal_*` does not hit any remote — it only reads / writes the local JSONL file.
 
 ## OpenAPI registry (`agent-toolkit.json`)
 
