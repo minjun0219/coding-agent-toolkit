@@ -70,6 +70,24 @@
   - **opencode 단독 능력 한계**: opencode plugin API 의 `tool` 만 동적 등록 가능, agent / skill / command 는 path-based (`.md` 정적). 즉 TS-based loader 는 (a) OmO 같은 외부 harness 가 있는 환경에서만 의미가 있거나 (b) 토킷이 자체 loader 를 만들어 `.ts` AgentConfig → runtime `.md` 로 emit 해야 한다.
   - **방향**: `.md` 가 baseline 으로 남고, `.ts` 정의는 OmO 가 있을 때 옵트인으로 활성화 — 토킷이 OmO 의존을 강제하지 않는다. plugin entrypoint 가 `agents/*.ts` 가 있으면 OmO loader 에 위임, 없으면 `.md` 만 노출.
   - 의존성 0 의 자체 loader (b) 는 별도 PR 로 검토 — 트리거는 "정적 prompt 로는 부족한 첫 use case 가 등장할 때". 지금은 추적만.
+  - **Phase 6.A — Runtime 프롬프트 동적 조립** *(6 의 sub, OmO 없이도 자체 적용 가능)*
+    - 정적 prompt 를 두 부분으로 쪼갠다 — "고정 (persona / scope / 일반 규칙)" + "조건부 fragment (모드별 본문, 최근 journal entry, INDEX row, drift diff)".
+    - agent 가 turn 시작 시 caller 입력 → 모드 결정 → 필요한 fragment 만 끼워 넣어 최종 prompt 생성. DRAFT turn 일 때 VERIFY/AMEND 본문이 prompt 에 안 들어가는 식의 token 절감.
+    - fragment 카탈로그 (예시): `grace.fragment.{draft,verify,drift-check,amend}.md`, `grace.fragment.journal-recent.md`, `grace.fragment.index-row.md`.
+    - **Phase 7 와의 관계**: 각 fragment 도 capability manifest (`tokenClass` / `requires`) 를 갖게 되면 Phase 7 router 가 cheapest fragment 만 활성화 가능. 즉 6.A = primitive **내부** token cost, Phase 7 = primitive **사이** token cost — 두 층이 서로 보완.
+    - **트리거**: 한 agent 의 정적 prompt 가 ~3-4k token 을 넘기 시작할 때 (현재 grace.md ~150 줄, 한참 멀음).
+  - **Phase 6.B — OmO harness leverage** *(6 의 sub, OmO 가 있을 때만; 없으면 6.A 또는 baseline `.md` 로 fallback)*
+    - OmO 의 두 layer 가 명확히 분리되어 있다 (context7 source 확인):
+      - **`claude-code-plugin-loader`** (`src/features/claude-code-plugin-loader/`) — 순수 ingestion 파이프라인. `.opencode/plugins` / `~/.claude/plugins` 스캔, `plugin.json` 매니페스트 파싱, commands / agents / skills / hooks / MCP / LSP 를 OmO registry 에 등록. WHY: "existing Claude Code plugins can be used unchanged within OmO".
+      - **Harness layer** (`src/shared/model-resolver.ts` + `model-resolution-pipeline.ts` + agent invocation) — Model Resolution 4-step (override → category-default → provider-fallback → system-default), 모델 변경 시 prompt variant 자동 스위치 (예: `"prometheus": { "model": "openai/gpt-5.4" }` → "Auto-switches to the GPT prompt"), Hook tier (Session 24 / Tool-Guard 14 / Transform 5 / Continuation 7 / Skill 2).
+    - **agent-toolkit 의 leverage 그림**:
+      1. agent-toolkit 이 `plugin.json` 매니페스트를 ship → OmO 의 `claude-code-plugin-loader` 가 자동 ingest (코드 변경 없이 OmO 환경에서 자동 인식)
+      2. 그 뒷단 OmO harness 가 model resolution + prompt variant 스위치를 알아서 처리 — **6.A 의 fragment 조립을 직접 짜지 않아도 OmO 가 있으면 거의 무료**
+      3. agent-toolkit 단독 사용 (OmO 없음) 시에도 정상 동작 — `.md` baseline / 6.A fragment 가 fallback
+    - **6.A 와 6.B 의 분담**: 모드 / journal / INDEX state 같은 토킷 고유 분기는 6.A 가 처리, 모델별 prompt variant 분기는 6.B (OmO harness) 에 위임. 둘이 충돌하지 않는다.
+    - **감지 방법**: opencode plugin API 가 다른 plugin 을 introspect 못 하므로, 환경변수 (`AGENT_TOOLKIT_OMO_HARNESS=1`) 또는 `opencode.json` 의 `plugin` 배열에 `oh-my-openagent` 가 보이는지로 판단. 자동 감지가 어려우면 사용자 명시적 opt-in.
+    - **Out-of-scope**: OmO source 변경, OmO 가 없는 환경에서 OmO harness 흉내내기.
+    - **트리거**: 첫 사용자 환경에서 OmO 와 함께 굴리면서 "이 부분은 OmO 에 맡기는 게 더 깔끔하다" 가 관찰될 때.
 - **Phase 7 — Primitive composition foundation** *(미정 후보, 토대 우선)*
   - 새 tool / skill / agent / command / MCP 가 추가될 때 자동으로 "어느 자리에 슬롯되는지 / 어떤 token cost 를 갖는지" 를 surface 하는 **manifest 층**.
   - 각 primitive 가 frontmatter / config 로 다음을 선언:
@@ -148,6 +166,8 @@
     - `AGENTS.md` / `ROADMAP.md` / 본 문서 내 issue / PR / repo link 전부
   - `package.json` `name` 은 이미 `"agent-toolkit"` — 변경 불필요.
   - **주의**: rename 자체는 1회성이지만 sweep PR 이 별도로 필요하고, npm publish 여부는 Phase 9 와 함께 결정 (`@minjun0219/agent-toolkit` scoped vs unscoped, MIT 유지).
+- **Phase 6.A 의 fragment 분리 단위** — agent 단위 / 모드 단위 / journal 항목 단위 중 어디까지 쪼갤지. 너무 잘게 쪼개면 조립 비용이 fragment 절감을 상쇄하고, 너무 거칠게 쪼개면 token 절감 효과가 미미. 첫 도입 시점에 측정으로 결정.
+- **Phase 6.B 의 OmO 감지 방식** — 환경변수 명시 opt-in (`AGENT_TOOLKIT_OMO_HARNESS=1`) vs `opencode.json` 의 `plugin` 배열 자동 감지. 자동 감지는 매끄럽지만 잘못된 위임 위험 (OmO 와 호환 안 되는 변경이 들어왔을 때 silent fail).
 - **Phase 7 의 composition router 자동 vs 수동** — manifest 기반 라우팅이 description-driven routing 을 자동 대체할지, Rocky 가 명시적으로 manifest 를 lookup 할지. 자동화는 token 절감이 크지만 디버그 가능성 / 사용자 control 이 떨어진다. 첫 도입 시점에 결정.
 - **Phase 8 의 외부 primary 충돌 해소 정책** — agent-toolkit 의 키워드와 외부 primary 의 키워드가 겹칠 때, 어느 쪽이 양보할지의 기본 원칙 (트리거 빈도 vs 해당 surface 책임 vs 사용자 선택권). 첫 충돌 사례가 등장하면 해당 규약을 `COEXISTENCE.md` 에 박는다.
 - **Phase 9 의 license / publish 전략** — npm 공개 vs git+ 내부만, scoped vs unscoped, MIT 유지 vs 회사 정책 대응. Phase 9 진입 시 결정.
