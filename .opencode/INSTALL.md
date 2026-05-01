@@ -32,6 +32,9 @@ All optional. Set only when the defaults do not fit.
 | `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` | `86400` | OpenAPI cache TTL (seconds). |
 | `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` | `30000` | OpenAPI spec download timeout (ms). |
 | `AGENT_TOOLKIT_JOURNAL_DIR` | `~/.config/opencode/agent-toolkit/journal` | Agent journal directory. Holds a single `journal.jsonl` (append-only, no TTL). |
+| `AGENT_TOOLKIT_GITHUB_TOKEN` | (none) | GitHub PAT used by the `spec-to-issues` skill. `repo` scope, or fine-grained `Issues: Read & Write`. Secret — never store in `agent-toolkit.json`. |
+| `AGENT_TOOLKIT_GITHUB_REPO` | (none) | Default `owner/repo` for `issue_create_from_spec` / `issue_status`. `agent-toolkit.json` `github.repo` takes precedence; the caller can also pass `repo` directly. |
+| `AGENT_TOOLKIT_GITHUB_API_URL` | `https://api.github.com` | GitHub REST API base URL. Override for GHE or corporate proxies. `agent-toolkit.json` `github.apiBaseUrl` takes precedence. |
 | `AGENT_TOOLKIT_CONFIG` | `~/.config/opencode/agent-toolkit/agent-toolkit.json` | User-level `agent-toolkit.json` path. The project-level `./.opencode/agent-toolkit.json` overrides it at the leaf level. |
 
 ## Smoke test
@@ -42,7 +45,7 @@ Once opencode is running:
 > use skill tool to list skills
 ```
 
-If `notion-context`, `openapi-client`, and `spec-pact` all show up, skills are loaded.
+If `notion-context`, `openapi-client`, `spec-pact`, and `spec-to-issues` all show up, skills are loaded.
 
 Then verify the tools are registered:
 
@@ -54,9 +57,11 @@ Then verify the tools are registered:
 > use swagger_envs tool   # flatten the registry from agent-toolkit.json
 > use journal_append tool with content "decided to ship Phase 3" kind "decision"
 > use journal_read tool   # most recent first
+> use issue_status tool with slug "<your-locked-spec-slug>"
+> use issue_create_from_spec tool with slug "<your-locked-spec-slug>" dryRun true
 ```
 
-The first call returns `fromCache: false` — remote is hit once. The second call returns `fromCache: true` (same policy for `notion_*` and `swagger_*`). `journal_*` does not hit any remote — it only reads / writes the local JSONL file.
+The first call returns `fromCache: false` — remote is hit once. The second call returns `fromCache: true` (same policy for `notion_*` and `swagger_*`). `journal_*` does not hit any remote — it only reads / writes the local JSONL file. `issue_*` always hits GitHub (REST API) for the dedupe-listing GET; only `issue_create_from_spec` (without `dryRun`) writes (creates / patches issues).
 
 ## OpenAPI registry (`agent-toolkit.json`)
 
@@ -85,6 +90,33 @@ After that:
 ```
 
 Identifier pattern is `^[a-zA-Z0-9_-]+$` — colons are reserved as the handle separator. URLs must parse and use `http`, `https`, or `file` scheme. If the config violates the schema, the plugin logs a single error line and falls back to an empty registry — the tools themselves keep working.
+
+## GitHub Issue sync (`spec-to-issues`)
+
+The same config file holds the GitHub target for the `spec-to-issues` skill. All keys optional; the skill throws a clear error when something required is missing.
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/minjun0219/coding-agent-toolkit/main/agent-toolkit.schema.json",
+  "github": {
+    "repo": "minjun0219/agent-toolkit",
+    "apiBaseUrl": "https://api.github.com",
+    "defaultLabels": ["spec-pact"]
+  }
+}
+```
+
+`github.repo` must match `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`. `defaultLabels` must be a non-empty array — the first label doubles as the GitHub `labels=` filter for dedupe lookup, so it has to remain stable across runs (default `["spec-pact"]`). Token / secret values are never stored here; pass `AGENT_TOOLKIT_GITHUB_TOKEN` via the environment (PAT with `repo` scope, or fine-grained `Issues: Read & Write`).
+
+After that:
+
+```
+> use issue_create_from_spec tool with slug "<locked-spec-slug>" dryRun true   # plan only
+> use issue_create_from_spec tool with slug "<locked-spec-slug>"               # apply
+> use issue_status tool with slug "<locked-spec-slug>"                          # GET-only status
+```
+
+The plugin maps each SPEC to a single epic + N sub-issues (`# 합의 TODO` bullets). Reruns are idempotent (marker + label dedupe). Auto-reopen, GitHub Project (v2) board moves, and Notion ↔ Issue two-way sync are intentionally out-of-scope.
 
 ## Agents (`rocky` + `grace`)
 

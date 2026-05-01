@@ -1,6 +1,6 @@
 # Agent Toolkit
 
-opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드 / Notion ↔ project-local SPEC 합의 lifecycle 로 정리하는 skill 3 개 (`notion-context`, `openapi-client`, `spec-pact`), 그리고 프론트엔드 전문성을 가진 풀스택 업무 파트너이자 agent-toolkit 의 1차 지휘자인 primary agent 1 개 (`rocky`) + SPEC 합의 lifecycle 의 finalize/lock 권한자인 sub-agent 1 개 (`grace`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. SPEC 쪽은 `.agent/specs/INDEX.md` 를 LLM-wiki 컨셉을 빌린 wiki-style entry point 로 두고 본문은 `.agent/specs/<slug>.md` (slug 모드) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일) 둘 다 인정. Notion 은 시작 소스이고, 작업 컨텍스트의 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
+opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, 잠긴 SPEC body 를 GitHub Issue 시리즈 (epic + sub) 로 1 방향 sync 하는 도구 2 개, 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드 / Notion ↔ project-local SPEC 합의 lifecycle / SPEC → GitHub Issue 추적으로 정리하는 skill 4 개 (`notion-context`, `openapi-client`, `spec-pact`, `spec-to-issues`), 그리고 프론트엔드 전문성을 가진 풀스택 업무 파트너이자 agent-toolkit 의 1차 지휘자인 primary agent 1 개 (`rocky`) + SPEC 합의 lifecycle 의 finalize/lock 권한자인 sub-agent 1 개 (`grace`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. SPEC 쪽은 `.agent/specs/INDEX.md` 를 LLM-wiki 컨셉을 빌린 wiki-style entry point 로 두고 본문은 `.agent/specs/<slug>.md` (slug 모드) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일) 둘 다 인정 — 그 잠긴 본문이 GitHub Issue body 의 source-of-truth 로 그대로 흐른다. Notion 은 시작 소스이고, 작업 컨텍스트의 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
 
 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸고, `grace` 는 [Project Hail Mary](https://en.wikipedia.org/wiki/Project_Hail_Mary) 의 Ryland Grace (Rocky 의 인간 파트너) 에서 따왔다 — toolkit 안에서는 역할이 뒤집혀 Rocky 가 1차 지휘자, Grace 가 SPEC lifecycle 담당. 책임은 agent-toolkit 1차 지휘 / SPEC 합의 lifecycle / 필요 시 외부 sub-agent / skill 위임 세 줄로 한정한다.
 
@@ -19,7 +19,7 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 ├── .opencode/
 │   ├── INSTALL.md                  # opencode 사용자용 설치 안내
 │   └── plugins/
-│       ├── agent-toolkit.ts        # plugin entrypoint + 도구 12 개 (notion 3 + swagger 5 + journal 4)
+│       ├── agent-toolkit.ts        # plugin entrypoint + 도구 14 개 (notion 3 + swagger 5 + journal 4 + issue 2)
 │       └── agent-toolkit.test.ts
 ├── lib/
 │   ├── notion-context.ts           # Notion TTL 파일 캐시 + key 정규화 + normalize
@@ -31,11 +31,14 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 │   ├── toolkit-config.ts           # agent-toolkit.json 로더 (project > user 우선순위)
 │   ├── toolkit-config.test.ts
 │   ├── agent-journal.ts            # turn 단위 결정/blocker/사용자 답변 append-only JSONL 저널
-│   └── agent-journal.test.ts
+│   ├── agent-journal.test.ts
+│   ├── github-issue-sync.ts        # 잠긴 SPEC → GitHub Issue 시리즈 (epic + sub) 1-방향 동기화
+│   └── github-issue-sync.test.ts
 ├── skills/
 │   ├── notion-context/SKILL.md     # Notion 캐시 우선 읽기 + 한국어 스펙 정리 skill
 │   ├── openapi-client/SKILL.md     # 캐시된 OpenAPI spec → fetch / axios 호출 코드 skill
-│   └── spec-pact/SKILL.md          # Notion ↔ project-local SPEC 합의 lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND)
+│   ├── spec-pact/SKILL.md          # Notion ↔ project-local SPEC 합의 lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND)
+│   └── spec-to-issues/SKILL.md     # 잠긴 SPEC → GitHub Issue 시리즈 (epic + sub, idempotent)
 ├── agents/
 │   ├── rocky.md                    # 풀스택 업무 파트너 / agent-toolkit 1차 지휘자 (mode: all)
 │   └── grace.md                    # SPEC 합의 lifecycle sub-agent / spec-pact 의 finalize/lock 권한자 (mode: subagent)
@@ -72,10 +75,13 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 | `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` | `86400` | OpenAPI 캐시 TTL (초) |
 | `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` | `30000` | OpenAPI spec 다운로드 timeout (ms) |
 | `AGENT_TOOLKIT_JOURNAL_DIR` | `~/.config/opencode/agent-toolkit/journal` | 에이전트 저널 디렉터리 (안에 단일 `journal.jsonl` 파일) |
+| `AGENT_TOOLKIT_GITHUB_TOKEN` | (없음) | `spec-to-issues` skill 의 GitHub PAT — `repo` scope 또는 fine-grained `Issues: Read & Write`. 비밀값이라 `agent-toolkit.json` 에는 절대 두지 않는다. |
+| `AGENT_TOOLKIT_GITHUB_REPO` | (없음) | `spec-to-issues` skill 의 default repo (`owner/repo`). `agent-toolkit.json` 의 `github.repo` 가 우선이고, 둘 다 없으면 caller 가 `repo` 인자를 명시해야 한다. |
+| `AGENT_TOOLKIT_GITHUB_API_URL` | `https://api.github.com` | GitHub REST API base URL. GHE 또는 corporate proxy 일 때만 override. `agent-toolkit.json` 의 `github.apiBaseUrl` 이 우선. |
 
 ## 도구
 
-plugin 이 opencode 에 다음 12 개를 등록한다.
+plugin 이 opencode 에 다음 14 개를 등록한다.
 
 ### Notion (`notion_*`)
 
@@ -117,6 +123,21 @@ turn / session 경계를 넘는 에이전트 메모. 캐시와 달리 **append-o
 | `journal_status` | 파일 경로 / 존재 여부 / 유효 항목 수 (손상 라인 제외) / 바이트 / 마지막 항목 시각만 조회 |
 
 손상 / 부분 쓰기 라인은 read 단계에서 자동 skip — 한 줄이 깨져도 다음 turn 의 read 가 throw 하지 않고 나머지를 반환한다.
+
+### Issue (`issue_*`)
+
+`spec-pact` 가 잠근 SPEC body 를 GitHub Issue 시리즈 (epic + sub) 로 한 방향 sync 한다. 노션 본문은 거치지 않는다 — 그래서 drift / 양방향 sync 가 단순해진다 (자세한 배경은 [`ROADMAP.md`](./ROADMAP.md) Phase 5/Phase 2 참고).
+
+| 도구 | 동작 |
+| --- | --- |
+| `issue_create_from_spec` | 잠긴 SPEC (`<spec.dir>/<slug>.md` 슬러그 모드 또는 `**/SPEC.md` 디렉터리 모드) 한 개를 epic + N sub-issue 로 동기화. 마커 (`<!-- spec-pact:slug=…:kind=… -->`) + 라벨 (`spec-pact`) dedupe 로 idempotent. 새 sub 가 생기면 epic body 의 task list 도 자동 patch. (`slug?` 또는 `path?` 둘 중 하나 필수, `repo?: "owner/repo"`, `dryRun?: true` 면 plan 만 보여주고 remote write X) |
+| `issue_status` | 한 SPEC 에 대해 이미 만들어진 epic / sub 만 GET 으로 조회 (`issue_create_from_spec` 의 `dryRun=true` 와 동치). 새 issue 생성 X. (`slug?` 또는 `path?`, `repo?`) |
+
+매핑은 고정이다 — **1 SPEC = 1 epic, `# 합의 TODO` bullet 1 개 = 1 sub-issue**. `# 요구사항` / `# 화면` / `# API 의존성` 은 epic body 의 인용용으로만 들어가고 별도 issue 가 되지 않는다.
+
+`AGENT_TOOLKIT_GITHUB_TOKEN` 필수 — `repo` scope 의 PAT 또는 fine-grained `Issues: Read & Write` 가 있으면 된다. repo 는 `agent-toolkit.json` 의 `github.repo` (권장), `AGENT_TOOLKIT_GITHUB_REPO`, 또는 caller 의 `repo` 인자 — 셋 중 하나가 있으면 된다.
+
+자동 reopen / Project (v2) 보드 추가 / Notion ↔ Issue 양방향 sync 는 모두 out-of-scope (이번 phase 에서는 X — `AGENTS.md` MVP scope 참고).
 
 ## Config (`agent-toolkit.json`)
 
@@ -162,11 +183,26 @@ SPEC-합의 lifecycle (grace + spec-pact) 의 storage 위치도 같은 파일에
 
 `spec.dir` / `spec.indexFile` 은 빈 문자열 금지, `spec.scanDirectorySpec` 은 boolean. 같은 leaf 는 project (`./.opencode/agent-toolkit.json`) 가 user 를 덮어쓴다.
 
+`spec-to-issues` skill 의 default repo / API URL / 라벨도 같은 파일에서 잡는다 — 모두 optional, token 같은 비밀값은 절대 두지 않는다 (env 만):
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/minjun0219/coding-agent-toolkit/main/agent-toolkit.schema.json",
+  "github": {
+    "repo": "minjun0219/agent-toolkit",         // "owner/repo" 형식 강제
+    "apiBaseUrl": "https://api.github.com",      // GHE 일 때만 override
+    "defaultLabels": ["spec-pact"]               // 첫 라벨이 dedupe 검색의 filter 로도 쓰인다 — 빈 배열 금지
+  }
+}
+```
+
+`github.repo` 는 `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$` 정규식, `github.apiBaseUrl` 은 http / https / file 만 허용, `github.defaultLabels` 는 비어 있지 않은 string 배열 (첫 라벨이 GitHub `labels=` 검색의 단서가 되므로 stable 해야 한다). caller 가 `repo` 인자를 명시하면 그게 가장 우선, 없으면 config 의 `github.repo`, 그 다음이 `AGENT_TOOLKIT_GITHUB_REPO` env. token 은 항상 `AGENT_TOOLKIT_GITHUB_TOKEN` env 로만.
+
 ## Agents
 
 | 이름 | mode | 역할 |
 | --- | --- | --- |
-| `rocky` | all | 프론트엔드 전문성을 가진 풀스택 업무 파트너 / agent-toolkit 1차 지휘자. Notion URL·page id, OpenAPI spec URL·16-hex 키·`host:env:spec` 핸들을 받아 `notion-context` / `openapi-client` 중 하나로 라우팅, SPEC 합의 lifecycle 키워드 ("스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영") 면 `@grace` 로 즉시 위임 (passthrough). 모호하면 어느 surface 인지 되묻는다. 출력은 cached markdown(컨텍스트) / 한국어 스펙 / `fetch`·`axios` snippet / `@grace` 결과 / 위임된 sub-agent 결과 중 하나. 작업이 toolkit 범위를 넘으면 외부 sub-agent / skill 에 위임 가능. **직접** multi-step 구현(코드 작성·리팩터·다파일 변경)은 안 함, **`spec-pact` 의 4 모드도 직접 안 굴림 — `@grace` 책임**. |
+| `rocky` | all | 프론트엔드 전문성을 가진 풀스택 업무 파트너 / agent-toolkit 1차 지휘자. Notion URL·page id, OpenAPI spec URL·16-hex 키·`host:env:spec` 핸들을 받아 `notion-context` / `openapi-client` 중 하나로 라우팅, 잠긴 SPEC 의 slug / path + GitHub 동기화 키워드 ("이슈 만들어" / "GitHub Issue 동기화" / "스펙 → 이슈" / "epic + sub 만들어줘") 면 `spec-to-issues` skill 로 라우팅, SPEC 합의 lifecycle 키워드 ("스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영") 면 `@grace` 로 즉시 위임 (passthrough). 모호하면 어느 surface 인지 되묻는다. 출력은 cached markdown(컨텍스트) / 한국어 스펙 / `fetch`·`axios` snippet / `spec-to-issues` 결과 / `@grace` 결과 / 위임된 sub-agent 결과 중 하나. 작업이 toolkit 범위를 넘으면 외부 sub-agent / skill 에 위임 가능. **직접** multi-step 구현(코드 작성·리팩터·다파일 변경)은 안 함, **`spec-pact` 의 4 모드도 직접 안 굴림 — `@grace` 책임**. |
 | `grace` | subagent | SPEC 합의 lifecycle 의 단일 finalize/lock 권한자. `spec-pact` 스킬을 conduct — DRAFT (Notion → 합의 → SPEC write + INDEX 갱신), VERIFY (SPEC 의 합의 TODO / API 의존성 체크리스트화), DRIFT-CHECK (`source_content_hash` vs `notion_get(pageId).entry.contentHash`), AMEND (drift 항목별 keep / update / reject → SPEC patch + version bump). wiki-style entry point 는 `<spec.dir>/<spec.indexFile>` (default `.agent/specs/INDEX.md`). SPEC 본체는 `<spec.dir>/<slug>.md` (slug 모드, default `.agent/specs/<slug>.md`) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일). 직접 호출 (`@grace …`) 또는 Rocky 라우팅으로 들어옴. 외부 에이전트가 협의에 참여해도 SPEC frontmatter / INDEX 는 grace 만 쓴다. |
 
 Rocky 는 `mode: all` 이라 사용자 직접 호출(primary, Tab 사이클)과 다른 primary agent 의 위임(subagent) 둘 다 가능. Grace 는 `mode: subagent` 라 Rocky / 외부 primary / 사용자가 명시적으로 `@grace` 로 호출할 때만 동작. agent frontmatter 에 `model:` 을 박지 않아 사용자가 opencode 세션에서 고른 기본 모델을 그대로 사용한다. 다른 agent 는 turn 시작 시 받는 subagent 목록의 `description` 만으로 라우팅 — Rocky / Grace 의 존재를 system prompt 에 박지 않아도 toolkit-shaped / 작업 컨텍스트 / SPEC lifecycle 관련 요청이 알아서 들어온다. OmO (Sisyphus) / Superpowers 같은 외부 primary agent 가 환경에 있으면 Rocky / Grace 가 자연스럽게 그 위임 대상으로 잡히지만 — **외부 primary 는 토킷의 필수 조건이 아니라 같이 있을 때 시너지가 나는 옵션**이다.

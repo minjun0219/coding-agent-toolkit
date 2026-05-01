@@ -198,6 +198,66 @@ describe("validateConfig", () => {
       validateConfig({ spec: { unknown: 1 } } as any, "p"),
     ).toThrow(/unsupported key "unknown"/);
   });
+
+  it("accepts a github block with all known keys", () => {
+    expect(() =>
+      validateConfig(
+        {
+          github: {
+            repo: "minjun0219/agent-toolkit",
+            apiBaseUrl: "https://api.github.com",
+            defaultLabels: ["spec-pact"],
+          },
+        },
+        "p",
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects github.repo without owner/repo shape", () => {
+    expect(() =>
+      validateConfig({ github: { repo: "noslash" } } as any, "p"),
+    ).toThrow(/github\.repo/);
+    expect(() =>
+      validateConfig({ github: { repo: "a/b/c" } } as any, "p"),
+    ).toThrow(/github\.repo/);
+  });
+
+  it("rejects github.apiBaseUrl that is empty / unparseable / wrong scheme", () => {
+    expect(() =>
+      validateConfig({ github: { apiBaseUrl: "" } } as any, "p"),
+    ).toThrow(/github\.apiBaseUrl/);
+    expect(() =>
+      validateConfig({ github: { apiBaseUrl: "not a url" } } as any, "p"),
+    ).toThrow(/not a valid URL/);
+    expect(() =>
+      validateConfig(
+        { github: { apiBaseUrl: "ftp://example.com" } } as any,
+        "p",
+      ),
+    ).toThrow(/unsupported scheme/);
+  });
+
+  it("rejects github.defaultLabels that is empty / non-array / contains empty", () => {
+    expect(() =>
+      validateConfig({ github: { defaultLabels: [] } } as any, "p"),
+    ).toThrow(/non-empty array/);
+    expect(() =>
+      validateConfig({ github: { defaultLabels: "spec-pact" } } as any, "p"),
+    ).toThrow(/non-empty array/);
+    expect(() =>
+      validateConfig(
+        { github: { defaultLabels: ["spec-pact", ""] } } as any,
+        "p",
+      ),
+    ).toThrow(/non-empty strings/);
+  });
+
+  it("rejects unsupported github keys (typo guard, schema lockstep)", () => {
+    expect(() =>
+      validateConfig({ github: { token: "ghp_xxx" } } as any, "p"),
+    ).toThrow(/unsupported key "token"/);
+  });
 });
 
 describe("mergeConfigs", () => {
@@ -303,6 +363,32 @@ describe("mergeConfigs", () => {
     const merged = mergeConfigs(user, {});
     expect(merged.spec?.dir).toBe(".agent/specs");
     expect(merged.spec?.scanDirectorySpec).toBe(false);
+  });
+
+  it("project overrides user at the github leaf (per-key)", () => {
+    const user: ToolkitConfig = {
+      github: {
+        repo: "user/upstream",
+        apiBaseUrl: "https://api.github.com",
+        defaultLabels: ["spec-pact"],
+      },
+    };
+    const project: ToolkitConfig = {
+      // project 만 repo / defaultLabels 를 덮어씀 — apiBaseUrl 은 user 값 유지.
+      github: { repo: "project/fork", defaultLabels: ["spec-pact", "phase2"] },
+    };
+    const merged = mergeConfigs(user, project);
+    expect(merged.github?.repo).toBe("project/fork");
+    expect(merged.github?.defaultLabels).toEqual(["spec-pact", "phase2"]);
+    expect(merged.github?.apiBaseUrl).toBe("https://api.github.com");
+  });
+
+  it("user-only github survives empty project", () => {
+    const user: ToolkitConfig = {
+      github: { repo: "user/upstream" },
+    };
+    const merged = mergeConfigs(user, {});
+    expect(merged.github?.repo).toBe("user/upstream");
   });
 });
 

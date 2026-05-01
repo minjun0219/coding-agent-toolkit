@@ -36,12 +36,29 @@ export interface SpecConfig {
   indexFile?: string;
 }
 
+/**
+ * `spec-to-issues` skill (Phase 2) 설정. 모두 optional — 누락 시 caller / env 가
+ * 기본값을 적용한다. token 같은 비밀값은 여기에 저장하지 않는다 (env 만).
+ */
+export interface GithubConfig {
+  /** "owner/repo" 형식. 누락 시 동기화 도구는 호출 시 throw. */
+  repo?: string;
+  /** GitHub REST API base URL. default `https://api.github.com` (GHE 시 override). */
+  apiBaseUrl?: string;
+  /**
+   * 새로 생성되는 epic / sub-issue 에 붙일 라벨. default `["spec-pact"]`.
+   * 첫 라벨이 dedupe 검색의 `labels=` 필터로도 쓰이므로 한 개 이상 있어야 한다.
+   */
+  defaultLabels?: string[];
+}
+
 export interface ToolkitConfig {
   $schema?: string;
   openapi?: {
     registry?: OpenapiRegistry;
   };
   spec?: SpecConfig;
+  github?: GithubConfig;
 }
 
 export interface LoadConfigOptions {
@@ -116,6 +133,9 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
   if (config.spec !== undefined) {
     validateSpec(config.spec, source);
   }
+  if (config.github !== undefined) {
+    validateGithub(config.github, source);
+  }
   return config as ToolkitConfig;
 }
 
@@ -151,6 +171,70 @@ function validateSpec(spec: unknown, source: string): asserts spec is SpecConfig
   if (s.indexFile !== undefined) {
     if (typeof s.indexFile !== "string" || s.indexFile.trim().length === 0) {
       throw new Error(`${source}: spec.indexFile must be a non-empty string`);
+    }
+  }
+}
+
+/**
+ * `github` 객체 모양 검증. `spec-to-issues` skill 이 epic + sub-issue 를 만들 때 쓰는
+ * repo / API URL / 라벨 default 만 받는다. 비밀값(token) 은 여기 저장 X — env 에서만.
+ * 미지원 key 는 reject — schema 의 `additionalProperties: false` 와 lockstep.
+ */
+const ALLOWED_GITHUB_KEYS = new Set(["repo", "apiBaseUrl", "defaultLabels"]);
+const REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+
+function validateGithub(
+  github: unknown,
+  source: string,
+): asserts github is GithubConfig {
+  if (github === null || typeof github !== "object" || Array.isArray(github)) {
+    throw new Error(`${source}: github must be an object`);
+  }
+  const g = github as Record<string, unknown>;
+  for (const key of Object.keys(g)) {
+    if (!ALLOWED_GITHUB_KEYS.has(key)) {
+      throw new Error(
+        `${source}: github has unsupported key "${key}" — allowed: ${[...ALLOWED_GITHUB_KEYS].join(", ")}`,
+      );
+    }
+  }
+  if (g.repo !== undefined) {
+    if (typeof g.repo !== "string" || !REPO_PATTERN.test(g.repo)) {
+      throw new Error(
+        `${source}: github.repo must match "owner/repo" (got ${JSON.stringify(g.repo)})`,
+      );
+    }
+  }
+  if (g.apiBaseUrl !== undefined) {
+    if (typeof g.apiBaseUrl !== "string" || g.apiBaseUrl.trim().length === 0) {
+      throw new Error(`${source}: github.apiBaseUrl must be a non-empty string`);
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(g.apiBaseUrl);
+    } catch {
+      throw new Error(
+        `${source}: github.apiBaseUrl is not a valid URL — got "${g.apiBaseUrl}"`,
+      );
+    }
+    if (!URL_SCHEMES.has(parsed.protocol)) {
+      throw new Error(
+        `${source}: github.apiBaseUrl uses unsupported scheme "${parsed.protocol}" — only http / https / file are accepted`,
+      );
+    }
+  }
+  if (g.defaultLabels !== undefined) {
+    if (!Array.isArray(g.defaultLabels) || g.defaultLabels.length === 0) {
+      throw new Error(
+        `${source}: github.defaultLabels must be a non-empty array of strings (first label is also the dedupe filter)`,
+      );
+    }
+    for (const v of g.defaultLabels) {
+      if (typeof v !== "string" || v.trim().length === 0) {
+        throw new Error(
+          `${source}: github.defaultLabels must contain only non-empty strings — got ${JSON.stringify(v)}`,
+        );
+      }
     }
   }
 }
@@ -256,6 +340,17 @@ export function mergeConfigs(
       if (value !== undefined) {
         // 각 key 는 leaf — project 가 user 를 통째로 덮어쓴다.
         (out.spec as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+  if (project.github) {
+    out.github ??= {};
+    for (const [key, value] of Object.entries(project.github) as [
+      keyof GithubConfig,
+      GithubConfig[keyof GithubConfig],
+    ][]) {
+      if (value !== undefined) {
+        (out.github as Record<string, unknown>)[key] = value;
       }
     }
   }

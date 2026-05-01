@@ -67,6 +67,31 @@
         }
       },
       "additionalProperties": false
+    },
+    "github": {
+      "type": "object",
+      "description": "Settings for the `spec-to-issues` skill (Phase 2) — locks a SPEC body and turns it into one epic + N sub-issues on GitHub. Token / secret values are never stored here; pass `AGENT_TOOLKIT_GITHUB_TOKEN` via the environment.",
+      "properties": {
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$",
+          "description": "Default \"owner/repo\" target for `issue_create_from_spec` / `issue_status`. Tools throw a clear error when this is missing and the caller does not pass `repo` explicitly."
+        },
+        "apiBaseUrl": {
+          "type": "string",
+          "format": "uri",
+          "default": "https://api.github.com",
+          "description": "GitHub REST API base URL. Override for GitHub Enterprise or for routing through a corporate proxy."
+        },
+        "defaultLabels": {
+          "type": "array",
+          "minItems": 1,
+          "default": ["spec-pact"],
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Labels applied to every epic / sub-issue the skill creates. The first entry doubles as the dedupe-search filter (`labels=`), so it must remain stable across runs."
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

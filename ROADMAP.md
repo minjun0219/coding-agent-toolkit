@@ -35,7 +35,7 @@
 | 3 | 한글 주석/설명 | ✅ 정책 (검증 미구현) | [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7) | `AGENTS.md` coding rules + output 정책 |
 | 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
 | 5 | Notion → 개발 스펙 분해 | ✅ MVP+합의 lifecycle | — | `skills/notion-context/SKILL.md` spec mode (단발성) + `skills/spec-pact/SKILL.md` 4 모드 (`grace` sub-agent 가 conduct, INDEX·SPEC·journal 4 종 kind 로 lock / drift / amend 까지 추적) |
-| 6 | 스펙 → GitHub Issue 추적 | 📋 planned (Phase 5 SPEC 위에 올라감) | [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4) | issue body source-of-truth 를 노션 본문 대신 grace 가 잠근 SPEC body 로 — drift / 양방향 sync 단순화 |
+| 6 | 스펙 → GitHub Issue 추적 | ✅ MVP (Phase 5 SPEC 위) | [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4) | `issue_create_from_spec` / `issue_status`, `lib/github-issue-sync.ts`, `skills/spec-to-issues/SKILL.md`. 매핑은 1 SPEC = 1 epic, `# 합의 TODO` bullet 1 개 = 1 sub. 마커 + 라벨 dedupe 로 idempotent. 자동 reopen / Project (v2) / 양방향 sync 는 후속 |
 | 7 | OpenAPI 캐시 + client 작성 | ✅ MVP+registry | [#6](https://github.com/minjun0219/coding-agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`, `lib/openapi-context.ts`, `lib/openapi-registry.ts`, `lib/toolkit-config.ts` + `agent-toolkit.schema.json`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet, host:env:spec 핸들 + scope 검색) |
 
 ## 제안 단계
@@ -44,9 +44,14 @@
 
 - **Phase 1 — 완료** *(PR [#3](https://github.com/minjun0219/coding-agent-toolkit/pull/3))*
   - Notion 캐시 + 스펙 추출 + Rocky 업무 파트너 / agent-toolkit 1차 지휘자 (`mode: all`)
-- **Phase 2 — 스펙 → GitHub Issue / Project 동기화** *(memo #6, issue [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4))*
-  - Rocky 의 spec 모드 출력을 그대로 issue 시리즈로 변환하는 skill / 도구
-  - 매핑 후보: 한 Notion 페이지 = 한 epic, "TODO" 섹션의 bullet 1 개 = 한 issue
+- **Phase 2 — 스펙 → GitHub Issue / Project 동기화 — 완료** *(memo #6, issue [#4](https://github.com/minjun0219/coding-agent-toolkit/issues/4))*
+  - **Source-of-truth 결정**: issue body 는 노션 본문이 아니라 grace 가 잠근 SPEC body 를 그대로 인용 — Phase 5 의 lifecycle 위에 올라감.
+  - **매핑 결정**: 1 SPEC = 1 epic, `# 합의 TODO` bullet 1 개 = 1 sub-issue (매핑 고정 — 다른 후보는 out-of-scope).
+  - **GitHub 연동 결정**: 자체 도구 (`issue_create_from_spec` / `issue_status` 2 종 + `lib/github-issue-sync.ts`) — 외부 GitHub MCP 의존성 추가 X. octokit 없이 `fetch` 만 사용 (의존성 0 유지).
+  - **Idempotency**: 마커 (`<!-- spec-pact:slug=…:kind=epic -->` / `…:kind=sub:index=<n> -->`) + 라벨 (`spec-pact`) dedupe. 같은 SPEC 재호출 시 새 issue 생성 X, 기존 epic 의 task list 만 새 sub 가 추가될 때 자동 patch.
+  - **Skill**: `skills/spec-to-issues/SKILL.md` — Rocky 가 conduct (lifecycle 키워드는 여전히 `@grace`, GitHub 동기화 키워드는 이 skill).
+  - **Config**: `agent-toolkit.json` 에 `github` 객체 추가 (`repo` / `apiBaseUrl` / `defaultLabels`) + `agent-toolkit.schema.json` lockstep + `lib/toolkit-config.ts` 런타임 검증. 비밀값 (token) 은 `AGENT_TOOLKIT_GITHUB_TOKEN` env 만.
+  - **Out of scope (이번 phase 에서는 X)**: GitHub Project (v2) 보드 자동 추가/이동, Notion ↔ Issue 양방향 sync (한 방향만), 닫힌 issue 의 자동 재오픈, 다른 epic 매핑 (요구사항 1 항목 = epic 등). 추가가 필요하면 별도 PR.
 - **Phase 3 — 에이전트 자동 기억 / 기록 — 완료** *(memo #1, issue [#5](https://github.com/minjun0219/coding-agent-toolkit/issues/5))*
   - `journal_append` / `journal_read` / `journal_search` / `journal_status` 4 도구 + `lib/agent-journal.ts` append-only JSONL (TTL 없음, 손상 라인 graceful skip)
   - 시간순 + `kind` / `tag` / `pageId` / `since` 필터 + substring 검색
@@ -155,7 +160,7 @@
 ## 미정 / 결정 필요
 
 - memo #1 의 "기억" 영속 층은 디스크로 결정 (Phase 3 MVP). cross-machine 동기화 / 자연어 검색 / 자동 요약 / 압축은 후속 phase.
-- memo #6 의 GitHub 연동을 외부 MCP 로 위임할지 자체 도구로 만들지.
+- ~~memo #6 의 GitHub 연동을 외부 MCP 로 위임할지 자체 도구로 만들지.~~ → **자체 도구로 결정 (Phase 2 완료, PR #4 후속)**. octokit / 외부 MCP 의존성 없이 `fetch` 만 사용. token 은 `AGENT_TOOLKIT_GITHUB_TOKEN` env, repo / API URL / 라벨 default 는 `agent-toolkit.json` 의 `github` 객체.
 - Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — Phase 5 에서 SPEC 합의 lifecycle 이 `@grace` sub-agent 로 분리됨 (`spec-pact` 스킬 + INDEX 자동 갱신). 추가 분리(`linear`, `swagger` 등 sub-partner) 트리거의 임계는 그만큼 높아졌고, 분리는 "특정 surface 가 충분히 두꺼워져 별도 persona / 별도 contract 가 필요해질 때" 로 제한한다 — 이번 Grace 분리도 같은 기준 (lifecycle 의 finalize/lock 권한이 Rocky 의 라우팅 책임과 충돌) 으로 결정됨.
 - **Repo rename: `coding-agent-toolkit` → `agent-toolkit`** *(기술적으로 가능, 트리거 시 sweep)*
   - GitHub repo settings 에서 rename — 자동 redirect 활성화로 기존 URL / clone / PR / issue link 가 그대로 살아남는다.

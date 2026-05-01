@@ -41,6 +41,16 @@ import {
   type JournalSearchOptions,
   type JournalStatus,
 } from "../../lib/agent-journal";
+import {
+  GithubIssueClient,
+  flattenSyncResult,
+  parseRepoHandle,
+  readAndParseSpec,
+  resolveSpecPath,
+  syncSpecToIssues,
+  type IssueSyncResult,
+  type ParsedSpec,
+} from "../../lib/github-issue-sync";
 
 /**
  * opencode plugin entrypoint (Superpowers 형식).
@@ -48,8 +58,11 @@ import {
  * 두 가지를 노출한다:
  *   1. config 훅으로 자기 저장소의 `skills/` 디렉터리를 opencode skill 탐색 경로에 추가
  *      → opencode 의 native `skill` 도구가 SKILL.md 들을 자동 발견
- *   2. tool 등록으로 `notion_get` / `notion_refresh` / `notion_status` 3 개 노출
- *      → 캐시 우선 정책 + remote Notion MCP 호출 + id 검증을 한 곳에서 처리
+ *   2. tool 등록으로 14 개 도구 노출:
+ *      - notion_get / notion_refresh / notion_status (Notion 캐시)
+ *      - swagger_get / swagger_refresh / swagger_status / swagger_search / swagger_envs (OpenAPI 캐시 + 레지스트리)
+ *      - journal_append / journal_read / journal_search / journal_status (turn 단위 메모)
+ *      - issue_create_from_spec / issue_status (Phase 2 — 잠긴 SPEC → GitHub Issue 시리즈)
  *
  * 이 plugin 은 opencode 전용. Claude Code 등 다른 host 에서 같은 skill 을 쓰려면
  * `.claude-plugin/` 같은 host 별 폴더를 후속으로 추가하면 된다.
@@ -84,6 +97,26 @@ function readEnv() {
   return {
     url: url.replace(/\/$/, ""),
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15_000,
+  };
+}
+
+/**
+ * GitHub 동기화용 env 를 모은다. token 은 절대 config 에 두지 않으므로 env 가 유일한 출처.
+ * `AGENT_TOOLKIT_GITHUB_REPO` / `AGENT_TOOLKIT_GITHUB_API_URL` 는 config 보다 우선이 아니라
+ * "config 가 비어 있을 때의 fallback" — caller 인자가 가장 우선.
+ */
+function readGithubEnv() {
+  const token = process.env.AGENT_TOOLKIT_GITHUB_TOKEN;
+  const repoEnv = process.env.AGENT_TOOLKIT_GITHUB_REPO;
+  const apiBaseUrlEnv = process.env.AGENT_TOOLKIT_GITHUB_API_URL;
+  return {
+    token: typeof token === "string" && token.length > 0 ? token : undefined,
+    repoEnv:
+      typeof repoEnv === "string" && repoEnv.length > 0 ? repoEnv : undefined,
+    apiBaseUrlEnv:
+      typeof apiBaseUrlEnv === "string" && apiBaseUrlEnv.length > 0
+        ? apiBaseUrlEnv
+        : undefined,
   };
 }
 
@@ -417,6 +450,102 @@ export async function handleJournalStatus(
 }
 
 /**
+ * issue_* 도구 한 단의 컨텍스트.
+ *
+ * `client` 는 lazy — env / config / caller 인자가 모이는 시점에야 생성한다 (token 필수).
+ * `projectRoot` 와 `specDir` 는 SPEC 경로 해석에만 쓰인다.
+ */
+export interface IssueSyncContext {
+  /** project root. plugin 측은 process.cwd() 를 넘긴다. */
+  projectRoot: string;
+  /** spec.dir (default `.agent/specs`). */
+  specDir: string;
+  /** github.repo (default — caller 가 owner/repo 를 직접 넘기면 그게 우선). */
+  defaultRepo?: string;
+  /** github.apiBaseUrl (default `https://api.github.com`). */
+  apiBaseUrl?: string;
+  /** github.defaultLabels (default `["spec-pact"]`). */
+  defaultLabels?: string[];
+  /** github token — 절대 config 에 두지 않는다. env 에서만. */
+  token?: string;
+}
+
+/**
+ * SPEC 한 개 → epic + sub-issue 동기화.
+ *
+ * caller 입력은 (slug | path) + repo 옵션. 누락된 값은 ctx default 로 채운다 — 둘 다
+ * 비어 있으면 throw (env / config / 인자 어느 쪽에서든 채워주면 됨).
+ *
+ * dryRun=true 면 plan 만 만들고 remote 호출은 안 한다 — caller 에게 매칭 결과를 surface.
+ */
+export async function handleIssueCreateFromSpec(
+  ctx: IssueSyncContext,
+  input: {
+    slug?: string;
+    path?: string;
+    repo?: string;
+    dryRun?: boolean;
+  },
+): Promise<ReturnType<typeof flattenSyncResult>> {
+  const result = await runIssueSync(ctx, input);
+  return flattenSyncResult(result);
+}
+
+/**
+ * SPEC 한 개에 대해 "현재 어떤 issue 가 있는지만" 조회. dryRun=true 와 동치.
+ * remote 호출은 GET 한 번뿐 (라벨 검색).
+ */
+export async function handleIssueStatus(
+  ctx: IssueSyncContext,
+  input: {
+    slug?: string;
+    path?: string;
+    repo?: string;
+  },
+): Promise<ReturnType<typeof flattenSyncResult>> {
+  const result = await runIssueSync(ctx, { ...input, dryRun: true });
+  return flattenSyncResult(result);
+}
+
+async function runIssueSync(
+  ctx: IssueSyncContext,
+  input: { slug?: string; path?: string; repo?: string; dryRun?: boolean },
+): Promise<IssueSyncResult> {
+  const { path: specPath } = resolveSpecPath({
+    slug: input.slug,
+    path: input.path,
+    specDir: ctx.specDir,
+    projectRoot: ctx.projectRoot,
+  });
+  const parsed: ParsedSpec = await readAndParseSpec(specPath);
+  const repoHandle = (input.repo ?? ctx.defaultRepo ?? "").trim();
+  if (!repoHandle) {
+    throw new Error(
+      'issue tools: missing GitHub repo — pass `repo: "owner/repo"` 또는 agent-toolkit.json 의 `github.repo` 또는 `AGENT_TOOLKIT_GITHUB_REPO` 중 하나를 채워야 한다.',
+    );
+  }
+  if (!ctx.token) {
+    throw new Error(
+      "issue tools: missing GitHub token — set `AGENT_TOOLKIT_GITHUB_TOKEN` (PAT with `repo` scope; for fine-grained tokens, grant `Issues: Read & Write`).",
+    );
+  }
+  const { owner, repo } = parseRepoHandle(repoHandle);
+  const client = new GithubIssueClient({
+    token: ctx.token,
+    owner,
+    repo,
+    apiBaseUrl: ctx.apiBaseUrl,
+  });
+  return syncSpecToIssues({
+    parsed,
+    specPath,
+    client,
+    defaultLabels: ctx.defaultLabels,
+    dryRun: input.dryRun,
+  });
+}
+
+/**
  * opencode plugin default export.
  * `directory` 는 opencode 가 plugin 을 로드한 cwd. 우리는 import.meta 기반으로
  * 자기 저장소의 skills/ 를 절대 경로로 잡는다.
@@ -436,6 +565,15 @@ export default async function agentToolkitPlugin(_input: unknown) {
     );
   }
   const registry = toolkitConfig.openapi?.registry;
+  const githubEnv = readGithubEnv();
+  const issueCtx: IssueSyncContext = {
+    projectRoot: process.cwd(),
+    specDir: toolkitConfig.spec?.dir ?? ".agent/specs",
+    defaultRepo: toolkitConfig.github?.repo ?? githubEnv.repoEnv,
+    apiBaseUrl: toolkitConfig.github?.apiBaseUrl ?? githubEnv.apiBaseUrlEnv,
+    defaultLabels: toolkitConfig.github?.defaultLabels,
+    token: githubEnv.token,
+  };
 
   return {
     /**
@@ -612,6 +750,54 @@ export default async function agentToolkitPlugin(_input: unknown) {
         parameters: {},
         async handler() {
           return handleJournalStatus(journal);
+        },
+      },
+      issue_create_from_spec: {
+        description:
+          "잠긴 SPEC 파일 (grace 가 finalize 한 .agent/specs/<slug>.md 또는 **/SPEC.md) 한 개를 epic + N sub-issue 시리즈로 GitHub 에 동기화한다. 한 SPEC = 한 epic, `# 합의 TODO` bullet 1 개 = 한 sub-issue. 동일 SPEC 을 다시 호출하면 마커 (`<!-- spec-pact:slug=…:kind=… -->`) 와 라벨 (`spec-pact`) 로 중복을 막는다 (idempotent). 기존 epic 의 task list 는 sub 가 추가되면 자동 patch. 자동 reopen / 양방향 sync / Project 보드 추가는 out-of-scope. (slug? 또는 path? 둘 중 하나, repo?: \"owner/repo\" — 누락 시 agent-toolkit.json 의 github.repo 또는 AGENT_TOOLKIT_GITHUB_REPO 사용, dryRun?: true 면 plan / 매칭만 보고 remote write 는 안 함). AGENT_TOOLKIT_GITHUB_TOKEN 필수.",
+        parameters: {
+          slug: { type: "string", required: false },
+          path: { type: "string", required: false },
+          repo: { type: "string", required: false },
+          dryRun: { type: "boolean", required: false },
+        },
+        async handler({
+          slug,
+          path,
+          repo,
+          dryRun,
+        }: {
+          slug?: string;
+          path?: string;
+          repo?: string;
+          dryRun?: boolean;
+        }) {
+          return handleIssueCreateFromSpec(issueCtx, {
+            slug,
+            path,
+            repo,
+            dryRun,
+          });
+        },
+      },
+      issue_status: {
+        description:
+          "한 SPEC 에 대해 이미 만들어진 epic / sub-issue 상태만 조회한다 (issue_create_from_spec 의 dryRun=true 와 동치). 라벨 `spec-pact` (또는 github.defaultLabels[0]) 로 좁힌 issue 들을 마커로 매칭. remote 호출은 GET 한 번뿐, 새 issue 생성 X. (slug? 또는 path? 둘 중 하나, repo?: \"owner/repo\"). AGENT_TOOLKIT_GITHUB_TOKEN 필수.",
+        parameters: {
+          slug: { type: "string", required: false },
+          path: { type: "string", required: false },
+          repo: { type: "string", required: false },
+        },
+        async handler({
+          slug,
+          path,
+          repo,
+        }: {
+          slug?: string;
+          path?: string;
+          repo?: string;
+        }) {
+          return handleIssueStatus(issueCtx, { slug, path, repo });
         },
       },
     },

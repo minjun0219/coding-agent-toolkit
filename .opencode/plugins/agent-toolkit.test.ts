@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { NotionCache } from "../../lib/notion-context";
 import { OpenapiCache } from "../../lib/openapi-context";
 import type { OpenapiRegistry } from "../../lib/toolkit-config";
 import { AgentJournal } from "../../lib/agent-journal";
+import { epicMarker, subMarker } from "../../lib/github-issue-sync";
 import agentToolkitPlugin, {
+  handleIssueCreateFromSpec,
+  handleIssueStatus,
   handleJournalAppend,
   handleJournalRead,
   handleJournalSearch,
@@ -424,6 +427,221 @@ describe("journal handlers", () => {
     expect(after.exists).toBe(true);
     expect(after.totalEntries).toBe(1);
     expect(after.lastEntryAt).toBe(last.timestamp);
+  });
+});
+
+describe("issue handlers", () => {
+  let projectRoot: string;
+  let specDir: string;
+  let server: ReturnType<typeof Bun.serve>;
+  let baseUrl: string;
+  let issues: Array<{
+    number: number;
+    title: string;
+    body: string;
+    labels: string[];
+    state: string;
+  }>;
+  let nextNumber: number;
+  let createCalls: number;
+
+  const SPEC_BODY = `---
+slug: "user-auth"
+spec_pact_version: 1
+source_page_id: "1234abcd-1234-abcd-1234-abcd1234abcd"
+source_url: "https://www.notion.so/team/Auth-1234abcd1234abcd1234abcd1234abcd"
+status: "locked"
+---
+
+# 요약
+사용자 인증 합의안.
+
+# 합의 TODO
+- 로그인 폼 컴포넌트
+- POST /auth/login 호출 클라이언트
+`;
+
+  beforeEach(() => {
+    projectRoot = mkdtempSync(join(tmpdir(), "issue-plugin-"));
+    specDir = ".agent/specs";
+    mkdirSync(join(projectRoot, specDir), { recursive: true });
+    writeFileSync(join(projectRoot, specDir, "user-auth.md"), SPEC_BODY, "utf8");
+
+    issues = [];
+    nextNumber = 100;
+    createCalls = 0;
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(req) {
+        const url = new URL(req.url);
+        if (
+          url.pathname === "/repos/acme/widgets/issues" &&
+          req.method === "GET"
+        ) {
+          return Response.json(
+            issues.map((i) => ({
+              number: i.number,
+              title: i.title,
+              body: i.body,
+              state: i.state,
+              html_url: `${baseUrl}/issue/${i.number}`,
+            })),
+          );
+        }
+        if (
+          url.pathname === "/repos/acme/widgets/issues" &&
+          req.method === "POST"
+        ) {
+          createCalls += 1;
+          return req.json().then((parsed: any) => {
+            const num = nextNumber;
+            nextNumber += 1;
+            const item = {
+              number: num,
+              title: parsed.title ?? "",
+              body: parsed.body ?? "",
+              labels: Array.isArray(parsed.labels) ? parsed.labels : [],
+              state: "open",
+            };
+            issues.push(item);
+            return Response.json({
+              number: item.number,
+              title: item.title,
+              body: item.body,
+              state: item.state,
+              html_url: `${baseUrl}/issue/${item.number}`,
+            });
+          });
+        }
+        const patchMatch = url.pathname.match(
+          /^\/repos\/acme\/widgets\/issues\/(\d+)$/,
+        );
+        if (patchMatch && req.method === "PATCH") {
+          const n = Number.parseInt(patchMatch[1]!, 10);
+          return req.json().then((parsed: any) => {
+            const found = issues.find((i) => i.number === n);
+            if (!found) return new Response("not found", { status: 404 });
+            if (typeof parsed.body === "string") found.body = parsed.body;
+            return Response.json({
+              number: found.number,
+              title: found.title,
+              body: found.body,
+              state: found.state,
+              html_url: `${baseUrl}/issue/${found.number}`,
+            });
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    baseUrl = `http://${server.hostname}:${server.port}`;
+  });
+
+  afterEach(() => {
+    server.stop(true);
+  });
+
+  function ctx(overrides: Partial<{ token: string; defaultRepo: string }> = {}) {
+    return {
+      projectRoot,
+      specDir,
+      defaultRepo: overrides.defaultRepo ?? "acme/widgets",
+      apiBaseUrl: baseUrl,
+      defaultLabels: ["spec-pact"],
+      token: overrides.token ?? "ghp_test",
+    };
+  }
+
+  it("issue_create_from_spec: creates epic + subs from a slug, idempotent on re-run", async () => {
+    const first = await handleIssueCreateFromSpec(ctx(), {
+      slug: "user-auth",
+    });
+    expect(first.applied).toBe(true);
+    expect(first.epic.existed).toBe(false);
+    expect(first.subs.length).toBe(2);
+    expect(first.subs.every((s) => !s.existed)).toBe(true);
+    // sub 2 + epic 1
+    expect(createCalls).toBe(3);
+
+    const second = await handleIssueCreateFromSpec(ctx(), {
+      slug: "user-auth",
+    });
+    expect(second.applied).toBe(true);
+    expect(createCalls).toBe(3);
+    expect(second.epic.existed).toBe(true);
+    expect(second.subs.every((s) => s.existed)).toBe(true);
+  });
+
+  it("issue_create_from_spec: dryRun makes no remote write but still matches existing", async () => {
+    issues.push({
+      number: 1,
+      title: "[spec] user-auth v1",
+      body: `seeded\n${epicMarker("user-auth")}\n`,
+      labels: ["spec-pact"],
+      state: "open",
+    });
+    issues.push({
+      number: 2,
+      title: "[user-auth] 로그인 폼 컴포넌트",
+      body: `seeded\n${subMarker("user-auth", 0)}\n`,
+      labels: ["spec-pact"],
+      state: "closed",
+    });
+    const r = await handleIssueCreateFromSpec(ctx(), {
+      slug: "user-auth",
+      dryRun: true,
+    });
+    expect(r.applied).toBe(false);
+    expect(createCalls).toBe(0);
+    expect(r.epic.existed).toBe(true);
+    expect(r.subs[0]?.existed).toBe(true);
+    expect(r.subs[1]?.existed).toBe(false);
+  });
+
+  it("issue_status: equivalent to dryRun and never creates issues", async () => {
+    const r = await handleIssueStatus(ctx(), { slug: "user-auth" });
+    expect(r.applied).toBe(false);
+    expect(createCalls).toBe(0);
+    expect(r.epic.existed).toBe(false);
+    expect(r.subs.every((s) => !s.existed)).toBe(true);
+  });
+
+  it("throws clearly when token is missing", async () => {
+    await expect(
+      handleIssueCreateFromSpec(ctx({ token: "" }), { slug: "user-auth" }),
+    ).rejects.toThrow(/AGENT_TOOLKIT_GITHUB_TOKEN/);
+  });
+
+  it("throws clearly when repo is missing from both ctx and input", async () => {
+    await expect(
+      handleIssueCreateFromSpec(ctx({ defaultRepo: "" }), {
+        slug: "user-auth",
+      }),
+    ).rejects.toThrow(/owner\/repo/);
+  });
+
+  it("path input bypasses slug resolution and reads the SPEC verbatim", async () => {
+    const dirPath = join(projectRoot, "apps", "web", "orders");
+    mkdirSync(dirPath, { recursive: true });
+    const directorySpec = `---
+slug: "orders-flow"
+spec_pact_version: 2
+---
+
+# 요약
+주문 흐름 합의안.
+
+# 합의 TODO
+- 결제 완료 콜백
+`;
+    writeFileSync(join(dirPath, "SPEC.md"), directorySpec, "utf8");
+    const r = await handleIssueCreateFromSpec(ctx(), {
+      path: "apps/web/orders/SPEC.md",
+    });
+    expect(r.slug).toBe("orders-flow");
+    expect(r.subs.length).toBe(1);
+    expect(r.subs[0]?.title).toContain("결제 완료 콜백");
   });
 });
 
