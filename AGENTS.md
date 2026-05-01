@@ -64,3 +64,6 @@ The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI 
 
 - Default conversation language with the user is Korean. Keep code identifiers / paths / commands in English.
 - Keep change summaries short (one-line summary, bullets only when needed). Do not produce long-form reports.
+- Write code review outputs (summary/inline/suggestions) in Korean by default.
+- When requesting a PR review, explicitly ask for Korean review comments (e.g. `모든 리뷰 코멘트는 한국어로 작성해 주세요.`).
+- PR title/body and user-facing change descriptions should also be written in Korean.
