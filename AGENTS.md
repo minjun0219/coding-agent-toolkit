@@ -52,10 +52,11 @@ The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI 
 
 1. `bun run typecheck` passes
 2. `bun test` passes
-3. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
-4. If a new env var is added, also update the plugin's `readEnv()`
-5. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`) **and** the corresponding routing / tool rules in `agents/rocky.md` (Rocky conducts both skills, so changes on either side propagate to it; `journal_*` is owned by `rocky` directly — no separate skill)
-6. If `agent-toolkit.json` shape changes, update **both** `agent-toolkit.schema.json` (IDE autocomplete) **and** `lib/toolkit-config.ts` (runtime validation) — they must stay in lockstep
+3. `bun run lint:comments` passes (JSDoc + 한글 주석 정책 검증)
+4. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
+5. If a new env var is added, also update the plugin's `readEnv()`
+6. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`) **and** the corresponding routing / tool rules in `agents/rocky.md` (Rocky conducts both skills, so changes on either side propagate to it; `journal_*` is owned by `rocky` directly — no separate skill)
+7. If `agent-toolkit.json` shape changes, update **both** `agent-toolkit.schema.json` (IDE autocomplete) **and** `lib/toolkit-config.ts` (runtime validation) — they must stay in lockstep
 
 ## MCP servers
 

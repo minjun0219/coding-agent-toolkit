@@ -180,6 +180,9 @@ export async function handleNotionGet(
   return fetchAndCache(cache, input);
 }
 
+/**
+ * Notion 페이지를 강제로 새로고침한다 (캐시 무시).
+ */
 export async function handleNotionRefresh(
   cache: NotionCache,
   input: string,
@@ -187,6 +190,9 @@ export async function handleNotionRefresh(
   return fetchAndCache(cache, input);
 }
 
+/**
+ * Notion 캐시 상태를 조회한다 (존재 여부, 만료 여부, 나이 등).
+ */
 export async function handleNotionStatus(
   cache: NotionCache,
   input: string,
@@ -307,6 +313,9 @@ export async function handleSwaggerGet(
   return fetchAndCacheSpec(cache, url);
 }
 
+/**
+ * OpenAPI spec 을 강제로 새로고침한다 (캐시 무시).
+ */
 export async function handleSwaggerRefresh(
   cache: OpenapiCache,
   input: string,
@@ -316,6 +325,9 @@ export async function handleSwaggerRefresh(
   return fetchAndCacheSpec(cache, url);
 }
 
+/**
+ * OpenAPI spec 캐시 상태를 조회한다 (존재 여부, 만료 여부, 나이 등).
+ */
 export async function handleSwaggerStatus(
   cache: OpenapiCache,
   input: string,

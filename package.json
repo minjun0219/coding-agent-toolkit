@@ -8,8 +8,9 @@
     "bun": ">=1.0.0"
   },
   "scripts": {
-    "test": "bun test ./lib ./.opencode",
-    "typecheck": "bun x tsc --noEmit -p tsconfig.json"
+    "test": "bun test ./lib ./.opencode ./tools",
+    "typecheck": "bun x tsc --noEmit -p tsconfig.json",
+    "lint:comments": "bun run tools/check-comments.ts lib .opencode/plugins"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

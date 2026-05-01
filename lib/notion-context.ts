@@ -275,6 +275,10 @@ export class NotionCache {
   }
 }
 
+/**
+ * 환경 변수에서 Notion 캐시 인스턴스를 생성한다.
+ * `AGENT_TOOLKIT_CACHE_DIR`, `AGENT_TOOLKIT_CACHE_TTL` 을 읽어 설정.
+ */
 export function createCacheFromEnv(): NotionCache {
   const baseDir = process.env.AGENT_TOOLKIT_CACHE_DIR;
   const ttlRaw = process.env.AGENT_TOOLKIT_CACHE_TTL;

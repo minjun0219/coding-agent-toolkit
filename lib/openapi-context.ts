@@ -178,6 +178,9 @@ const HTTP_METHODS = [
   "trace",
 ] as const;
 
+/**
+ * OpenAPI spec 안의 전체 endpoint (path × method) 개수를 센다.
+ */
 export function countEndpoints(spec: OpenapiSpec): number {
   if (!spec.paths || typeof spec.paths !== "object") return 0;
   let total = 0;
