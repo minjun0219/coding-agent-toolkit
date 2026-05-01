@@ -57,6 +57,11 @@
   - Journal 4 종 신규 kind (`spec_anchor` / `spec_drift` / `spec_amendment` / `spec_verify_result`) — `journal_search "spec-pact"` 한 방으로 lifecycle history 회수
   - `agent-toolkit.json` `spec` 객체 (`dir` / `scanDirectorySpec` / `indexFile`) — IDE 자동완성 (`agent-toolkit.schema.json`) + 런타임 검증 (`lib/toolkit-config.ts`) lockstep
   - **Phase 2 (스펙 → GitHub Issue 동기화) 가 이 SPEC layer 위에 올라간다** — issue body source-of-truth 가 노션 본문이 아니라 grace 가 잠근 SPEC body 가 되면 drift 추적 / 양방향 sync 가 단순해진다
+- **Phase 6 — TS-based dynamic agent / skill / command loader** *(후보)*
+  - 현재 `agents/*.md` / `skills/*/SKILL.md` 는 정적 파일이라 컨텍스트별로 prompt / 위임 규칙을 분기하기 어렵다. OmO 의 [`AgentConfig` TypeScript 정의](https://github.com/code-yeongyu/oh-my-openagent/blob/dev/CONTRIBUTING.md) 처럼 `.ts` 파일에서 prompt / model / temperature / 위임 규칙을 동적으로 산출하는 layer 가 있으면 — 같은 grace 라도 "처음 DRAFT 인지 / drift 검증 turn 인지" 에 따라 다른 prompt 를 줄 수 있다.
+  - **opencode 단독 능력 한계**: opencode plugin API 의 `tool` 만 동적 등록 가능, agent / skill / command 는 path-based (`.md` 정적). 즉 TS-based loader 는 (a) OmO 같은 외부 harness 가 있는 환경에서만 의미가 있거나 (b) 토킷이 자체 loader 를 만들어 `.ts` AgentConfig → runtime `.md` 로 emit 해야 한다.
+  - **방향**: `.md` 가 baseline 으로 남고, `.ts` 정의는 OmO 가 있을 때 옵트인으로 활성화 — 토킷이 OmO 의존을 강제하지 않는다. plugin entrypoint 가 `agents/*.ts` 가 있으면 OmO loader 에 위임, 없으면 `.md` 만 노출.
+  - 의존성 0 의 자체 loader (b) 는 별도 PR 로 검토 — 트리거는 "정적 prompt 로는 부족한 첫 use case 가 등장할 때". 지금은 추적만.
 - **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/coding-agent-toolkit/issues/7))*
   - 한글 주석 / JSDoc 정책의 lint 단 검증 (필요해지면)
 

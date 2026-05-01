@@ -18,7 +18,7 @@ opencode-only plugin. Three Notion cache tools + five OpenAPI tools (cache, sear
 - `skills/notion-context/SKILL.md` — Notion cache-first read + Korean-language spec extraction skill.
 - `skills/openapi-client/SKILL.md` — cached OpenAPI spec → `fetch` or `axios` call snippet skill.
 - `skills/spec-pact/SKILL.md` — SPEC-합의 lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND) on top of `.agent/specs/INDEX.md` (LLM-wiki entry point) and per-page `.agent/specs/<slug>.md` (slug 모드) / `**/SPEC.md` (directory 모드). Conducted exclusively by `agents/grace.md`.
-- `agents/rocky.md` — work-partner primary agent (`mode: all`) that conducts the toolkit's `notion-context` + `openapi-client` flows and the journal for users and other primary agents (e.g. OmO Sisyphus), routes the SPEC-합의 lifecycle to `@grace`, and may delegate to external sub-agents / skills when a task exceeds the toolkit. Frontend specialty, fullstack range.
+- `agents/rocky.md` — work-partner primary agent (`mode: all`) that conducts the toolkit's `notion-context` + `openapi-client` flows and the journal for users (and for any external primary agent that happens to share the environment, e.g. OmO Sisyphus or Superpowers — synergy when present, not a dependency), routes the SPEC-합의 lifecycle to `@grace`, and may delegate to external sub-agents / skills when a task exceeds the toolkit. Frontend specialty, fullstack range.
 - `agents/grace.md` — SPEC-합의 sub-agent (`mode: subagent`) that conducts the `spec-pact` skill end-to-end and is the single finalize/lock authority over `.agent/specs/INDEX.md` and SPEC files. Invoked directly (`@grace`) or via Rocky's routing rule.
 - `.opencode/INSTALL.md` — install guide for opencode users.
 

@@ -88,7 +88,7 @@ Identifier pattern is `^[a-zA-Z0-9_-]+$` — colons are reserved as the handle s
 
 ## Agents (`rocky` + `grace`)
 
-`agents/rocky.md` and `agents/grace.md` are registered into opencode's agent path via the plugin's `config` hook. Rocky's `mode: all` shows up both in the primary cycle (Tab) and as a delegation target from another primary agent; Grace's `mode: subagent` only shows up as a delegation target (called by Rocky / OmO Sisyphus / 사용자 explicit `@grace`).
+`agents/rocky.md` and `agents/grace.md` are registered into opencode's agent path via the plugin's `config` hook. Rocky's `mode: all` shows up both in the primary cycle (Tab) and as a delegation target from another primary agent; Grace's `mode: subagent` only shows up as a delegation target (called by Rocky, by an external primary that happens to share the environment, or by the user via an explicit `@grace`). Neither agent pins a `model:` in its frontmatter — both inherit whatever model the user has selected in the opencode session, so prompts can be swapped between models without editing the agent files.
 
 Rocky is a work partner with frontend specialty and fullstack range — it conducts the toolkit's two cache-first skills (`notion-context`, `openapi-client`) and the journal as its primary contract, routes the SPEC 합의 lifecycle to `@grace`, and may delegate to external sub-agents / skills when the work exceeds the toolkit.
 
@@ -133,7 +133,7 @@ Chained (Notion → OpenAPI in one turn):
 @rocky <Notion URL> 스펙 정리하고 거기 나온 POST /pets 의 axios snippet 도 줘
 ```
 
-In a setup that already has its own primary agent (e.g. OmO Sisyphus), that agent sees `rocky` (and through Rocky, `grace`) in its subagent list (turn start) and routes toolkit-shaped or working-context requests via the description — no need to hard-code Rocky/Grace existence into the upstream agent's system prompt. Routing is not guaranteed; the primary may decide to handle it directly.
+In a setup that already has its own primary agent (e.g. OmO Sisyphus, Superpowers — these are synergies when present, not dependencies), that agent sees `rocky` (and through Rocky, `grace`) in its subagent list (turn start) and routes toolkit-shaped or working-context requests via the description — no need to hard-code Rocky/Grace existence into the upstream agent's system prompt. Routing is not guaranteed; the primary may decide to handle it directly.
 
 Neither Rocky nor Grace directly run multi-step implementation work (writing code, refactor, multi-file changes). When such work is needed, they delegate to an external sub-agent / skill if one fits, or return the request to the caller.
 
