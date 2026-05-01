@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   check:
-    name: typecheck + test
+    name: typecheck + test + lint:comments
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,3 +27,6 @@ jobs:
 
       - name: Test
         run: bun run test
+
+      - name: Lint comments (JSDoc + 한글 정책)
+        run: bun run lint:comments

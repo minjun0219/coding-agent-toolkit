@@ -11,7 +11,8 @@
   },
   "scripts": {
     "test": "bun test ./lib ./.opencode",
-    "typecheck": "bun x tsc --noEmit -p tsconfig.json"
+    "typecheck": "bun x tsc --noEmit -p tsconfig.json",
+    "lint:comments": "bun tools/check-comments.ts"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

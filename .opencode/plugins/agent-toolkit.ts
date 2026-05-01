@@ -180,6 +180,7 @@ export async function handleNotionGet(
   return fetchAndCache(cache, input);
 }
 
+/** 도구 핸들러: 캐시 무시하고 항상 remote 다시 가져와 갱신. */
 export async function handleNotionRefresh(
   cache: NotionCache,
   input: string,
@@ -187,6 +188,7 @@ export async function handleNotionRefresh(
   return fetchAndCache(cache, input);
 }
 
+/** 도구 핸들러: 캐시 메타 + 만료 여부 조회. remote 호출 없음. */
 export async function handleNotionStatus(
   cache: NotionCache,
   input: string,
@@ -307,6 +309,7 @@ export async function handleSwaggerGet(
   return fetchAndCacheSpec(cache, url);
 }
 
+/** 도구 핸들러: 캐시 무시하고 spec 을 다시 다운로드해 덮어쓴다. */
 export async function handleSwaggerRefresh(
   cache: OpenapiCache,
   input: string,
@@ -316,6 +319,7 @@ export async function handleSwaggerRefresh(
   return fetchAndCacheSpec(cache, url);
 }
 
+/** 도구 핸들러: 캐시된 spec 의 메타 + 만료 여부 조회. remote 호출 없음. */
 export async function handleSwaggerStatus(
   cache: OpenapiCache,
   input: string,

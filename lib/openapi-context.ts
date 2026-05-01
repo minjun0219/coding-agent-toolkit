@@ -178,6 +178,10 @@ const HTTP_METHODS = [
   "trace",
 ] as const;
 
+/**
+ * spec 의 paths × HTTP method 조합 수를 센다. paths 가 없거나 객체가 아니면 0.
+ * 표준 외 method 키는 제외 — `HTTP_METHODS` 화이트리스트만 본다.
+ */
 export function countEndpoints(spec: OpenapiSpec): number {
   if (!spec.paths || typeof spec.paths !== "object") return 0;
   let total = 0;

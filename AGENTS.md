@@ -15,6 +15,8 @@ opencode-only plugin. Three Notion cache tools + five OpenAPI tools (cache, sear
 - `lib/toolkit-config.ts` — `agent-toolkit.json` loader (project `./.opencode/agent-toolkit.json` overrides user `~/.config/opencode/agent-toolkit/agent-toolkit.json`) with runtime shape validation.
 - `lib/agent-journal.ts` — append-only JSONL agent journal (decisions / blockers / answers / notes). No TTL; corruption-tolerant on read.
 - `agent-toolkit.schema.json` — JSON Schema for `agent-toolkit.json` (IDE autocomplete; runtime validation lives in `toolkit-config.ts`).
+- `lib/check-comments.ts` — JSDoc 누락 / 한글 주석 부재를 잡아내는 lint-단 검증기 (단위 테스트는 `check-comments.test.ts`, 통합 테스트는 `check-comments.integration.test.ts` 가 repo 전체를 훑는다).
+- `tools/check-comments.ts` — `bun run lint:comments` 진입점. `lib/check-comments.ts` 의 `checkSource` 를 `lib/`, `.opencode/plugins/`, `tools/` 의 모든 `*.ts` 에 적용하고 위반 시 exit 1.
 - `skills/notion-context/SKILL.md` — Notion cache-first read + Korean-language spec extraction skill.
 - `skills/openapi-client/SKILL.md` — cached OpenAPI spec → `fetch` or `axios` call snippet skill.
 - `skills/spec-pact/SKILL.md` — SPEC-합의 lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND) on top of an LLM-wiki-inspired entry point at `<spec.dir>/<spec.indexFile>` (default `.agent/specs/INDEX.md`) and per-page SPEC files at `<spec.dir>/<slug>.md` (default `.agent/specs/<slug>.md`, slug 모드) or `**/SPEC.md` (directory 모드). Conducted exclusively by `agents/grace.md`.
@@ -26,8 +28,9 @@ opencode-only plugin. Three Notion cache tools + five OpenAPI tools (cache, sear
 
 ```bash
 bun install
-bun test           # unit tests under lib/ + .opencode/plugins/
-bun run typecheck  # tsc --noEmit
+bun test                # unit tests under lib/ + .opencode/plugins/
+bun run typecheck       # tsc --noEmit
+bun run lint:comments   # JSDoc + 한글 주석 정책 검증 (tools/check-comments.ts)
 ```
 
 Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table for the optional ones.
@@ -53,7 +56,7 @@ The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI 
 ## Change checklist
 
 1. `bun run typecheck` passes
-2. `bun test` passes
+2. `bun test` passes (통합 테스트 `lib/check-comments.integration.test.ts` 가 한글 주석 / JSDoc 정책을 자동으로 검증한다 — 별도로 `bun run lint:comments` 로도 호출 가능)
 3. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
 4. If a new env var is added, also update the plugin's `readEnv()`
 5. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`, `skills/spec-pact/SKILL.md` for the lifecycle modes that touch `notion_*` / `journal_*` / file IO) **and** the corresponding routing / tool rules in `agents/rocky.md` (Rocky conducts the two cache-first skills + journal and routes the lifecycle, so changes on either side propagate to it; `journal_*` is owned by `rocky` directly — no separate skill) **and** `agents/grace.md` (Grace conducts `spec-pact` end-to-end and is the single finalize/lock authority over `.agent/specs/INDEX.md` + SPEC files)

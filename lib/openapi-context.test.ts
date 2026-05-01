@@ -253,7 +253,7 @@ describe("OpenapiCache", () => {
     const cache = new OpenapiCache({ baseDir: dir, defaultTtlSeconds: 60 });
     const w = await cache.write(SPEC_URL, SAMPLE_SPEC);
     rmSync(join(dir, `${w.entry.key}.spec.json`));
-    // status now reports miss, but the meta is still on disk.
+    // status 는 miss 로 보고하지만 메타 파일은 디스크에 그대로 남아 있어야 한다.
     expect((await cache.status(SPEC_URL)).exists).toBe(false);
     expect(await cache.peekSpecUrl(SPEC_URL)).toBe(SPEC_URL);
     expect(await cache.peekSpecUrl(w.entry.key)).toBe(SPEC_URL);

@@ -220,7 +220,7 @@ describe("mergeConfigs", () => {
     expect(merged.openapi?.registry?.acme?.dev?.users).toBe(
       "https://project/u.json",
     );
-    // user-only spec survives.
+    // user 단에만 있던 spec 도 살아남아야 한다.
     expect(merged.openapi?.registry?.acme?.dev?.orders).toBe(
       "https://user/o.json",
     );

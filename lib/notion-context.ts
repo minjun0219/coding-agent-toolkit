@@ -275,6 +275,10 @@ export class NotionCache {
   }
 }
 
+/**
+ * 환경변수 (`AGENT_TOOLKIT_CACHE_DIR` / `AGENT_TOOLKIT_CACHE_TTL`) 를 읽어
+ * `NotionCache` 인스턴스를 만든다. 값이 비어 있거나 잘못된 정수면 클래스 기본값으로 폴백.
+ */
 export function createCacheFromEnv(): NotionCache {
   const baseDir = process.env.AGENT_TOOLKIT_CACHE_DIR;
   const ttlRaw = process.env.AGENT_TOOLKIT_CACHE_TTL;

@@ -222,8 +222,9 @@ apps/web/orders/
 
 ```bash
 bun install
-bun test          # lib/ + .opencode/plugins/ 단위 테스트
+bun test               # lib/ + .opencode/plugins/ 단위 + 통합 테스트
 bun run typecheck
+bun run lint:comments  # JSDoc + 한글 주석 정책 검증 (tools/check-comments.ts)
 ```
 
 ## Roadmap
