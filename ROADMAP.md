@@ -54,7 +54,7 @@
   - `skills/spec-pact/SKILL.md` 4 모드 — DRAFT (Notion → 합의 → SPEC write + INDEX 갱신) / VERIFY (SPEC TODO·API 의존성 체크리스트화) / DRIFT-CHECK (`source_content_hash` 비교) / AMEND (drift 항목별 keep/update/reject + version bump)
   - `agents/grace.md` (`mode: subagent`) — 단일 finalize/lock 권한자, Rocky 가 Notion URL + lifecycle 키워드 감지 시 `@grace` 로 즉시 위임 (passthrough)
   - LLM-wiki 형 entry point — `.agent/specs/INDEX.md` 가 slug 모드 (`.agent/specs/<slug>.md`) + directory 모드 (`**/SPEC.md`, AGENTS.md 스타일) 양쪽을 surface
-  - Journal 4 종 신규 kind (`spec_anchor` / `spec_drift` / `spec_amendment` / `spec_verify_result`) — `journal_search "spec-pact"` 한 방으로 lifecycle history 회수
+  - Journal 4 종 신규 reserved kind (`spec_anchor` / `spec_drift` / `spec_amendment` / `spec_verify_result`) + DRIFT-CHECK clean 케이스는 기존 `note` kind 를 `spec-pact` / `drift-clear` 태그로 재사용 — `journal_search "spec-pact"` 같은 tag 기반 조회 한 방으로 lifecycle history 회수
   - `agent-toolkit.json` `spec` 객체 (`dir` / `scanDirectorySpec` / `indexFile`) — IDE 자동완성 (`agent-toolkit.schema.json`) + 런타임 검증 (`lib/toolkit-config.ts`) lockstep
   - **Phase 2 (스펙 → GitHub Issue 동기화) 가 이 SPEC layer 위에 올라간다** — issue body source-of-truth 가 노션 본문이 아니라 grace 가 잠근 SPEC body 가 되면 drift 추적 / 양방향 sync 가 단순해진다
 - **Phase 6 — TS-based dynamic agent / skill / command loader** *(후보)*

@@ -24,10 +24,22 @@ agent (grace)
   ├── 1. journal_read      ← cite spec_anchor / spec_drift / spec_amendment / spec_verify_result for the same pageId
   ├── 2. notion_get        ← cache-first; remote MCP once on cache miss
   ├── 3. read / write/edit ← SPEC body + INDEX update (slug or directory mode)
-  └── 4. journal_append    ← exactly one append per mode (kind table below)
+  └── 4. journal_append    ← exactly one append per mode (mode → kind / tags table below)
 ```
 
 INDEX is the wiki TOC, SPEC bodies are the wiki pages. With the INDEX alone, the user can see at a glance which Notion page is anchored where.
+
+### Mode → journal kind / tags
+
+| Mode | kind | tags | content shape | pageId |
+|---|---|---|---|---|
+| DRAFT | `spec_anchor` | `["spec-pact","v1"]` (add `"delegated:<agent>"` when negotiation was delegated) | `<slug> v1 anchored` | Notion page id |
+| VERIFY | `spec_verify_result` | `["spec-pact","verify"]` | `<slug> verify: <pass>/<fail>/<defer>` | Notion page id |
+| DRIFT-CHECK (drift found) | `spec_drift` | `["spec-pact","drift"]` | `<slug> drift detected` | Notion page id |
+| DRIFT-CHECK (clean) | `note` (reuses the existing kind — see "Do NOT" below) | `["spec-pact","drift-clear"]` | `<slug> drift-clear` | Notion page id |
+| AMEND | `spec_amendment` | `["spec-pact","v<n+1>"]` | `<slug> v<n+1> amended` | Notion page id |
+
+The four `spec_*` kinds are the **new reserved kinds** introduced by this skill. drift-clear deliberately reuses the existing `note` kind plus a distinguishing tag — so kind-only filters miss it; use `journal_search "spec-pact"` (tag-shaped recall) to recover the full lifecycle history in one call.
 
 ## Inputs
 
@@ -205,7 +217,7 @@ Patch the SPEC in response to drift or an explicit user request.
 - No guessing. Anything not in the Notion source goes to `보류된 이슈` / `확인 필요 사항` only.
 - 1 bullet = 1 fact. Keep it short.
 - Do not put unagreed sections into `agreed_sections`.
-- The INDEX status is exactly one of four — `drafted` / `locked` / `drifted` / `verified`.
+- The INDEX status is exactly one of three — `locked` / `drifted` / `verified`. (DRAFT writes `locked` directly; there is no "drafted" intermediate.)
 
 ## Do NOT
 
@@ -214,7 +226,7 @@ Patch the SPEC in response to drift or an explicit user request.
 - **Do not let an external sub-agent write the SPEC / INDEX directly.** Delegation applies to negotiation only — finalize/lock is always grace.
 - **Do not auto-promote a directory-mode SPEC into the INDEX as a slug-mode entry.** The path reflects caller intent — surface conflicts and wait for a decision.
 - **Do not call `notion_refresh` automatically.** Only call it once when the drift result is suspect, on user request.
-- **Do not invent journal kinds beyond the four.** drift-clear is `note` + a tag.
+- **Do not invent new reserved journal kinds beyond the four (`spec_anchor` / `spec_drift` / `spec_amendment` / `spec_verify_result`).** drift-clear reuses the existing `note` kind plus a distinguishing tag — that is intentional, not a fifth reserved kind.
 
 ## Failure / error handling
 

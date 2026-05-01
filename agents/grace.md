@@ -90,7 +90,7 @@ agreed_sections: ["요구사항", "화면", "API", "TODO"]
 negotiator_agent: "grace"
 spec_pact_version: 1
 slug: "user-auth"
-status: "locked"        # drafted | locked | drifted | verified
+status: "locked"        # locked | drifted | verified  (DRAFT writes locked directly — there is no "drafted" intermediate)
 ---
 
 # 요약 / 합의 요구사항 / 합의 화면 / API 의존성 / 합의 TODO / 보류된 이슈 / 변경 이력
@@ -102,16 +102,17 @@ The SPEC **body** is written in Korean (matching the Notion source), but the fro
 
 ## Memory (journal)
 
-grace uses exactly four journal kinds — no plugin code change required, the free-form `kind` slot is reused.
+grace introduces four **new reserved kinds** for the SPEC lifecycle and additionally reuses the existing `note` kind for the DRIFT-CHECK clean case (with a distinguishing tag). No plugin code change is required — the free-form `kind` slot is reused.
 
-| kind | trigger | tags | pageId |
-|---|---|---|---|
-| `spec_anchor` | right after DRAFT agreement | `["spec-pact","v1"]` (add `"delegated:<agent>"` when a sub-agent participated) | Notion page id |
-| `spec_drift` | DRIFT-CHECK hash mismatch | `["spec-pact","drift"]` | Notion page id |
-| `spec_amendment` | AMEND completion | `["spec-pact","v<n+1>"]` | Notion page id |
-| `spec_verify_result` | VERIFY answers collected | `["spec-pact","verify"]` | Notion page id |
+| trigger | kind | tags | content shape | pageId |
+|---|---|---|---|---|
+| DRAFT agreement | `spec_anchor` | `["spec-pact","v1"]` (add `"delegated:<agent>"` when a sub-agent participated) | `<slug> v1 anchored` | Notion page id |
+| VERIFY answers collected | `spec_verify_result` | `["spec-pact","verify"]` | `<slug> verify: <pass>/<fail>/<defer>` | Notion page id |
+| DRIFT-CHECK hash mismatch | `spec_drift` | `["spec-pact","drift"]` | `<slug> drift detected` | Notion page id |
+| DRIFT-CHECK clean | `note` (reused, **not** a fifth reserved kind) | `["spec-pact","drift-clear"]` | `<slug> drift-clear` | Notion page id |
+| AMEND completion | `spec_amendment` | `["spec-pact","v<n+1>"]` | `<slug> v<n+1> amended` | Notion page id |
 
-`journal_search "spec-pact"` recovers the full lifecycle history in one call. When DRIFT-CHECK reports clean, grace appends a single `kind: "note"` + `tags: ["spec-pact","drift-clear"]` entry instead of inventing a new kind.
+Because the clean DRIFT-CHECK case lives under `note` rather than a dedicated kind, **kind-only filters miss drift-clear**. Recover the full lifecycle history with the tag-shaped query `journal_search "spec-pact"` instead.
 
 ## Failure modes
 

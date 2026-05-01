@@ -177,7 +177,7 @@ apps/web/orders/
 
 `INDEX.md` 는 lifecycle 전이 (DRAFT / AMEND 직후, VERIFY 결과 all-pass 시, DRIFT-CHECK 결과 drift 발견 시) 마다 grace 가 자동 재생성. SPEC 본체의 frontmatter `source_page_id` 가 두 위치 (slug + directory) 에서 일치하면 INDEX 는 두 path 를 한 줄로 surface 하고 caller 결정을 기다린다 — 자동 정리 X.
 
-저널은 4 종 kind 만 사용 (`spec_anchor` / `spec_drift` / `spec_amendment` / `spec_verify_result`) — `journal_search "spec-pact"` 한 방으로 lifecycle history 회수.
+저널의 SPEC lifecycle 이벤트는 신규 reserved kind **4 종** (`spec_anchor` / `spec_drift` / `spec_amendment` / `spec_verify_result`) 을 사용하고, DRIFT-CHECK clean 케이스는 기존 `note` kind 를 재사용해 `tags: ["spec-pact","drift-clear"]` 로 append 한다 (다섯 번째 reserved kind 가 아니라 의도된 reuse). 따라서 lifecycle history 회수는 kind 단독 필터보다 `journal_search "spec-pact"` 같은 tag 기반 조회를 기준으로 잡는다.
 
 ## 캐시 구조
 
