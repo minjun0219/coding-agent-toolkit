@@ -10,6 +10,9 @@
     "bun": ">=1.0.0"
   },
   "scripts": {
+    "check": "biome lint .",
+    "format": "biome format --write .",
+    "lint": "biome lint .",
     "test": "bun test ./lib ./.opencode",
     "typecheck": "bun x tsc --noEmit -p tsconfig.json"
   },
@@ -17,7 +20,8 @@
     "mysql2": "^3.11.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.5",
-    "@types/bun": "^1.1.0"
+    "@biomejs/biome": "2.4.14",
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.4.5"
   }
 }
