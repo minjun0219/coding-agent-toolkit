@@ -276,8 +276,8 @@ apps/web/orders/
 
 ```bash
 bun install
-bun run check     # Biome lint gate
-bun run lint      # Biome lint only
+bun run check     # apply Biome safe fixes and run formatter / linter / import organizer
+bun run lint      # apply Biome lint safe fixes
 bun run format    # apply Biome formatting
 bun test          # lib/ + .opencode/plugins/ 단위 테스트
 bun run typecheck

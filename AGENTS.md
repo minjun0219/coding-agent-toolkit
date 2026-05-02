@@ -30,8 +30,8 @@ opencode-only plugin. Three Notion cache tools + five OpenAPI tools (cache, sear
 
 ```bash
 bun install
-bun run check     # Biome lint gate
-bun run lint      # Biome lint only
+bun run check     # apply Biome safe fixes and run formatter / linter / import organizer
+bun run lint      # apply Biome lint safe fixes
 bun run format    # apply Biome formatting
 bun test           # unit tests under lib/ + .opencode/plugins/
 bun run typecheck  # tsc --noEmit
@@ -46,7 +46,7 @@ Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table fo
 - **ESM safety**: never use `__dirname`. Use `import.meta.url` + `fileURLToPath`, or Bun's `import.meta.dir`.
 - **JSDoc**: write JSDoc on exported functions / classes. Korean comments are fine for tricky logic.
 - **Errors**: include context in messages (input value, timeout, status code, pageId mismatch, …).
-- **Dependencies**: avoid adding any if possible. Prefer the standard library and Bun built-ins. **Single explicit exception: `mysql2`** (prod dep) — MySQL has no native Bun client and the wire protocol / TLS / auth-plugin handling is too large to hand-roll for a "read-only inspection" surface. New deps beyond this require a separate scope discussion.
+- **Dependencies**: avoid adding any if possible. Prefer the standard library and Bun built-ins. **Single explicit exception: `mysql2`** (prod dep) — MySQL has no native Bun client and the wire protocol / TLS / auth-plugin handling is too large to hand-roll for a "read-only inspection" surface. Dev-only tooling dependencies such as linters / formatters are allowed when explicitly agreed for repository workflow. New runtime deps beyond this require a separate scope discussion.
 - **Tests**: keep `*.test.ts` next to the source and run with `bun test`. Isolate fs-dependent tests with `mkdtempSync`.
 
 ## MVP scope (hold the line)
