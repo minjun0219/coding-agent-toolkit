@@ -513,6 +513,21 @@ export default async function agentToolkitPlugin(_input: unknown) {
   // 여러 도구가 호출돼도 connection 을 재사용한다.
   const mysqlRegistry = new MysqlExecutorRegistry(process.env);
 
+  // 정상 종료 (process 가 자연 exit 시) 에 한해 lazy 로 만든 mysql2 pool 들을 비동기로
+  // 닫는다. 실패는 한 줄 로깅 후 무시 (best-effort) — opencode 의 plugin lifecycle 에
+  // teardown 훅이 따로 있으면 그쪽으로 옮길 자리. SIGINT / SIGTERM 은 핸들러를 등록하면
+  // default exit 동작이 사라지는 부작용이 있어 의도적으로 등록하지 않고 OS 의 소켓 회수에
+  // 맡긴다. `beforeExit` 가 한 번 호출된 뒤 다시 일이 들어올 가능성도 있어 `once` 보다
+  // 더 보수적으로 `on` + 가드 로도 가능하지만, plugin 이 한 번 더 진입해 close 후의
+  // executor 를 다시 쓰면 mysql2 가 명확한 에러를 내므로 디버깅에는 오히려 도움된다.
+  process.once("beforeExit", () => {
+    mysqlRegistry.closeAll().catch((err) => {
+      console.error(
+        `agent-toolkit: failed to close MySQL pools cleanly — ${(err as Error).message}`,
+      );
+    });
+  });
+
   return {
     /**
      * opencode 의 skill / agent 탐색 경로에 자기 저장소의 디렉터리를 절대 경로로 끼워 넣는다.

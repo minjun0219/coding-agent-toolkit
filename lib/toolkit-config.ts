@@ -41,21 +41,27 @@ export interface SpecConfig {
  *
  * 비밀번호는 *config 파일에 절대 두지 않는다* — `passwordEnv` (환경변수 이름) 또는
  * `dsnEnv` (`mysql://user:pass@host:port/db` 한 줄을 담은 환경변수 이름) 중 정확히 하나만
- * 허용한다. `dsnEnv` 가 있으면 `host` / `port` / `user` / `database` 분해 필드는 무시되고
- * DSN 파싱 결과를 사용한다.
+ * 허용한다. 두 모드는 상호배타이며 `validateMysqlProfile` 가 다음을 강제한다:
+ *
+ *   - `passwordEnv` 모드: `host` / `user` / `database` 는 필수, `port` 는 1..65535 정수 (선택).
+ *   - `dsnEnv`     모드: 분해 필드 (`host` / `port` / `user` / `database`) 는 *선언 금지*
+ *     (혼재는 reject) — DSN 한 줄에서 모두 파싱한다.
+ *
+ * 즉 분해 필드와 `dsnEnv` 가 함께 등장하면 "무시"가 아니라 *명시적 reject* 다 — 설정
+ * 작성자가 잘못된 기대를 갖지 않도록 검증 단계에서 끊는다.
  */
 export interface MysqlConnectionProfile {
-  /** TCP host. `dsnEnv` 사용 시 무시. */
+  /** TCP host. `passwordEnv` 모드에서 필수. `dsnEnv` 모드에서는 선언 금지. */
   host?: string;
-  /** TCP port (1..65535). 미지정 / `dsnEnv` 사용 시 미사용. */
+  /** TCP port (1..65535). 선택. `dsnEnv` 모드에서는 선언 금지. */
   port?: number;
-  /** 접속 user. `dsnEnv` 사용 시 무시. */
+  /** 접속 user. `passwordEnv` 모드에서 필수. `dsnEnv` 모드에서는 선언 금지. */
   user?: string;
-  /** 디폴트 database. `dsnEnv` 사용 시 무시. */
+  /** 디폴트 database. `passwordEnv` 모드에서 필수. `dsnEnv` 모드에서는 선언 금지. */
   database?: string;
   /** 비밀번호를 담은 환경변수 이름. `dsnEnv` 와 상호배타. */
   passwordEnv?: string;
-  /** `mysql://...` DSN 한 줄을 담은 환경변수 이름. `passwordEnv` 와 상호배타. */
+  /** `mysql://...` DSN 한 줄을 담은 환경변수 이름. `passwordEnv` 와 분해 필드 모두와 상호배타. */
   dsnEnv?: string;
 }
 

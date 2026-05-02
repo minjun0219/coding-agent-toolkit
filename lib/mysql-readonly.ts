@@ -70,6 +70,14 @@ export const DENY_KEYWORDS = [
 const INTO_OUTFILE_RE = /\bINTO\s+(OUTFILE|DUMPFILE)\b/i;
 
 /**
+ * MySQL / MariaDB 의 *executable* comment 패턴 (`/*! ... *\/`, `/*!50100 ... *\/`).
+ * 일반 block comment 처럼 보이지만 서버가 *실제로* 파싱·실행하는 형태라 안에 든 키워드를
+ * `stripSqlComments` 가 strip 해 버리면 가드를 우회한다 (e.g. `SELECT /*! INTO OUTFILE
+ * '/tmp/x' *\/ 1`). strip 단계 이전 *원본 SQL* 에서 이 패턴을 발견하면 즉시 reject.
+ */
+const MYSQL_EXECUTABLE_COMMENT_RE = /\/\*!/;
+
+/**
  * SQL 의 주석 / 문자열 리터럴 / backtick 식별자를 모두 빈 placeholder 로 치환한다.
  * 단어 경계 / multi-statement 검사가 *코드 영역* 만 보도록 만들기 위한 사전 단계.
  *
@@ -179,6 +187,14 @@ export function stripSqlComments(sql: string): string {
 export function assertReadOnlySql(sql: string): void {
   if (typeof sql !== "string" || sql.trim().length === 0) {
     throw new Error("MySQL read-only guard: sql must be a non-empty string.");
+  }
+  // (preflight) MySQL / MariaDB executable comment (`/*! ... */`) 는 strip 하기 전에 거부.
+  // 안에 든 키워드를 `stripSqlComments` 가 일반 주석처럼 지워 버리면 read-only 가드를 우회할 수 있음
+  // (예: `SELECT /*! INTO OUTFILE '/tmp/x' */ 1`).
+  if (MYSQL_EXECUTABLE_COMMENT_RE.test(sql)) {
+    throw new Error(
+      `MySQL read-only guard: MySQL executable comment ("/*! ... */" 또는 "/*!<version> ... */") 는 거부합니다 — 일반 주석처럼 보이지만 서버가 실제로 실행하므로 read-only 보장이 깨집니다. Got "${truncate(sql, 120)}".`,
+    );
   }
   const stripped = stripSqlComments(sql).trim();
   if (stripped.length === 0) {

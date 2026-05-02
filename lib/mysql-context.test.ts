@@ -138,6 +138,36 @@ describe("resolvePoolOptions — dsnEnv mode", () => {
     ).toThrow(/not a valid URL/);
   });
 
+  it("rejects DSN missing user", () => {
+    expect(() =>
+      resolvePoolOptions(
+        "a:b:c",
+        { dsnEnv: "MYSQL_DSN" },
+        { MYSQL_DSN: "mysql://h:3306/db" },
+      ),
+    ).toThrow(/DSN missing user/);
+  });
+
+  it("rejects DSN missing database (no path)", () => {
+    expect(() =>
+      resolvePoolOptions(
+        "a:b:c",
+        { dsnEnv: "MYSQL_DSN" },
+        { MYSQL_DSN: "mysql://u:p@h" },
+      ),
+    ).toThrow(/DSN missing database/);
+  });
+
+  it("rejects DSN missing database (root path only)", () => {
+    expect(() =>
+      resolvePoolOptions(
+        "a:b:c",
+        { dsnEnv: "MYSQL_DSN" },
+        { MYSQL_DSN: "mysql://u:p@h/" },
+      ),
+    ).toThrow(/DSN missing database/);
+  });
+
   it("does not leak the password into the error message", () => {
     try {
       resolvePoolOptions(

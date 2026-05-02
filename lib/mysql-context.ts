@@ -189,11 +189,19 @@ function parseDsn(
   if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) {
     throw new Error(`MySQL handle "${handle}": DSN port "${portStr}" is invalid.`);
   }
-  const user = url.username ? decodeURIComponent(url.username) : undefined;
+  if (!url.username) {
+    throw new Error(
+      `MySQL handle "${handle}": DSN missing user — expected "mysql://user:pass@host:port/db".`,
+    );
+  }
+  if (!url.pathname || url.pathname.length <= 1) {
+    throw new Error(
+      `MySQL handle "${handle}": DSN missing database — expected "mysql://user:pass@host:port/db".`,
+    );
+  }
+  const user = decodeURIComponent(url.username);
   const password = url.password ? decodeURIComponent(url.password) : undefined;
-  const database = url.pathname && url.pathname.length > 1
-    ? decodeURIComponent(url.pathname.slice(1))
-    : undefined;
+  const database = decodeURIComponent(url.pathname.slice(1));
   return { host, port, user, password, database };
 }
 

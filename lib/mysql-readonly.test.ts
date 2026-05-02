@@ -145,6 +145,31 @@ describe("assertReadOnlySql — deny in body", () => {
   it("rejects cleverly-cased UPDATE", () => {
     expect(() => assertReadOnlySql("UpDaTe users SET x=1")).toThrow();
   });
+
+  it("rejects MySQL executable comment with INTO OUTFILE inside", () => {
+    // MySQL 의 `/*! ... */` 는 일반 주석처럼 보이지만 서버가 실행한다.
+    expect(() =>
+      assertReadOnlySql("SELECT /*! INTO OUTFILE '/tmp/x' */ 1"),
+    ).toThrow(/MySQL executable comment/);
+  });
+
+  it("rejects version-prefixed MySQL executable comment", () => {
+    expect(() =>
+      assertReadOnlySql("SELECT /*!50100 INTO OUTFILE '/tmp/x' */ 1"),
+    ).toThrow(/MySQL executable comment/);
+  });
+
+  it("rejects executable comment hiding a write statement", () => {
+    expect(() =>
+      assertReadOnlySql("SELECT 1 /*!50000 ; DELETE FROM users */"),
+    ).toThrow(/MySQL executable comment/);
+  });
+
+  it("still allows ordinary /* ... */ block comments", () => {
+    expect(() =>
+      assertReadOnlySql("SELECT /* this is fine */ 1"),
+    ).not.toThrow();
+  });
 });
 
 describe("enforceLimit — SELECT", () => {
