@@ -275,7 +275,12 @@ apps/web/orders/
 bun install
 bun test          # lib/ + .opencode/plugins/ 단위 테스트
 bun run typecheck
+bun run notion:extract -- <markdown-file> [--max-chars 1400]
+bun run notion:extract -- <markdown-file> | bun run notion:promote-todo -- - --slug <slug>
 ```
+
+`notion:extract` 는 긴 Notion markdown 을 heading 중심으로 청크 분할하고, 구현 액션 후보(`requirements` / `screens` / `apis` / `todos` / `questions`)를 JSON으로 출력한다.
+`notion:promote-todo` 는 추출 JSON의 `extracted.todos` 를 `.agent/specs/<slug>.md`의 `# 합의 TODO` 섹션으로 승격하고 `.agent/specs/INDEX.md`에 slug/path/status 행을 upsert 한다.
 
 ## Roadmap
 

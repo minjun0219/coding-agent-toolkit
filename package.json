@@ -11,7 +11,9 @@
   },
   "scripts": {
     "test": "bun test ./lib ./.opencode",
-    "typecheck": "bun x tsc --noEmit -p tsconfig.json"
+    "typecheck": "bun x tsc --noEmit -p tsconfig.json",
+    "notion:extract": "bun scripts/notion-extract.ts",
+    "notion:promote-todo": "bun scripts/notion-promote-todo.ts"
   },
   "dependencies": {
     "mysql2": "^3.11.0"

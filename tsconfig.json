@@ -18,6 +18,7 @@
   },
   "include": [
     "lib/**/*.ts",
-    ".opencode/plugins/**/*.ts"
+    ".opencode/plugins/**/*.ts",
+    "scripts/**/*.ts"
   ]
 }
