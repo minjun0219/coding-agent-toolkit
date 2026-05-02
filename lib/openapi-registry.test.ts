@@ -64,9 +64,9 @@ describe("isScope", () => {
 
 describe("resolveHandleToUrl", () => {
   it("returns the registered URL for a known handle", () => {
-    expect(
-      resolveHandleToUrl("acme:dev:users", CONFIG.openapi?.registry),
-    ).toBe("https://dev.acme/users.json");
+    expect(resolveHandleToUrl("acme:dev:users", CONFIG.openapi?.registry)).toBe(
+      "https://dev.acme/users.json",
+    );
   });
   it("throws on unregistered handle, with the handle in the message", () => {
     expect(() =>
@@ -129,9 +129,7 @@ describe("listRegistry", () => {
   it("flattens host/env/spec/url tree", () => {
     const flat = listRegistry(CONFIG);
     expect(flat.length).toBe(4);
-    const got = flat
-      .map((e) => `${e.host}:${e.env}:${e.spec}=${e.url}`)
-      .sort();
+    const got = flat.map((e) => `${e.host}:${e.env}:${e.spec}=${e.url}`).sort();
     expect(got).toEqual(
       [
         "acme:dev:users=https://dev.acme/users.json",

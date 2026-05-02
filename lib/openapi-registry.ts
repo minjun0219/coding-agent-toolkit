@@ -1,4 +1,8 @@
-import { ID_BODY, type OpenapiRegistry, type ToolkitConfig } from "./toolkit-config";
+import {
+  ID_BODY,
+  type OpenapiRegistry,
+  type ToolkitConfig,
+} from "./toolkit-config";
 
 /**
  * `agent-toolkit.json` 의 `openapi.registry` 트리를 다루는 helper 모음.
@@ -35,7 +39,11 @@ export function isFullHandle(s: string): boolean {
 /** `host`, `host:env`, `host:env:spec` 중 하나라도 맞는지. 16-hex 키와 URL 은 false. */
 export function isScope(s: string): boolean {
   if (!s || HEX_KEY.test(s)) return false;
-  if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("file://")) {
+  if (
+    s.startsWith("http://") ||
+    s.startsWith("https://") ||
+    s.startsWith("file://")
+  ) {
     return false;
   }
   return HANDLE_FULL.test(s) || HANDLE_HOST_ENV.test(s) || HANDLE_HOST.test(s);

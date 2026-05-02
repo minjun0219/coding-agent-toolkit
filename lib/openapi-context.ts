@@ -143,7 +143,10 @@ const KEY_PATTERN = /^[0-9a-f]{16}$/;
  * URL 검증은 하지 않는다 (호출 측 fetch 단계에서 처리). write 처럼 URL 이 반드시
  * 필요한 경로에서는 `isKeyInput` 을 보고 거부해야 한다.
  */
-export function resolveSpecKey(input: string): { key: string; isKeyInput: boolean } {
+export function resolveSpecKey(input: string): {
+  key: string;
+  isKeyInput: boolean;
+} {
   if (!input || typeof input !== "string") {
     throw new Error("resolveSpecKey: input must be a non-empty string");
   }
@@ -154,13 +157,19 @@ export function resolveSpecKey(input: string): { key: string; isKeyInput: boolea
   if (KEY_PATTERN.test(trimmed)) {
     return { key: trimmed, isKeyInput: true };
   }
-  const key = createHash("sha256").update(trimmed, "utf8").digest("hex").slice(0, 16);
+  const key = createHash("sha256")
+    .update(trimmed, "utf8")
+    .digest("hex")
+    .slice(0, 16);
   return { key, isKeyInput: false };
 }
 
 /** 짧은(앞 16자) sha256 — spec 본문 동일성 비교용. */
 export function specHash(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex").slice(0, 16);
+  return createHash("sha256")
+    .update(content, "utf8")
+    .digest("hex")
+    .slice(0, 16);
 }
 
 /**
@@ -258,7 +267,9 @@ export function searchEndpoints(
  * raw 응답이 OpenAPI 3.x 또는 swagger 2.x 인지 검증.
  * 둘 다 아니면 throw — 호출 측이 캐시에 잘못된 페이로드를 박지 못하게 한다.
  */
-export function assertOpenapiShape(payload: unknown): asserts payload is OpenapiSpec {
+export function assertOpenapiShape(
+  payload: unknown,
+): asserts payload is OpenapiSpec {
   if (!payload || typeof payload !== "object") {
     throw new Error("OpenAPI payload must be a JSON object");
   }
@@ -338,7 +349,8 @@ export class OpenapiCache {
       cachedAt: new Date().toISOString(),
       ttlSeconds: ttlSeconds ?? this.defaultTtl,
       specHash: specHash(serialized),
-      title: typeof spec.info?.title === "string" ? spec.info.title : "(untitled)",
+      title:
+        typeof spec.info?.title === "string" ? spec.info.title : "(untitled)",
       version: typeof spec.info?.version === "string" ? spec.info.version : "",
       openapi:
         typeof spec.openapi === "string"
@@ -432,7 +444,9 @@ export class OpenapiCache {
    * 캐시 디렉터리 안의 모든 entry 를 훑어 (entry, spec) 페어로 반환.
    * 손상되거나 만료된 항목은 건너뛴다 — search 단의 입력 필터.
    */
-  async list(): Promise<Array<{ entry: OpenapiCacheEntry; spec: OpenapiSpec }>> {
+  async list(): Promise<
+    Array<{ entry: OpenapiCacheEntry; spec: OpenapiSpec }>
+  > {
     if (!existsSync(this.dir)) return [];
     const files = await readdir(this.dir);
     const out: Array<{ entry: OpenapiCacheEntry; spec: OpenapiSpec }> = [];
