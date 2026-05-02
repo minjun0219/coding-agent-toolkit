@@ -276,8 +276,10 @@ apps/web/orders/
 
 ```bash
 bun install
-bun run check     # apply Biome safe fixes and run formatter / linter / import organizer
-bun run lint      # apply Biome lint safe fixes
+bun run check     # verify Biome formatter / linter / import organizer without writing changes
+bun run fix       # apply Biome safe fixes and formatting
+bun run lint      # verify Biome lint rules without writing changes
+bun run lint:fix  # apply Biome lint safe fixes
 bun run format    # apply Biome formatting
 bun test          # lib/ + .opencode/plugins/ 단위 테스트
 bun run typecheck
