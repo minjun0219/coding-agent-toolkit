@@ -214,7 +214,9 @@ Patch the SPEC in response to drift or an explicit user request.
 ## Writing rules
 
 - The SPEC body is **Korean** (mirroring the Notion source). Frontmatter / paths / journal kinds / API paths / tokens stay English.
-- SPEC text may request code comments or JSDoc only as implementation guidance: important public / shared methods, complex domain rules, caller-visible contracts, or explicit reviewer / user requests. It must not imply that every exported symbol needs JSDoc or that runtime projects should get a JSDoc / Korean-comment hard-lint rule by default.
+- SPEC text may request code comments or JSDoc only as implementation guidance.
+- Request comments / JSDoc for important public / shared methods, complex domain rules, caller-visible contracts, or explicit reviewer / user requests.
+- Do not imply that every exported symbol needs JSDoc or that runtime projects should get a JSDoc / Korean-comment hard-lint rule by default.
 - No guessing. Anything not in the Notion source goes to `보류된 이슈` / `확인 필요 사항` only.
 - 1 bullet = 1 fact. Keep it short.
 - Do not put unagreed sections into `agreed_sections`.
