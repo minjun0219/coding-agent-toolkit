@@ -263,7 +263,9 @@ export class AgentJournal {
     options: JournalSearchOptions = {},
   ): Promise<JournalEntry[]> {
     const all = await this.readAll();
-    const needle = (typeof query === "string" ? query : "").trim().toLowerCase();
+    const needle = (typeof query === "string" ? query : "")
+      .trim()
+      .toLowerCase();
     let pool: JournalEntry[] = all;
     if (typeof options.kind === "string") {
       const k = options.kind.trim();
@@ -376,7 +378,8 @@ function normalizeEntry(value: unknown): JournalEntry | null {
   const kind = o.kind.trim();
   const content = o.content.trim();
   if (id.length === 0) return null;
-  if (timestamp.length === 0 || Number.isNaN(Date.parse(timestamp))) return null;
+  if (timestamp.length === 0 || Number.isNaN(Date.parse(timestamp)))
+    return null;
   if (kind.length === 0) return null;
   if (content.length === 0) return null;
   const tags = Array.isArray(o.tags)
