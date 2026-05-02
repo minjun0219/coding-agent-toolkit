@@ -43,6 +43,14 @@ export interface ChunkOptions {
 
 const DEFAULT_MAX_CHARS = 1400;
 
+function resolveMaxChars(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_MAX_CHARS;
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
+    return DEFAULT_MAX_CHARS;
+  }
+  return value;
+}
+
 function approxTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -52,6 +60,9 @@ function normalizeLine(line: string): string {
 }
 
 function hardSliceLine(line: string, maxChars: number): string[] {
+  if (!Number.isFinite(maxChars) || !Number.isInteger(maxChars) || maxChars < 1) {
+    throw new Error("maxChars must be a positive integer");
+  }
   if (line.length <= maxChars) return [line];
   const out: string[] = [];
   for (let i = 0; i < line.length; i += maxChars) {
@@ -95,7 +106,7 @@ export function chunkNotionMarkdown(
   markdown: string,
   options: ChunkOptions = {},
 ): NotionChunk[] {
-  const maxChars = options.maxCharsPerChunk ?? DEFAULT_MAX_CHARS;
+  const maxChars = resolveMaxChars(options.maxCharsPerChunk);
   const lines = markdown.split("\n");
 
   interface Block {
@@ -237,6 +248,19 @@ function extractBullets(text: string): string[] {
     .filter(Boolean);
 }
 
+function stripFencedCode(text: string): string {
+  const out: string[] = [];
+  let inFence = false;
+  for (const line of text.split("\n")) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence) out.push(line);
+  }
+  return out.join("\n");
+}
+
 function isLikelyActionLine(line: string): boolean {
   if (!line) return false;
   if (line.startsWith("|") || line.startsWith(">")) return false;
@@ -259,10 +283,11 @@ export function extractActionItems(chunks: NotionChunk[]): NotionActionExtractio
 
   for (const chunk of chunks) {
     const heading = chunk.headingPath.join(" > ").toLowerCase();
-    const lines = chunk.text.split("\n").map((line) => line.trim()).filter(Boolean);
-    const bullets = extractBullets(chunk.text);
+    const extractableText = stripFencedCode(chunk.text);
+    const lines = extractableText.split("\n").map((line) => line.trim()).filter(Boolean);
+    const bullets = extractBullets(extractableText);
 
-    for (const match of chunk.text.matchAll(apiRe)) {
+    for (const match of extractableText.matchAll(apiRe)) {
       const text = normalizeLine(match[0] ?? "");
       if (text) apis.push({ text, chunkId: chunk.id });
     }
