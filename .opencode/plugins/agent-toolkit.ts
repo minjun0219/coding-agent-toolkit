@@ -12,8 +12,9 @@ import {
 import {
   chunkNotionMarkdown,
   extractActionItems,
+  summarizeNotionChunks,
   type NotionActionExtraction,
-  type NotionChunk,
+  type NotionChunkSummary,
 } from "../../lib/notion-chunking";
 import {
   OpenapiCache,
@@ -219,7 +220,7 @@ export interface NotionExtractResult {
   entry: NotionPageResult["entry"];
   fromCache: boolean;
   chunkCount: number;
-  chunks: NotionChunk[];
+  chunks: NotionChunkSummary[];
   extracted: NotionActionExtraction;
 }
 
@@ -237,7 +238,7 @@ export async function handleNotionExtract(
     entry: page.entry,
     fromCache: page.fromCache,
     chunkCount: chunks.length,
-    chunks,
+    chunks: summarizeNotionChunks(chunks),
     extracted: extractActionItems(chunks),
   };
 }

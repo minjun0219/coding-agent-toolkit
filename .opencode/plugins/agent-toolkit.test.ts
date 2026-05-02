@@ -110,6 +110,7 @@ describe("plugin handlers", () => {
     expect(result.entry.pageId).toBe(PAGE_DASHED);
     expect(result.chunkCount).toBeGreaterThan(0);
     expect(result.chunks[0]?.id).toBe("chunk-001");
+    expect("text" in (result.chunks[0] ?? {})).toBe(false);
     expect(result.extracted.todos.some((x) => x.text.includes("주문 목록 API 연동"))).toBe(true);
     expect(result.extracted.apis.some((x) => x.text === "GET /api/orders")).toBe(true);
 
