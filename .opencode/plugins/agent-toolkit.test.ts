@@ -18,6 +18,7 @@ import agentToolkitPlugin, {
   handleMysqlStatus,
   handleMysqlTables,
   handleNotionGet,
+  handleNotionExtract,
   handleNotionRefresh,
   handleNotionStatus,
   handleSwaggerEnvs,
@@ -46,7 +47,7 @@ beforeEach(() => {
   cache = new NotionCache({ baseDir: dir, defaultTtlSeconds: 60 });
   calls = 0;
   respondWithWrongId = false;
-  server = Bun.serve({
+    server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
     fetch(req) {
@@ -58,7 +59,7 @@ beforeEach(() => {
             ? "deadbeefdeadbeefdeadbeefdeadbeef"
             : PAGE,
           title: "Hello",
-          markdown: "# Hello\n\nworld",
+          markdown: "# Hello\n\nworld\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n\n## API\n\n- GET /api/orders",
         });
       }
       return new Response("not found", { status: 404 });
@@ -101,6 +102,20 @@ describe("plugin handlers", () => {
     const after = await handleNotionStatus(cache, PAGE);
     expect(after.exists).toBe(true);
     expect(after.expired).toBe(false);
+  });
+
+  it("notion_extract: returns chunks and extracted action candidates", async () => {
+    const result = await handleNotionExtract(cache, PAGE, { maxCharsPerChunk: 200 });
+    expect(result.fromCache).toBe(false);
+    expect(result.entry.pageId).toBe(PAGE_DASHED);
+    expect(result.chunkCount).toBeGreaterThan(0);
+    expect(result.chunks[0]?.id).toBe("chunk-001");
+    expect(result.extracted.todos.some((x) => x.text.includes("주문 목록 API 연동"))).toBe(true);
+    expect(result.extracted.apis.some((x) => x.text === "GET /api/orders")).toBe(true);
+
+    const second = await handleNotionExtract(cache, PAGE);
+    expect(second.fromCache).toBe(true);
+    expect(calls).toBe(1);
   });
 
   it("rejects remote response with mismatched page id and does not cache", async () => {

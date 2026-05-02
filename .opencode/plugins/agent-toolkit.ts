@@ -10,6 +10,12 @@ import {
   type NotionCacheStatus,
 } from "../../lib/notion-context";
 import {
+  chunkNotionMarkdown,
+  extractActionItems,
+  type NotionActionExtraction,
+  type NotionChunk,
+} from "../../lib/notion-chunking";
+import {
   OpenapiCache,
   createOpenapiCacheFromEnv,
   resolveSpecKey,
@@ -207,6 +213,33 @@ export async function handleNotionStatus(
   input: string,
 ): Promise<NotionCacheStatus> {
   return cache.status(input);
+}
+
+export interface NotionExtractResult {
+  entry: NotionPageResult["entry"];
+  fromCache: boolean;
+  chunkCount: number;
+  chunks: NotionChunk[];
+  extracted: NotionActionExtraction;
+}
+
+/** 도구 핸들러: Notion page 를 캐시 우선으로 읽고 긴 문서용 청크 + 액션 후보를 반환한다. */
+export async function handleNotionExtract(
+  cache: NotionCache,
+  input: string,
+  options: { maxCharsPerChunk?: number } = {},
+): Promise<NotionExtractResult> {
+  const page = await handleNotionGet(cache, input);
+  const chunks = chunkNotionMarkdown(page.markdown, {
+    maxCharsPerChunk: options.maxCharsPerChunk,
+  });
+  return {
+    entry: page.entry,
+    fromCache: page.fromCache,
+    chunkCount: chunks.length,
+    chunks,
+    extracted: extractActionItems(chunks),
+  };
 }
 
 /**
@@ -546,7 +579,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
       ensurePath(config, "agent", AGENTS_DIR);
     },
 
-    /** opencode tool 등록. notion_get / notion_refresh / notion_status. */
+    /** opencode tool 등록. */
     tool: {
       notion_get: {
         description:
@@ -570,6 +603,23 @@ export default async function agentToolkitPlugin(_input: unknown) {
         parameters: { input: { type: "string", required: true } },
         async handler({ input }: { input: string }) {
           return handleNotionStatus(cache, input);
+        },
+      },
+      notion_extract: {
+        description:
+          "긴 Notion 페이지를 캐시 우선 정책으로 읽고 heading 기반 chunk 와 구현 액션 후보(requirements/screens/apis/todos/questions)를 반환한다. remote 호출 정책은 notion_get 과 동일. (input: pageId 또는 URL, maxCharsPerChunk?: chunk 최대 문자 수 기본 1400)",
+        parameters: {
+          input: { type: "string", required: true },
+          maxCharsPerChunk: { type: "number", required: false },
+        },
+        async handler({
+          input,
+          maxCharsPerChunk,
+        }: {
+          input: string;
+          maxCharsPerChunk?: number;
+        }) {
+          return handleNotionExtract(cache, input, { maxCharsPerChunk });
         },
       },
       swagger_get: {
