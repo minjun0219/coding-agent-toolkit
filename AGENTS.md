@@ -41,7 +41,7 @@ Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table fo
 - **Language**: TypeScript (`type: module`). Bun runs `.ts` directly — no build, no `dist/`.
 - **Imports**: do not append `.js` / `.ts` extensions (`moduleResolution: Bundler` + `allowImportingTsExtensions`).
 - **ESM safety**: never use `__dirname`. Use `import.meta.url` + `fileURLToPath`, or Bun's `import.meta.dir`.
-- **JSDoc**: write JSDoc on exported functions / classes. Korean comments are fine for tricky logic.
+- **Repo-local JSDoc**: write JSDoc on exported functions / classes when touching this repository, but do not treat it as a custom hard-lint gate. Korean comments are fine for tricky logic.
 - **Errors**: include context in messages (input value, timeout, status code, pageId mismatch, …).
 - **Dependencies**: avoid adding any if possible. Prefer the standard library and Bun built-ins. **Single explicit exception: `mysql2`** (prod dep) — MySQL has no native Bun client and the wire protocol / TLS / auth-plugin handling is too large to hand-roll for a "read-only inspection" surface. New deps beyond this require a separate scope discussion.
 - **Tests**: keep `*.test.ts` next to the source and run with `bun test`. Isolate fs-dependent tests with `mkdtempSync`.
@@ -53,6 +53,15 @@ Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table fo
 **Out**: **Notion database queries** (Notion DB 객체 / child pages — single-page only), **MySQL writes / DDL / multi-statement / stored-procedure calls / `SET` / `LOAD` / `INTO OUTFILE` / `INTO DUMPFILE`**, MySQL TLS / SSH tunnel options, OS keychain integration, other DBMSs (Postgres / SQLite / Oracle / MSSQL), MySQL result disk caching, OAuth, OpenAPI YAML parsing, runtime base-URL override (use `spec.servers`), full SDK code generation, multi-spec merge, mock servers, multi-host plugin layouts (`.claude-plugin/`, etc.), UI, codex integration, **direct multi-step implementation by Rocky / Grace** (writing code, refactor, multi-file changes — both may delegate these to a sub-agent / skill, or return them to the caller, but never run them itself), cross-machine journal sync, embedding / natural-language journal search, journal compaction or summarization, **automatic drift polling** (`spec-pact` DRIFT-CHECK is explicit only), **automatic INDEX commit / push**, cross-machine SPEC sync, embedding-based SPEC search. Anything beyond this scope ships as a separate PR proposal.
 
 The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI client generation, …) live in [`ROADMAP.md`](./ROADMAP.md) — phase-by-phase, one PR at a time. Do not pull roadmap items into MVP unless the user explicitly asks.
+
+## Runtime project comment guidance
+
+When this toolkit is used against a runtime / downstream project, JSDoc and Korean comments are **agent guidance**, not a lint contract.
+
+- Add JSDoc for important public / shared methods, code with domain rules or edge cases, contracts that another agent / caller must understand, or when the user / reviewer explicitly asks for explanation.
+- Skip JSDoc for private helpers, obvious one-file glue code, local callbacks, and test fixtures when names and types already explain the behavior.
+- Prefer Korean for explanatory prose comments. Keep code identifiers, file paths, commands, URLs, API paths, and library / framework names in their original English form.
+- Never generate a runtime project lint config solely to enforce JSDoc or Korean-comment policy unless the user explicitly asks for that project's lint setup.
 
 ## Change checklist
 
@@ -73,4 +82,5 @@ The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI 
 - Keep change summaries short (one-line summary, bullets only when needed). Do not produce long-form reports.
 - Write code review outputs (summary/inline/suggestions) in Korean by default.
 - When requesting a PR review, explicitly ask for Korean review comments (e.g. `모든 리뷰 코멘트는 한국어로 작성해 주세요.`).
+- PR titles must follow Conventional Commits style (`type(scope): Korean summary` or `type: Korean summary`; e.g. `docs: runtime 주석 guidance 정리`).
 - PR title/body and user-facing change descriptions should also be written in Korean.
