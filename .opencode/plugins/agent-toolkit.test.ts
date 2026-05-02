@@ -6,11 +6,17 @@ import { NotionCache } from "../../lib/notion-context";
 import { OpenapiCache } from "../../lib/openapi-context";
 import type { OpenapiRegistry } from "../../lib/toolkit-config";
 import { AgentJournal } from "../../lib/agent-journal";
+import type { FieldPacket, RowDataPacket } from "mysql2/promise";
 import agentToolkitPlugin, {
   handleJournalAppend,
   handleJournalRead,
   handleJournalSearch,
   handleJournalStatus,
+  handleMysqlEnvs,
+  handleMysqlQuery,
+  handleMysqlSchema,
+  handleMysqlStatus,
+  handleMysqlTables,
   handleNotionGet,
   handleNotionRefresh,
   handleNotionStatus,
@@ -20,6 +26,11 @@ import agentToolkitPlugin, {
   handleSwaggerSearch,
   handleSwaggerStatus,
 } from "./agent-toolkit";
+import {
+  MysqlExecutorRegistry,
+  type MysqlExecutor,
+} from "../../lib/mysql-context";
+import type { ToolkitConfig } from "../../lib/toolkit-config";
 
 const PAGE = "1234abcd1234abcd1234abcd1234abcd";
 const PAGE_DASHED = "1234abcd-1234-abcd-1234-abcd1234abcd";
@@ -456,5 +467,192 @@ describe("plugin config hook", () => {
     plugin.config(cfg);
     expect(cfg.skills.paths).toContain("/pre-existing/skills");
     expect(cfg.agents.paths).toContain("/pre-existing/agents");
+  });
+});
+
+// ── MySQL 도구 핸들러 ────────────────────────────────────────────────────────
+
+class MysqlPluginFakeExecutor implements MysqlExecutor {
+  public seen: string[] = [];
+  constructor(
+    private readonly responses: Array<{ rows: RowDataPacket[]; fields: FieldPacket[] }>,
+  ) {}
+  async query(sql: string) {
+    this.seen.push(sql);
+    const next = this.responses.shift();
+    if (!next) throw new Error(`fake: no response queued for ${sql}`);
+    return next;
+  }
+}
+
+const noFields = [] as unknown as FieldPacket[];
+
+const mysqlConfig: ToolkitConfig = {
+  mysql: {
+    connections: {
+      acme: {
+        prod: {
+          users: {
+            host: "db.acme",
+            user: "readonly",
+            database: "app",
+            passwordEnv: "MYSQL_ACME_PROD_USERS_PASSWORD",
+          },
+        },
+      },
+    },
+  },
+};
+
+/**
+ * Plugin 핸들러를 테스트하기 위한 미니 MysqlExecutorRegistry shim — pool 을 만들지 않고
+ * 미리 만든 fake executor 를 그대로 돌려준다. 실제 mysql2 pool 은 만들지 않는다.
+ */
+function shimRegistry(executor: MysqlExecutor): MysqlExecutorRegistry {
+  // factory 가 호출되지 않도록 getExecutor 만 override.
+  const reg = new MysqlExecutorRegistry({}, () => ({ end: async () => {} }) as any);
+  (reg as unknown as { getExecutor: (h: string) => MysqlExecutor }).getExecutor = () => executor;
+  return reg;
+}
+
+describe("handleMysqlEnvs", () => {
+  it("flattens the registry to host:env:db handles", () => {
+    const out = handleMysqlEnvs(mysqlConfig);
+    expect(out.length).toBe(1);
+    expect(out[0]?.handle).toBe("acme:prod:users");
+    expect(out[0]?.authMode).toBe("passwordEnv");
+    expect(out[0]?.authEnv).toBe("MYSQL_ACME_PROD_USERS_PASSWORD");
+  });
+
+  it("returns [] when mysql.connections is not configured", () => {
+    expect(handleMysqlEnvs({})).toEqual([]);
+  });
+});
+
+describe("handleMysqlStatus", () => {
+  it("returns handle metadata + ping=true on SELECT 1 success", async () => {
+    const fake = new MysqlPluginFakeExecutor([
+      { rows: [{ ok: 1 } as unknown as RowDataPacket], fields: noFields },
+    ]);
+    const r = await handleMysqlStatus(shimRegistry(fake), mysqlConfig, "acme:prod:users");
+    expect(r.handle).toBe("acme:prod:users");
+    expect(r.ok).toBe(true);
+  });
+
+  it("throws when the handle is not registered", async () => {
+    const fake = new MysqlPluginFakeExecutor([]);
+    await expect(
+      handleMysqlStatus(shimRegistry(fake), mysqlConfig, "acme:prod:missing"),
+    ).rejects.toThrow(/not found in mysql\.connections/);
+  });
+});
+
+describe("handleMysqlTables", () => {
+  it("lists tables / views via SHOW FULL TABLES", async () => {
+    const fake = new MysqlPluginFakeExecutor([
+      {
+        rows: [
+          { Tables_in_app: "users", Table_type: "BASE TABLE" } as unknown as RowDataPacket,
+        ],
+        fields: noFields,
+      },
+    ]);
+    const r = await handleMysqlTables(shimRegistry(fake), mysqlConfig, "acme:prod:users");
+    expect(r).toEqual([{ name: "users", type: "BASE TABLE" }]);
+  });
+});
+
+describe("handleMysqlSchema", () => {
+  it("returns column summary when no table is given", async () => {
+    const fake = new MysqlPluginFakeExecutor([
+      {
+        rows: [
+          {
+            TABLE_NAME: "users",
+            COLUMN_NAME: "id",
+            COLUMN_TYPE: "int",
+            IS_NULLABLE: "NO",
+            COLUMN_KEY: "PRI",
+            COLUMN_DEFAULT: null,
+            EXTRA: "",
+          } as unknown as RowDataPacket,
+        ],
+        fields: noFields,
+      },
+    ]);
+    const r = await handleMysqlSchema(shimRegistry(fake), mysqlConfig, "acme:prod:users");
+    expect(r.mode).toBe("summary");
+  });
+
+  it("returns SHOW CREATE TABLE detail when a table is given", async () => {
+    const fake = new MysqlPluginFakeExecutor([
+      {
+        rows: [
+          { Table: "users", "Create Table": "CREATE TABLE users (id INT)" } as unknown as RowDataPacket,
+        ],
+        fields: noFields,
+      },
+      { rows: [], fields: noFields },
+    ]);
+    const r = await handleMysqlSchema(
+      shimRegistry(fake),
+      mysqlConfig,
+      "acme:prod:users",
+      "users",
+    );
+    expect(r.mode).toBe("detail");
+    expect(r.createTable).toContain("CREATE TABLE");
+  });
+});
+
+describe("handleMysqlQuery", () => {
+  it("rejects writes before reaching the executor", async () => {
+    const fake = new MysqlPluginFakeExecutor([]);
+    await expect(
+      handleMysqlQuery(shimRegistry(fake), mysqlConfig, "acme:prod:users", "DELETE FROM users"),
+    ).rejects.toThrow(/MySQL read-only guard/);
+    expect(fake.seen).toEqual([]);
+  });
+
+  it("attaches LIMIT 100 to a bare SELECT", async () => {
+    const fake = new MysqlPluginFakeExecutor([
+      { rows: [{ id: 1 } as unknown as RowDataPacket], fields: noFields },
+    ]);
+    const r = await handleMysqlQuery(
+      shimRegistry(fake),
+      mysqlConfig,
+      "acme:prod:users",
+      "SELECT * FROM users",
+    );
+    expect(fake.seen[0]).toContain("LIMIT 100");
+    expect(r.effectiveLimit).toBe(100);
+  });
+
+  it("respects user-provided limit", async () => {
+    const fake = new MysqlPluginFakeExecutor([{ rows: [], fields: noFields }]);
+    await handleMysqlQuery(
+      shimRegistry(fake),
+      mysqlConfig,
+      "acme:prod:users",
+      "SELECT * FROM users",
+      { limit: 5 },
+    );
+    expect(fake.seen[0]).toContain("LIMIT 5");
+  });
+
+  it("does not modify SHOW TABLES", async () => {
+    const fake = new MysqlPluginFakeExecutor([
+      {
+        rows: [{ Tables_in_app: "users" } as unknown as RowDataPacket],
+        fields: noFields,
+      },
+    ]);
+    await handleMysqlQuery(
+      shimRegistry(fake),
+      mysqlConfig,
+      "acme:prod:users",
+      "SHOW TABLES",
+    );
+    expect(fake.seen[0]).toBe("SHOW TABLES");
   });
 });

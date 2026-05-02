@@ -41,6 +41,21 @@ import {
   type JournalSearchOptions,
   type JournalStatus,
 } from "../../lib/agent-journal";
+import {
+  MysqlExecutorRegistry,
+  describeHandle as mysqlDescribeHandle,
+  describeTable as mysqlDescribeTable,
+  listTables as mysqlListTables,
+  pingHandle as mysqlPingHandle,
+  runReadonlyQuery as mysqlRunReadonlyQuery,
+  type MysqlExecutor,
+  type MysqlQueryResult,
+  type RunReadonlyQueryOptions,
+} from "../../lib/mysql-context";
+import {
+  listRegistry as listMysqlRegistry,
+  type MysqlRegistryEntry,
+} from "../../lib/mysql-registry";
 
 /**
  * opencode plugin entrypoint (Superpowers 형식).
@@ -416,6 +431,63 @@ export async function handleJournalStatus(
   return journal.status();
 }
 
+// ── MySQL 도구 핸들러 ────────────────────────────────────────────────────────
+//
+// 5개 모두 export 한다 — 단위테스트가 fake `MysqlExecutor` 또는 fake `ToolkitConfig` 를
+// 주입할 수 있도록. 실제 등록부 (default export) 는 `MysqlExecutorRegistry` 를 한 번
+// 만든 뒤 핸들마다 `getExecutor` 로 호출한다. 자격증명은 mysql-context 안에서만 살아 있고
+// 도구 응답 / 에러 / 메타에는 절대 노출되지 않는다.
+
+/** registry 트리를 평면 (handle, host, env, db, authMode, authEnv, …) 리스트로 반환. */
+export function handleMysqlEnvs(config: ToolkitConfig): MysqlRegistryEntry[] {
+  return listMysqlRegistry(config);
+}
+
+/** 핸들 메타 + `SELECT 1` ping. ping 실패 시 mysql2 에러를 그대로 surface. */
+export async function handleMysqlStatus(
+  registry: MysqlExecutorRegistry,
+  config: ToolkitConfig,
+  handle: string,
+): Promise<MysqlRegistryEntry & { ok: boolean }> {
+  const meta = mysqlDescribeHandle(handle, config);
+  const executor = registry.getExecutor(handle, config);
+  const { ok } = await mysqlPingHandle(executor);
+  return { ...meta, ok };
+}
+
+/** `SHOW FULL TABLES` 결과. */
+export async function handleMysqlTables(
+  registry: MysqlExecutorRegistry,
+  config: ToolkitConfig,
+  handle: string,
+): Promise<Array<{ name: string; type: string }>> {
+  const executor = registry.getExecutor(handle, config);
+  return mysqlListTables(executor);
+}
+
+/** 테이블 미지정 시 컬럼 요약, 지정 시 SHOW CREATE TABLE + SHOW INDEX FROM 합본. */
+export async function handleMysqlSchema(
+  registry: MysqlExecutorRegistry,
+  config: ToolkitConfig,
+  handle: string,
+  table?: string,
+): Promise<Awaited<ReturnType<typeof mysqlDescribeTable>>> {
+  const executor = registry.getExecutor(handle, config);
+  return mysqlDescribeTable(executor, table);
+}
+
+/** read-only 검증 + LIMIT 강제 후 SQL 실행. SELECT/SHOW/DESCRIBE/EXPLAIN/WITH 만 통과. */
+export async function handleMysqlQuery(
+  registry: MysqlExecutorRegistry,
+  config: ToolkitConfig,
+  handle: string,
+  sql: string,
+  options: RunReadonlyQueryOptions = {},
+): Promise<MysqlQueryResult> {
+  const executor = registry.getExecutor(handle, config);
+  return mysqlRunReadonlyQuery(executor, sql, options);
+}
+
 /**
  * opencode plugin default export.
  * `directory` 는 opencode 가 plugin 을 로드한 cwd. 우리는 import.meta 기반으로
@@ -436,6 +508,10 @@ export default async function agentToolkitPlugin(_input: unknown) {
     );
   }
   const registry = toolkitConfig.openapi?.registry;
+
+  // MySQL pool 들은 핸들마다 lazy 로 만들어 캐시한다 — 한 turn 안에서 같은 핸들로
+  // 여러 도구가 호출돼도 connection 을 재사용한다.
+  const mysqlRegistry = new MysqlExecutorRegistry(process.env);
 
   return {
     /**
@@ -612,6 +688,61 @@ export default async function agentToolkitPlugin(_input: unknown) {
         parameters: {},
         async handler() {
           return handleJournalStatus(journal);
+        },
+      },
+      mysql_envs: {
+        description:
+          "agent-toolkit.json 의 mysql.connections 를 host:env:db 평면 리스트로 반환한다. 비밀번호 / DSN 의 *값* 은 노출하지 않고 env 변수 *이름* 만 보여 준다. remote 호출 없음.",
+        parameters: {},
+        async handler() {
+          return handleMysqlEnvs(toolkitConfig);
+        },
+      },
+      mysql_status: {
+        description:
+          "MySQL host:env:db 핸들의 메타 (host / port / user / database 또는 dsnEnv 모드 표시) + 짧은 SELECT 1 ping. (handle: 등록된 host:env:db)",
+        parameters: { handle: { type: "string", required: true } },
+        async handler({ handle }: { handle: string }) {
+          return handleMysqlStatus(mysqlRegistry, toolkitConfig, handle);
+        },
+      },
+      mysql_tables: {
+        description:
+          "SHOW FULL TABLES — 핸들의 디폴트 database 안 테이블 / 뷰 목록을 반환한다. (handle: 등록된 host:env:db)",
+        parameters: { handle: { type: "string", required: true } },
+        async handler({ handle }: { handle: string }) {
+          return handleMysqlTables(mysqlRegistry, toolkitConfig, handle);
+        },
+      },
+      mysql_schema: {
+        description:
+          "table 미지정: INFORMATION_SCHEMA.COLUMNS 의 모든 테이블 컬럼 요약. table 지정: SHOW CREATE TABLE + SHOW INDEX FROM 합본. (handle: 등록된 host:env:db, table?: 테이블 이름)",
+        parameters: {
+          handle: { type: "string", required: true },
+          table: { type: "string", required: false },
+        },
+        async handler({ handle, table }: { handle: string; table?: string }) {
+          return handleMysqlSchema(mysqlRegistry, toolkitConfig, handle, table);
+        },
+      },
+      mysql_query: {
+        description:
+          "검증된 read-only SQL (SELECT / SHOW / DESCRIBE / DESC / EXPLAIN / WITH) 만 실행한다. INSERT / UPDATE / DELETE / DDL / SET / CALL / LOAD / multi-statement / INTO OUTFILE 은 모두 거부. SELECT / WITH 에는 LIMIT 가 강제 부착되거나 cap 으로 재작성된다. (handle: 등록된 host:env:db, sql: SQL, limit?: row 캡 — 미지정 시 100, 절대 상한 1000)",
+        parameters: {
+          handle: { type: "string", required: true },
+          sql: { type: "string", required: true },
+          limit: { type: "number", required: false },
+        },
+        async handler({
+          handle,
+          sql,
+          limit,
+        }: {
+          handle: string;
+          sql: string;
+          limit?: number;
+        }) {
+          return handleMysqlQuery(mysqlRegistry, toolkitConfig, handle, sql, { limit });
         },
       },
     },

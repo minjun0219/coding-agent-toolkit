@@ -34,6 +34,8 @@ All optional. Set only when the defaults do not fit.
 | `AGENT_TOOLKIT_JOURNAL_DIR` | `~/.config/opencode/agent-toolkit/journal` | Agent journal directory. Holds a single `journal.jsonl` (append-only, no TTL). |
 | `AGENT_TOOLKIT_CONFIG` | `~/.config/opencode/agent-toolkit/agent-toolkit.json` | User-level `agent-toolkit.json` path. The project-level `./.opencode/agent-toolkit.json` overrides it at the leaf level. |
 
+MySQL connections take credentials *only* from environment variables — the variable *name* is declared per handle (`passwordEnv` or `dsnEnv`) inside `agent-toolkit.json` 의 `mysql.connections`. Suggested pattern: `MYSQL_<HOST>_<ENV>_<DB>_PASSWORD` (passwordEnv mode) or `MYSQL_<HOST>_<ENV>_<DB>_DSN` (dsnEnv mode). Plaintext credentials in the config file are rejected by the loader.
+
 ## Smoke test
 
 Once opencode is running:
@@ -42,7 +44,7 @@ Once opencode is running:
 > use skill tool to list skills
 ```
 
-If `notion-context`, `openapi-client`, and `spec-pact` all show up, skills are loaded.
+If `notion-context`, `openapi-client`, `mysql-query`, and `spec-pact` all show up, skills are loaded.
 
 Then verify the tools are registered:
 
@@ -54,6 +56,24 @@ Then verify the tools are registered:
 > use swagger_envs tool   # flatten the registry from agent-toolkit.json
 > use journal_append tool with content "decided to ship Phase 3" kind "decision"
 > use journal_read tool   # most recent first
+```
+
+Optional MySQL smoke (only after registering a `host:env:db` handle in `agent-toolkit.json` and exporting the matching `passwordEnv` / `dsnEnv` variable):
+
+```
+> use mysql_envs tool                                                                # flatten mysql.connections (no credentials in output)
+> use mysql_status tool with handle "<host:env:db>"                                  # SELECT 1 ping
+> use mysql_tables tool with handle "<host:env:db>"                                  # SHOW FULL TABLES
+> use mysql_schema tool with handle "<host:env:db>" table "<t>"                      # SHOW CREATE TABLE + SHOW INDEX FROM
+> use mysql_query tool with handle "<host:env:db>" sql "SELECT id FROM <t> LIMIT 5"  # read-only SQL only
+```
+
+Reject smoke (these MUST throw `MySQL read-only guard: …`):
+
+```
+> use mysql_query tool with handle "<host:env:db>" sql "DELETE FROM <t>"
+> use mysql_query tool with handle "<host:env:db>" sql "SELECT 1; SELECT 2"
+> use mysql_query tool with handle "<host:env:db>" sql "SELECT * FROM <t> INTO OUTFILE '/tmp/x'"
 ```
 
 The first call returns `fromCache: false` — remote is hit once. The second call returns `fromCache: true` (same policy for `notion_*` and `swagger_*`). `journal_*` does not hit any remote — it only reads / writes the local JSONL file.
@@ -85,6 +105,49 @@ After that:
 ```
 
 Identifier pattern is `^[a-zA-Z0-9_-]+$` — colons are reserved as the handle separator. URLs must parse and use `http`, `https`, or `file` scheme. If the config violates the schema, the plugin logs a single error line and falls back to an empty registry — the tools themselves keep working.
+
+## MySQL connections (`agent-toolkit.json`)
+
+Same shape as `openapi.registry`, but the leaf is a connection profile, not a URL. Plaintext passwords / DSN strings are **rejected by the loader** — every profile must declare exactly one of `passwordEnv` (env-var name + decomposed `host`/`port?`/`user`/`database`) or `dsnEnv` (env-var name holding a `mysql://user:pass@host:port/db` line).
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/minjun0219/agent-toolkit/main/agent-toolkit.schema.json",
+  "mysql": {
+    "connections": {
+      "acme": {
+        "prod": {
+          "users": {
+            "host": "db.acme.example",
+            "port": 3306,
+            "user": "readonly",
+            "database": "app",
+            "passwordEnv": "MYSQL_ACME_PROD_USERS_PASSWORD"
+          },
+          "orders": { "dsnEnv": "MYSQL_ACME_PROD_ORDERS_DSN" }
+        }
+      }
+    }
+  }
+}
+```
+
+Then export the matching env var (read-only account recommended — `GRANT SELECT` only):
+
+```
+export MYSQL_ACME_PROD_USERS_PASSWORD=...
+# or, for the dsnEnv form:
+export MYSQL_ACME_PROD_ORDERS_DSN="mysql://readonly:...@db.acme.example:3306/orders"
+```
+
+After that:
+
+```
+> use mysql_envs tool
+> use mysql_query tool with handle "acme:prod:users" sql "SELECT id FROM users LIMIT 5"
+```
+
+Same identifier rules as `openapi.registry` — `^[a-zA-Z0-9_-]+$` for `host` / `env` / `db`. Mismatched env vars (missing / empty) raise a precise error naming the variable; the loader never logs the credential value.
 
 ## Agents (`rocky` + `grace`)
 

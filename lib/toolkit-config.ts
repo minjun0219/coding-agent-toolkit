@@ -36,12 +36,47 @@ export interface SpecConfig {
   indexFile?: string;
 }
 
+/**
+ * 한 MySQL 핸들 (`host:env:db`) 의 connection profile.
+ *
+ * 비밀번호는 *config 파일에 절대 두지 않는다* — `passwordEnv` (환경변수 이름) 또는
+ * `dsnEnv` (`mysql://user:pass@host:port/db` 한 줄을 담은 환경변수 이름) 중 정확히 하나만
+ * 허용한다. `dsnEnv` 가 있으면 `host` / `port` / `user` / `database` 분해 필드는 무시되고
+ * DSN 파싱 결과를 사용한다.
+ */
+export interface MysqlConnectionProfile {
+  /** TCP host. `dsnEnv` 사용 시 무시. */
+  host?: string;
+  /** TCP port (1..65535). 미지정 / `dsnEnv` 사용 시 미사용. */
+  port?: number;
+  /** 접속 user. `dsnEnv` 사용 시 무시. */
+  user?: string;
+  /** 디폴트 database. `dsnEnv` 사용 시 무시. */
+  database?: string;
+  /** 비밀번호를 담은 환경변수 이름. `dsnEnv` 와 상호배타. */
+  passwordEnv?: string;
+  /** `mysql://...` DSN 한 줄을 담은 환경변수 이름. `passwordEnv` 와 상호배타. */
+  dsnEnv?: string;
+}
+
+/** mysql.connections 트리. host → env → db → connection profile. */
+export interface MysqlConnections {
+  [host: string]: {
+    [env: string]: {
+      [db: string]: MysqlConnectionProfile;
+    };
+  };
+}
+
 export interface ToolkitConfig {
   $schema?: string;
   openapi?: {
     registry?: OpenapiRegistry;
   };
   spec?: SpecConfig;
+  mysql?: {
+    connections?: MysqlConnections;
+  };
 }
 
 export interface LoadConfigOptions {
@@ -116,6 +151,19 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
   if (config.spec !== undefined) {
     validateSpec(config.spec, source);
   }
+  if (config.mysql !== undefined) {
+    if (
+      config.mysql === null ||
+      typeof config.mysql !== "object" ||
+      Array.isArray(config.mysql)
+    ) {
+      throw new Error(`${source}: mysql must be an object`);
+    }
+    const my = config.mysql as Record<string, unknown>;
+    if (my.connections !== undefined) {
+      validateMysqlConnections(my.connections, source);
+    }
+  }
   return config as ToolkitConfig;
 }
 
@@ -152,6 +200,125 @@ function validateSpec(spec: unknown, source: string): asserts spec is SpecConfig
     if (typeof s.indexFile !== "string" || s.indexFile.trim().length === 0) {
       throw new Error(`${source}: spec.indexFile must be a non-empty string`);
     }
+  }
+}
+
+/**
+ * `mysql.connections` 트리 검증. host / env / db 식별자 패턴은 `openapi.registry` 와
+ * 동일 (`ID_PATTERN`). 각 leaf profile 은 `passwordEnv` 와 `dsnEnv` 중 정확히 하나여야
+ * 하고, 분해 필드 (host / port / user / database) 는 비어 있지 않은 string / 1..65535
+ * 정수로만 받는다. 미지원 key 는 reject (오타 가드, 스키마 lockstep).
+ */
+const ALLOWED_PROFILE_KEYS = new Set([
+  "host",
+  "port",
+  "user",
+  "database",
+  "passwordEnv",
+  "dsnEnv",
+]);
+
+function validateMysqlConnections(
+  conns: unknown,
+  source: string,
+): asserts conns is MysqlConnections {
+  if (conns === null || typeof conns !== "object" || Array.isArray(conns)) {
+    throw new Error(`${source}: mysql.connections must be an object`);
+  }
+  for (const [host, envs] of Object.entries(conns as Record<string, unknown>)) {
+    if (!ID_PATTERN.test(host)) {
+      throw new Error(
+        `${source}: mysql host name "${host}" must match ${ID_PATTERN} (alphanumeric, "_" or "-" only — colons are reserved for handle separators)`,
+      );
+    }
+    if (envs === null || typeof envs !== "object" || Array.isArray(envs)) {
+      throw new Error(
+        `${source}: mysql.connections["${host}"] must be an object of environments`,
+      );
+    }
+    for (const [env, dbs] of Object.entries(envs as Record<string, unknown>)) {
+      if (!ID_PATTERN.test(env)) {
+        throw new Error(
+          `${source}: mysql env name "${host}:${env}" must match ${ID_PATTERN}`,
+        );
+      }
+      if (dbs === null || typeof dbs !== "object" || Array.isArray(dbs)) {
+        throw new Error(
+          `${source}: mysql.connections["${host}"]["${env}"] must be an object of databases`,
+        );
+      }
+      for (const [db, profile] of Object.entries(dbs as Record<string, unknown>)) {
+        if (!ID_PATTERN.test(db)) {
+          throw new Error(
+            `${source}: mysql db name "${host}:${env}:${db}" must match ${ID_PATTERN}`,
+          );
+        }
+        validateMysqlProfile(profile, `${source}: mysql.connections["${host}"]["${env}"]["${db}"]`);
+      }
+    }
+  }
+}
+
+function validateMysqlProfile(profile: unknown, where: string): void {
+  if (profile === null || typeof profile !== "object" || Array.isArray(profile)) {
+    throw new Error(`${where} must be a connection-profile object`);
+  }
+  const p = profile as Record<string, unknown>;
+  for (const key of Object.keys(p)) {
+    if (!ALLOWED_PROFILE_KEYS.has(key)) {
+      throw new Error(
+        `${where} has unsupported key "${key}" — allowed: ${[...ALLOWED_PROFILE_KEYS].join(", ")}`,
+      );
+    }
+  }
+  const hasPasswordEnv = p.passwordEnv !== undefined;
+  const hasDsnEnv = p.dsnEnv !== undefined;
+  if (hasPasswordEnv && hasDsnEnv) {
+    throw new Error(
+      `${where} must declare exactly one of "passwordEnv" or "dsnEnv" — both were given`,
+    );
+  }
+  if (!hasPasswordEnv && !hasDsnEnv) {
+    throw new Error(
+      `${where} must declare exactly one of "passwordEnv" or "dsnEnv" — neither was given (config files must never carry plaintext credentials)`,
+    );
+  }
+  if (hasPasswordEnv) {
+    if (typeof p.passwordEnv !== "string" || p.passwordEnv.trim().length === 0) {
+      throw new Error(`${where}.passwordEnv must be a non-empty environment-variable name`);
+    }
+    // dsnEnv 미사용 시 분해 필드는 host / user / database 모두 명시 필요. port 는 optional.
+    requireNonEmptyString(p.host, `${where}.host`);
+    requireNonEmptyString(p.user, `${where}.user`);
+    requireNonEmptyString(p.database, `${where}.database`);
+    if (p.port !== undefined) {
+      if (
+        typeof p.port !== "number" ||
+        !Number.isInteger(p.port) ||
+        p.port < 1 ||
+        p.port > 65535
+      ) {
+        throw new Error(`${where}.port must be an integer in 1..65535`);
+      }
+    }
+  } else {
+    if (typeof p.dsnEnv !== "string" || p.dsnEnv.trim().length === 0) {
+      throw new Error(`${where}.dsnEnv must be a non-empty environment-variable name`);
+    }
+    // dsnEnv 사용 시 분해 필드는 무시되지만, 사용자가 적었으면 잘못된 기대를 막기 위해 reject.
+    for (const k of ["host", "port", "user", "database"]) {
+      if (p[k] !== undefined) {
+        throw new Error(
+          `${where} declares both "dsnEnv" and "${k}" — drop the decomposed field; dsnEnv carries it.`,
+        );
+      }
+    }
+  }
+}
+
+function requireNonEmptyString(value: unknown, where: string): void {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${where} must be a non-empty string`);
   }
 }
 
@@ -256,6 +423,20 @@ export function mergeConfigs(
       if (value !== undefined) {
         // 각 key 는 leaf — project 가 user 를 통째로 덮어쓴다.
         (out.spec as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+  if (project.mysql?.connections) {
+    out.mysql ??= {};
+    out.mysql.connections ??= {};
+    for (const [host, envs] of Object.entries(project.mysql.connections)) {
+      out.mysql.connections[host] ??= {};
+      for (const [env, dbs] of Object.entries(envs)) {
+        out.mysql.connections[host]![env] ??= {};
+        for (const [db, profile] of Object.entries(dbs)) {
+          // profile 자체가 leaf — project 가 user 의 profile 을 통째로 덮어쓴다.
+          out.mysql.connections[host]![env]![db] = profile;
+        }
       }
     }
   }
