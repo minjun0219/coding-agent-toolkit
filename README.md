@@ -276,6 +276,9 @@ apps/web/orders/
 
 ```bash
 bun install
+bun run check     # Biome lint gate
+bun run lint      # Biome lint only
+bun run format    # apply Biome formatting
 bun test          # lib/ + .opencode/plugins/ 단위 테스트
 bun run typecheck
 ```

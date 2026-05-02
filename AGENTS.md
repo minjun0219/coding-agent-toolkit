@@ -30,6 +30,9 @@ opencode-only plugin. Three Notion cache tools + five OpenAPI tools (cache, sear
 
 ```bash
 bun install
+bun run check     # Biome lint gate
+bun run lint      # Biome lint only
+bun run format    # apply Biome formatting
 bun test           # unit tests under lib/ + .opencode/plugins/
 bun run typecheck  # tsc --noEmit
 ```
@@ -56,12 +59,13 @@ The longer-term capability targets (auto memory, GitHub-issue tracking, OpenAPI 
 
 ## Change checklist
 
-1. `bun run typecheck` passes
-2. `bun test` passes
-3. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
-4. If a new env var is added, also update the plugin's `readEnv()`
-5. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`, `skills/mysql-query/SKILL.md` for `mysql_*`, `skills/spec-pact/SKILL.md` for the lifecycle modes that touch `notion_*` / `journal_*` / file IO) **and** the corresponding routing / tool rules in `agents/rocky.md` (Rocky conducts the three cache-first skills + journal and routes the lifecycle, so changes on either side propagate to it; `journal_*` is owned by `rocky` directly — no separate skill) **and** `agents/grace.md` (Grace conducts `spec-pact` end-to-end and is the single finalize/lock authority over `.agent/specs/INDEX.md` + SPEC files)
-6. If `agent-toolkit.json` shape changes, update **both** `agent-toolkit.schema.json` (IDE autocomplete) **and** `lib/toolkit-config.ts` (runtime validation) — they must stay in lockstep. Currently the `openapi.registry`, the `spec` (dir / scanDirectorySpec / indexFile), and the `mysql.connections` (host / env / db → host / port / user / database / passwordEnv / dsnEnv) objects are the three top-level keys with explicit validation
+1. `bun run check` passes
+2. `bun run typecheck` passes
+3. `bun test` passes
+4. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
+5. If a new env var is added, also update the plugin's `readEnv()`
+6. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`, `skills/mysql-query/SKILL.md` for `mysql_*`, `skills/spec-pact/SKILL.md` for the lifecycle modes that touch `notion_*` / `journal_*` / file IO) **and** the corresponding routing / tool rules in `agents/rocky.md` (Rocky conducts the three cache-first skills + journal and routes the lifecycle, so changes on either side propagate to it; `journal_*` is owned by `rocky` directly — no separate skill) **and** `agents/grace.md` (Grace conducts `spec-pact` end-to-end and is the single finalize/lock authority over `.agent/specs/INDEX.md` + SPEC files)
+7. If `agent-toolkit.json` shape changes, update **both** `agent-toolkit.schema.json` (IDE autocomplete) **and** `lib/toolkit-config.ts` (runtime validation) — they must stay in lockstep. Currently the `openapi.registry`, the `spec` (dir / scanDirectorySpec / indexFile), and the `mysql.connections` (host / env / db → host / port / user / database / passwordEnv / dsnEnv) objects are the three top-level keys with explicit validation
 
 ## MCP servers
 
