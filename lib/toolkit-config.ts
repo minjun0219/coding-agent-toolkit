@@ -180,7 +180,10 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
  */
 const ALLOWED_SPEC_KEYS = new Set(["dir", "scanDirectorySpec", "indexFile"]);
 
-function validateSpec(spec: unknown, source: string): asserts spec is SpecConfig {
+function validateSpec(
+  spec: unknown,
+  source: string,
+): asserts spec is SpecConfig {
   if (spec === null || typeof spec !== "object" || Array.isArray(spec)) {
     throw new Error(`${source}: spec must be an object`);
   }
@@ -253,20 +256,29 @@ function validateMysqlConnections(
           `${source}: mysql.connections["${host}"]["${env}"] must be an object of databases`,
         );
       }
-      for (const [db, profile] of Object.entries(dbs as Record<string, unknown>)) {
+      for (const [db, profile] of Object.entries(
+        dbs as Record<string, unknown>,
+      )) {
         if (!ID_PATTERN.test(db)) {
           throw new Error(
             `${source}: mysql db name "${host}:${env}:${db}" must match ${ID_PATTERN}`,
           );
         }
-        validateMysqlProfile(profile, `${source}: mysql.connections["${host}"]["${env}"]["${db}"]`);
+        validateMysqlProfile(
+          profile,
+          `${source}: mysql.connections["${host}"]["${env}"]["${db}"]`,
+        );
       }
     }
   }
 }
 
 function validateMysqlProfile(profile: unknown, where: string): void {
-  if (profile === null || typeof profile !== "object" || Array.isArray(profile)) {
+  if (
+    profile === null ||
+    typeof profile !== "object" ||
+    Array.isArray(profile)
+  ) {
     throw new Error(`${where} must be a connection-profile object`);
   }
   const p = profile as Record<string, unknown>;
@@ -290,8 +302,13 @@ function validateMysqlProfile(profile: unknown, where: string): void {
     );
   }
   if (hasPasswordEnv) {
-    if (typeof p.passwordEnv !== "string" || p.passwordEnv.trim().length === 0) {
-      throw new Error(`${where}.passwordEnv must be a non-empty environment-variable name`);
+    if (
+      typeof p.passwordEnv !== "string" ||
+      p.passwordEnv.trim().length === 0
+    ) {
+      throw new Error(
+        `${where}.passwordEnv must be a non-empty environment-variable name`,
+      );
     }
     // dsnEnv 미사용 시 분해 필드는 host / user / database 모두 명시 필요. port 는 optional.
     requireNonEmptyString(p.host, `${where}.host`);
@@ -309,7 +326,9 @@ function validateMysqlProfile(profile: unknown, where: string): void {
     }
   } else {
     if (typeof p.dsnEnv !== "string" || p.dsnEnv.trim().length === 0) {
-      throw new Error(`${where}.dsnEnv must be a non-empty environment-variable name`);
+      throw new Error(
+        `${where}.dsnEnv must be a non-empty environment-variable name`,
+      );
     }
     // dsnEnv 사용 시 분해 필드는 무시되지만, 사용자가 적었으면 잘못된 기대를 막기 위해 reject.
     for (const k of ["host", "port", "user", "database"]) {
@@ -328,7 +347,10 @@ function requireNonEmptyString(value: unknown, where: string): void {
   }
 }
 
-function validateRegistry(reg: unknown, source: string): asserts reg is OpenapiRegistry {
+function validateRegistry(
+  reg: unknown,
+  source: string,
+): asserts reg is OpenapiRegistry {
   if (reg === null || typeof reg !== "object" || Array.isArray(reg)) {
     throw new Error(`${source}: openapi.registry must be an object`);
   }
@@ -343,7 +365,9 @@ function validateRegistry(reg: unknown, source: string): asserts reg is OpenapiR
         `${source}: openapi.registry["${host}"] must be an object of environments`,
       );
     }
-    for (const [env, specs] of Object.entries(envs as Record<string, unknown>)) {
+    for (const [env, specs] of Object.entries(
+      envs as Record<string, unknown>,
+    )) {
       if (!ID_PATTERN.test(env)) {
         throw new Error(
           `${source}: env name "${host}:${env}" must match ${ID_PATTERN}`,
@@ -354,7 +378,9 @@ function validateRegistry(reg: unknown, source: string): asserts reg is OpenapiR
           `${source}: openapi.registry["${host}"]["${env}"] must be an object of specs`,
         );
       }
-      for (const [spec, url] of Object.entries(specs as Record<string, unknown>)) {
+      for (const [spec, url] of Object.entries(
+        specs as Record<string, unknown>,
+      )) {
         if (!ID_PATTERN.test(spec)) {
           throw new Error(
             `${source}: spec name "${host}:${env}:${spec}" must match ${ID_PATTERN}`,
