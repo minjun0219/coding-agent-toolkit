@@ -1,9 +1,11 @@
 import mysql from "mysql2/promise";
-import type { Pool, PoolOptions, RowDataPacket, FieldPacket } from "mysql2/promise";
-import {
-  resolveHandle,
-  type MysqlRegistryEntry,
-} from "./mysql-registry";
+import type {
+  Pool,
+  PoolOptions,
+  RowDataPacket,
+  FieldPacket,
+} from "mysql2/promise";
+import { resolveHandle, type MysqlRegistryEntry } from "./mysql-registry";
 import type { MysqlConnectionProfile, ToolkitConfig } from "./toolkit-config";
 import {
   assertReadOnlySql,
@@ -186,8 +188,13 @@ function parseDsn(
   }
   const portStr = url.port;
   const port = portStr ? Number(portStr) : undefined;
-  if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) {
-    throw new Error(`MySQL handle "${handle}": DSN port "${portStr}" is invalid.`);
+  if (
+    port !== undefined &&
+    (!Number.isInteger(port) || port < 1 || port > 65535)
+  ) {
+    throw new Error(
+      `MySQL handle "${handle}": DSN port "${portStr}" is invalid.`,
+    );
   }
   if (!url.username) {
     throw new Error(
@@ -215,7 +222,9 @@ function redactDsn(dsn: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** `SELECT 1 AS ok` 한 번. timeout / auth 실패 시 mysql2 에러를 그대로 throw. */
-export async function pingHandle(executor: MysqlExecutor): Promise<{ ok: boolean }> {
+export async function pingHandle(
+  executor: MysqlExecutor,
+): Promise<{ ok: boolean }> {
   const { rows } = await executor.query("SELECT 1 AS ok");
   const first = rows[0] as Record<string, unknown> | undefined;
   return { ok: first?.ok === 1 || first?.ok === "1" };
@@ -259,7 +268,12 @@ export async function describeTable(
     extra: string;
   }>;
   createTable?: string;
-  indexes?: Array<{ keyName: string; column: string; nonUnique: number; type: string }>;
+  indexes?: Array<{
+    keyName: string;
+    column: string;
+    nonUnique: number;
+    type: string;
+  }>;
 }> {
   if (!table) {
     const sql =
@@ -294,9 +308,7 @@ export async function describeTable(
   ]);
   const createRow = createRows[0] as Record<string, unknown> | undefined;
   const createTable = createRow
-    ? String(
-        createRow["Create Table"] ?? createRow["Create View"] ?? "",
-      )
+    ? String(createRow["Create Table"] ?? createRow["Create View"] ?? "")
     : "";
   return {
     mode: "detail",
@@ -335,12 +347,14 @@ export async function runReadonlyQuery(
   const { rows, fields } = await executor.query(rewritten);
   const columns: MysqlColumnMeta[] = (fields ?? []).map((f) => ({
     name: String((f as { name: string }).name ?? ""),
-    type: typeof (f as { columnType?: number }).columnType === "number"
-      ? (f as { columnType: number }).columnType
-      : null,
-    table: typeof (f as { table?: string }).table === "string"
-      ? (f as { table: string }).table
-      : null,
+    type:
+      typeof (f as { columnType?: number }).columnType === "number"
+        ? (f as { columnType: number }).columnType
+        : null,
+    table:
+      typeof (f as { table?: string }).table === "string"
+        ? (f as { table: string }).table
+        : null,
   }));
   const rowCount = rows.length;
   const truncated =
@@ -410,7 +424,10 @@ export class MysqlExecutorRegistry {
     this.pools.clear();
     this.executors.clear();
     if (errors.length > 0) {
-      throw new AggregateError(errors as Error[], "Failed to close some MySQL pools");
+      throw new AggregateError(
+        errors as Error[],
+        "Failed to close some MySQL pools",
+      );
     }
   }
 }
@@ -423,7 +440,10 @@ export function describeHandle(
   handle: string,
   config: ToolkitConfig,
 ): MysqlRegistryEntry {
-  const { host, env, db, profile } = resolveHandle(handle, config.mysql?.connections);
+  const { host, env, db, profile } = resolveHandle(
+    handle,
+    config.mysql?.connections,
+  );
   const usingDsn = profile.dsnEnv !== undefined;
   return {
     host,
@@ -432,9 +452,9 @@ export function describeHandle(
     handle: `${host}:${env}:${db}`,
     authMode: usingDsn ? "dsnEnv" : "passwordEnv",
     authEnv: usingDsn ? profile.dsnEnv! : profile.passwordEnv!,
-    hostName: usingDsn ? null : profile.host ?? null,
+    hostName: usingDsn ? null : (profile.host ?? null),
     port: profile.port ?? null,
-    user: usingDsn ? null : profile.user ?? null,
-    database: usingDsn ? null : profile.database ?? null,
+    user: usingDsn ? null : (profile.user ?? null),
+    database: usingDsn ? null : (profile.database ?? null),
   };
 }

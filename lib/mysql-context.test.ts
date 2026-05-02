@@ -36,12 +36,16 @@ const sampleConfig: ToolkitConfig = {
 class FakeExecutor implements MysqlExecutor {
   public seen: string[] = [];
   constructor(
-    private readonly responses: Array<{ rows: RowDataPacket[]; fields: FieldPacket[] }>,
+    private readonly responses: Array<{
+      rows: RowDataPacket[];
+      fields: FieldPacket[];
+    }>,
   ) {}
   async query(sql: string) {
     this.seen.push(sql);
     const next = this.responses.shift();
-    if (!next) throw new Error(`FakeExecutor: no response queued for SQL: ${sql}`);
+    if (!next)
+      throw new Error(`FakeExecutor: no response queued for SQL: ${sql}`);
     return next;
   }
 }
@@ -206,8 +210,14 @@ describe("listTables", () => {
     const fake = new FakeExecutor([
       {
         rows: [
-          { Tables_in_app: "users", Table_type: "BASE TABLE" } as unknown as RowDataPacket,
-          { Tables_in_app: "v_active", Table_type: "VIEW" } as unknown as RowDataPacket,
+          {
+            Tables_in_app: "users",
+            Table_type: "BASE TABLE",
+          } as unknown as RowDataPacket,
+          {
+            Tables_in_app: "v_active",
+            Table_type: "VIEW",
+          } as unknown as RowDataPacket,
         ],
         fields: noFields,
       },
@@ -249,7 +259,10 @@ describe("describeTable", () => {
     const fake = new FakeExecutor([
       {
         rows: [
-          { Table: "users", "Create Table": "CREATE TABLE users (id INT PRIMARY KEY)" } as unknown as RowDataPacket,
+          {
+            Table: "users",
+            "Create Table": "CREATE TABLE users (id INT PRIMARY KEY)",
+          } as unknown as RowDataPacket,
         ],
         fields: noFields,
       },
@@ -295,8 +308,17 @@ describe("runReadonlyQuery", () => {
   it("appends LIMIT to a bare SELECT and reports truncated when row count == cap", async () => {
     const fake = new FakeExecutor([
       {
-        rows: Array.from({ length: 100 }, (_, i) => ({ id: i }) as unknown as RowDataPacket),
-        fields: [{ name: "id", columnType: 3, table: "users" } as unknown as FieldPacket],
+        rows: Array.from(
+          { length: 100 },
+          (_, i) => ({ id: i }) as unknown as RowDataPacket,
+        ),
+        fields: [
+          {
+            name: "id",
+            columnType: 3,
+            table: "users",
+          } as unknown as FieldPacket,
+        ],
       },
     ]);
     const r = await runReadonlyQuery(fake, "SELECT * FROM users");
@@ -344,7 +366,10 @@ describe("MysqlExecutorRegistry", () => {
   });
 
   it("throws when the handle is not in the registry", () => {
-    const reg = new MysqlExecutorRegistry({}, () => ({ end: async () => {} } as any));
+    const reg = new MysqlExecutorRegistry(
+      {},
+      () => ({ end: async () => {} }) as any,
+    );
     expect(() => reg.getExecutor("acme:prod:missing", sampleConfig)).toThrow(
       /not found in mysql\.connections/,
     );
