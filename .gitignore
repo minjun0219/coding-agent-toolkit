@@ -3,6 +3,7 @@ dist/
 *.log
 .DS_Store
 .agent-cache/
+.sisyphus/
 .env
 .env.local
 *.tsbuildinfo
