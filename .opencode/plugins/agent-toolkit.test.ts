@@ -175,6 +175,12 @@ describe("swagger handlers", () => {
             paths: { "/health": { get: { operationId: "health" } } },
           });
         }
+        if (url.pathname === "/spec.yaml" && req.method === "GET") {
+          oaCalls += 1;
+          return new Response("openapi: 3.0.0\ninfo:\n  title: YAML\n", {
+            headers: { "content-type": "application/yaml" },
+          });
+        }
         return new Response("not found", { status: 404 });
       },
     });
@@ -225,6 +231,13 @@ describe("swagger handlers", () => {
     await expect(handleSwaggerGet(oaCache, url)).rejects.toThrow(
       /openapi.*swagger/i,
     );
+    const s = await handleSwaggerStatus(oaCache, url);
+    expect(s.exists).toBe(false);
+  });
+
+  it("rejects YAML specs because only JSON OpenAPI documents are supported", async () => {
+    const url = `${baseUrl}/spec.yaml`;
+    await expect(handleSwaggerGet(oaCache, url)).rejects.toThrow(/non-JSON body/i);
     const s = await handleSwaggerStatus(oaCache, url);
     expect(s.exists).toBe(false);
   });

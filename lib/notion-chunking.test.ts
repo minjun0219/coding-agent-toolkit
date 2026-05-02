@@ -50,6 +50,16 @@ describe("chunkNotionMarkdown", () => {
     expect(chunks.every((chunk) => chunk.startLine === 2 && chunk.endLine === 2)).toBe(true);
   });
 
+  it("falls back to the default chunk size for non-positive or invalid maxChars", () => {
+    for (const maxCharsPerChunk of [0, -1, Number.NaN]) {
+      const chunks = chunkNotionMarkdown(`# Top\n${"x".repeat(25)}`, {
+        maxCharsPerChunk,
+      });
+      expect(chunks.length).toBe(1);
+      expect(chunks[0]?.text).toBe("x".repeat(25));
+    }
+  });
+
   it("returns metadata summaries without full chunk text", () => {
     const chunks = chunkNotionMarkdown(SAMPLE, { maxCharsPerChunk: 300 });
     const summaries = summarizeNotionChunks(chunks);
@@ -67,5 +77,14 @@ describe("extractActionItems", () => {
     expect(extracted.apis.some((x) => x.text === "GET /api/orders")).toBe(true);
     expect(extracted.todos.some((x) => x.text.includes("주문 목록 API 연동"))).toBe(true);
     expect(extracted.questions.some((x) => x.text.includes("전환 가능한가"))).toBe(true);
+  });
+
+  it("does not extract APIs or TODOs from fenced code blocks", () => {
+    const chunks = chunkNotionMarkdown(`## API\n\n\`\`\`ts\n// TODO: 예시 코드만 수정\nfetch("GET /api/example")\n\`\`\`\n\n- GET /api/orders\n- [ ] 주문 목록 API 연동`);
+    const extracted = extractActionItems(chunks);
+    expect(extracted.apis.some((x) => x.text === "GET /api/example")).toBe(false);
+    expect(extracted.todos.some((x) => x.text.includes("예시 코드만 수정"))).toBe(false);
+    expect(extracted.apis.some((x) => x.text === "GET /api/orders")).toBe(true);
+    expect(extracted.todos.some((x) => x.text.includes("주문 목록 API 연동"))).toBe(true);
   });
 });
