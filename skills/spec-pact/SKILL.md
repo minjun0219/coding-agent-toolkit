@@ -61,7 +61,7 @@ Write a new SPEC.
 
 ### Steps
 
-1. **Read the INDEX.** Resolve the INDEX path from `agent-toolkit.json` — `<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md` — then read it and check whether the same `source_page_id` already exists. If yes, jump straight to AMEND ("A SPEC already exists — switching to AMEND." on a single line and switch the mode).
+1. **Read the INDEX.** Resolve the INDEX path from `agent-toolkit.json` — `<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md` — then read it and check whether the same `source_page_id` already exists. If yes, stop with "A SPEC already exists — request AMEND to update it." on a single line; do not switch modes in the same turn.
 2. **Read the journal.** `journal_read({ pageId, kind: "spec_anchor" })` — quote any prior agreement when present.
 3. **Read Notion.** For short/normal pages, `notion_get(input)` — cache-first. For long pages or requests about "필요한 작업만" / "기능 단위" / "이슈로 쪼개기", use `notion_extract(input)` and keep `chunkId` provenance for TODO candidates.
 4. **Decompose the Notion body using the `notion-context` spec-mode format** — `# 문서 요약 / # 요구사항 / # 화면 단위 / # API 의존성 / # TODO / # 확인 필요 사항`. When `notion_extract` was used, seed `# 합의 TODO` negotiation from `extracted.todos` and API negotiation from `extracted.apis`, but do not auto-lock them without caller agreement.
@@ -214,6 +214,7 @@ Patch the SPEC in response to drift or an explicit user request.
 ## Writing rules
 
 - The SPEC body is **Korean** (mirroring the Notion source). Frontmatter / paths / journal kinds / API paths / tokens stay English.
+- SPEC text may request code comments or JSDoc only as implementation guidance: important public / shared methods, complex domain rules, caller-visible contracts, or explicit reviewer / user requests. It must not imply that every exported symbol needs JSDoc or that runtime projects should get a JSDoc / Korean-comment hard-lint rule by default.
 - No guessing. Anything not in the Notion source goes to `보류된 이슈` / `확인 필요 사항` only.
 - 1 bullet = 1 fact. Keep it short.
 - Do not put unagreed sections into `agreed_sections`.
