@@ -130,7 +130,7 @@
   - 함께 결정해야 할 것: npm publish 여부 (`@minjun0219/agent-toolkit` 또는 unscoped `agent-toolkit`) vs git+ 만 유지, semver 정책 (현재 `0.1.0`).
   - **트리거**: 첫 회사 use case 가 등장할 때 (현재는 사용자 본인 N=1).
 - **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/agent-toolkit/issues/7))*
-  - repository 자체는 Biome 기반 최소 lint gate 로 관리한다.
+  - repository 자체의 최소 lint 는 별도 Biome 도입 PR에서 관리한다.
   - JSDoc / 한글 주석은 runtime/downstream project 에서 agent 가 따르는 guidance 로 유지한다. 모든 exported symbol 강제나 hint-level hard lint 는 기본값이 아니다.
 
 ## 워크플로 관리
