@@ -1,6 +1,6 @@
 # Agent Toolkit
 
-opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드 / Notion ↔ project-local SPEC 합의 lifecycle 로 정리하는 skill 3 개 (`notion-context`, `openapi-client`, `spec-pact`), 그리고 프론트엔드 전문성을 가진 풀스택 업무 파트너이자 agent-toolkit 의 1차 지휘자인 primary agent 1 개 (`rocky`) + SPEC 합의 lifecycle 의 finalize/lock 권한자인 sub-agent 1 개 (`grace`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. SPEC 쪽은 `.agent/specs/INDEX.md` 를 LLM-wiki 컨셉을 빌린 wiki-style entry point 로 두고 본문은 `.agent/specs/<slug>.md` (slug 모드) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일) 둘 다 인정. Notion 은 시작 소스이고, 작업 컨텍스트의 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행).
+opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, MySQL 을 read-only 로만 검사하는 도구 5 개 (envs / status / tables / schema / query — write·DDL·multi-statement 모두 거부), 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드 / read-only DB 검사 / Notion ↔ project-local SPEC 합의 lifecycle 로 정리하는 skill 4 개 (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`), 그리고 프론트엔드 전문성을 가진 풀스택 업무 파트너이자 agent-toolkit 의 1차 지휘자인 primary agent 1 개 (`rocky`) + SPEC 합의 lifecycle 의 finalize/lock 권한자인 sub-agent 1 개 (`grace`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. MySQL 쪽도 같은 모양의 host(서비스/클러스터) → env → db 3-단계 레지스트리 (`mysql.connections`) 를 두고 `host:env:db` handle 로 호출, 자격증명은 *항상* env 변수 (`passwordEnv` 또는 `dsnEnv`) 에서만 읽는다. SPEC 쪽은 `.agent/specs/INDEX.md` 를 LLM-wiki 컨셉을 빌린 wiki-style entry point 로 두고 본문은 `.agent/specs/<slug>.md` (slug 모드) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일) 둘 다 인정. Notion 은 시작 소스이고, 작업 컨텍스트의 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행). prod dependency 는 `mysql2` 한 개 — DB 클라이언트는 자체 구현이 비현실적이라는 명시적 예외.
 
 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸고, `grace` 는 [Project Hail Mary](https://en.wikipedia.org/wiki/Project_Hail_Mary) 의 Ryland Grace (Rocky 의 인간 파트너) 에서 따왔다 — toolkit 안에서는 역할이 뒤집혀 Rocky 가 1차 지휘자, Grace 가 SPEC lifecycle 담당. 책임은 agent-toolkit 1차 지휘 / SPEC 합의 lifecycle / 필요 시 외부 sub-agent / skill 위임 세 줄로 한정한다.
 
@@ -19,7 +19,7 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 ├── .opencode/
 │   ├── INSTALL.md                  # opencode 사용자용 설치 안내
 │   └── plugins/
-│       ├── agent-toolkit.ts        # plugin entrypoint + 도구 12 개 (notion 3 + swagger 5 + journal 4)
+│       ├── agent-toolkit.ts        # plugin entrypoint + 도구 17 개 (notion 3 + swagger 5 + journal 4 + mysql 5)
 │       └── agent-toolkit.test.ts
 ├── lib/
 │   ├── notion-context.ts           # Notion TTL 파일 캐시 + key 정규화 + normalize
@@ -31,10 +31,17 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 │   ├── toolkit-config.ts           # agent-toolkit.json 로더 (project > user 우선순위)
 │   ├── toolkit-config.test.ts
 │   ├── agent-journal.ts            # turn 단위 결정/blocker/사용자 답변 append-only JSONL 저널
-│   └── agent-journal.test.ts
+│   ├── agent-journal.test.ts
+│   ├── mysql-readonly.ts           # SQL guard: 주석/문자열 strip + allow-list + deny-list + LIMIT 강제
+│   ├── mysql-readonly.test.ts
+│   ├── mysql-registry.ts           # host:env:db 핸들 / 스코프 해석 + 평면화 (자격증명 미노출)
+│   ├── mysql-registry.test.ts
+│   ├── mysql-context.ts            # mysql2/promise pool factory + read-only executor + ping/tables/schema/query
+│   └── mysql-context.test.ts
 ├── skills/
 │   ├── notion-context/SKILL.md     # Notion 캐시 우선 읽기 + 한국어 스펙 정리 skill
 │   ├── openapi-client/SKILL.md     # 캐시된 OpenAPI spec → fetch / axios 호출 코드 skill
+│   ├── mysql-query/SKILL.md        # read-only MySQL 검사 (envs → status → tables → schema → query)
 │   └── spec-pact/SKILL.md          # Notion ↔ project-local SPEC 합의 lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND)
 ├── agents/
 │   ├── rocky.md                    # 풀스택 업무 파트너 / agent-toolkit 1차 지휘자 (mode: all)
@@ -73,9 +80,11 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 | `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` | `30000` | OpenAPI spec 다운로드 timeout (ms) |
 | `AGENT_TOOLKIT_JOURNAL_DIR` | `~/.config/opencode/agent-toolkit/journal` | 에이전트 저널 디렉터리 (안에 단일 `journal.jsonl` 파일) |
 
+MySQL 자격증명용 env 변수는 사용자가 직접 이름을 정한다 — `agent-toolkit.json` 의 각 `host:env:db` profile 이 `passwordEnv` 또는 `dsnEnv` 로 *어떤 env 변수* 를 쓰는지 가리킨다. 권장 패턴은 핸들과 1:1 로 짝지은 이름 (예: `MYSQL_ACME_PROD_USERS_PASSWORD`, `MYSQL_ACME_PROD_USERS_DSN`). config 파일에는 절대 평문 비밀번호 / DSN 을 두지 않는다 — 로더가 그런 모양을 거부한다.
+
 ## 도구
 
-plugin 이 opencode 에 다음 12 개를 등록한다.
+plugin 이 opencode 에 다음 17 개를 등록한다.
 
 ### Notion (`notion_*`)
 
@@ -117,6 +126,20 @@ turn / session 경계를 넘는 에이전트 메모. 캐시와 달리 **append-o
 | `journal_status` | 파일 경로 / 존재 여부 / 유효 항목 수 (손상 라인 제외) / 바이트 / 마지막 항목 시각만 조회 |
 
 손상 / 부분 쓰기 라인은 read 단계에서 자동 skip — 한 줄이 깨져도 다음 turn 의 read 가 throw 하지 않고 나머지를 반환한다.
+
+### MySQL (`mysql_*`) — read-only
+
+모든 도구는 read-only 다. INSERT / UPDATE / DELETE / DDL / `SET` / `CALL` / `LOAD` / `INTO OUTFILE` / multi-statement 는 SQL guard (`lib/mysql-readonly.ts`) 가 거부하고, 그 위에 wire 단의 `multipleStatements: false` 와 `LIMIT` 자동 부착(기본 100, 절대 상한 1000)이 추가 방어선으로 깔린다. *DB 계정 자체는 `GRANT SELECT` 만 가진 read-only 계정을 쓰는 것이 1차 방어선*이다.
+
+| 도구 | 동작 |
+| --- | --- |
+| `mysql_envs` | `agent-toolkit.json` 의 `mysql.connections` 트리를 `[{ handle, host, env, db, authMode, authEnv, hostName, port, user, database }]` 로 평면화. **자격증명 *값* 은 노출하지 않고 env 변수 이름만 보여 준다.** DB 호출 없음 |
+| `mysql_status` | 핸들 메타 + `SELECT 1` ping 한 번 |
+| `mysql_tables` | `SHOW FULL TABLES` — 테이블 / 뷰 목록 |
+| `mysql_schema` | `table` 미지정: 현재 DB 의 `INFORMATION_SCHEMA.COLUMNS` 요약. `table` 지정: `SHOW CREATE TABLE` + `SHOW INDEX FROM` 합본 |
+| `mysql_query` | `assertReadOnlySql(sql)` → `enforceLimit(sql, { limit })` → 실행 → `{ sql, rows, columns, rowCount, truncated, effectiveLimit }`. 첫 키워드는 `SELECT` / `SHOW` / `DESCRIBE` / `DESC` / `EXPLAIN` / `WITH` 만 허용 |
+
+`handle` 은 `agent-toolkit.json` 의 `mysql.connections` 에 등록된 `host:env:db` 만 받는다 — 미등록 핸들 / 누락 env 변수 / 거부된 SQL 은 모두 명확한 에러로 throw 한다.
 
 ## Config (`agent-toolkit.json`)
 
@@ -162,11 +185,39 @@ SPEC-합의 lifecycle (grace + spec-pact) 의 storage 위치도 같은 파일에
 
 `spec.dir` / `spec.indexFile` 은 빈 문자열 금지, `spec.scanDirectorySpec` 은 boolean. 같은 leaf 는 project (`./.opencode/agent-toolkit.json`) 가 user 를 덮어쓴다.
 
+MySQL `host:env:db` 핸들도 같은 모양으로 `mysql.connections` 아래에 둔다 — **config 파일에 평문 비밀번호 / DSN 을 박는 것은 금지**, 항상 env 변수 이름만 가리키게 한다 (`passwordEnv` 또는 `dsnEnv` 중 정확히 하나).
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/minjun0219/agent-toolkit/main/agent-toolkit.schema.json",
+  "mysql": {
+    "connections": {
+      "acme": {
+        "prod": {
+          // (a) 분해 필드 + passwordEnv
+          "users": {
+            "host": "db.acme.example",
+            "port": 3306,
+            "user": "readonly",
+            "database": "app",
+            "passwordEnv": "MYSQL_ACME_PROD_USERS_PASSWORD"
+          },
+          // (b) DSN 한 줄 — 분해 필드는 두면 안 됨 (검증 단계에서 reject)
+          "orders": { "dsnEnv": "MYSQL_ACME_PROD_ORDERS_DSN" }
+        }
+      }
+    }
+  }
+}
+```
+
+`host` / `env` / `db` 식별자도 `^[a-zA-Z0-9_-]+$`. `passwordEnv` 모드는 `host` / `user` / `database` 가 필수, `port` 는 1..65535 정수 (생략 시 mysql2 디폴트). `dsnEnv` 모드는 `mysql://user:pass@host:port/db` (또는 `mariadb://`) 형식 한 줄을 담은 env 변수 이름. 같은 leaf 는 project 가 user 를 덮어쓴다.
+
 ## Agents
 
 | 이름 | mode | 역할 |
 | --- | --- | --- |
-| `rocky` | all | 프론트엔드 전문성을 가진 풀스택 업무 파트너 / agent-toolkit 1차 지휘자. Notion URL·page id, OpenAPI spec URL·16-hex 키·`host:env:spec` 핸들을 받아 `notion-context` / `openapi-client` 중 하나로 라우팅, SPEC 합의 lifecycle 키워드 ("스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영") 면 `@grace` 로 즉시 위임 (passthrough). 모호하면 어느 surface 인지 되묻는다. 출력은 cached markdown(컨텍스트) / 한국어 스펙 / `fetch`·`axios` snippet / `@grace` 결과 / 위임된 sub-agent 결과 중 하나. 작업이 toolkit 범위를 넘으면 외부 sub-agent / skill 에 위임 가능. **직접** multi-step 구현(코드 작성·리팩터·다파일 변경)은 안 함, **`spec-pact` 의 4 모드도 직접 안 굴림 — `@grace` 책임**. |
+| `rocky` | all | 프론트엔드 전문성을 가진 풀스택 업무 파트너 / agent-toolkit 1차 지휘자. Notion URL·page id, OpenAPI spec URL·16-hex 키·`host:env:spec` 핸들, MySQL `host:env:db` 핸들을 받아 `notion-context` / `openapi-client` / `mysql-query` 중 하나로 라우팅, SPEC 합의 lifecycle 키워드 ("스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영") 면 `@grace` 로 즉시 위임 (passthrough). 모호하면 어느 surface 인지 되묻는다. 출력은 cached markdown(컨텍스트) / 한국어 스펙 / `fetch`·`axios` snippet / MySQL row·schema markdown 표 / `@grace` 결과 / 위임된 sub-agent 결과 중 하나. 작업이 toolkit 범위를 넘으면 외부 sub-agent / skill 에 위임 가능. **직접** multi-step 구현(코드 작성·리팩터·다파일 변경)은 안 함, **`spec-pact` 의 4 모드도 직접 안 굴림 — `@grace` 책임**. **MySQL 쓰기·DDL 은 사용자가 요청해도 거부** — SQL guard 의 거부 메시지가 응답이다. |
 | `grace` | subagent | SPEC 합의 lifecycle 의 단일 finalize/lock 권한자. `spec-pact` 스킬을 conduct — DRAFT (Notion → 합의 → SPEC write + INDEX 갱신), VERIFY (SPEC 의 합의 TODO / API 의존성 체크리스트화), DRIFT-CHECK (`source_content_hash` vs `notion_get(pageId).entry.contentHash`), AMEND (drift 항목별 keep / update / reject → SPEC patch + version bump). wiki-style entry point 는 `<spec.dir>/<spec.indexFile>` (default `.agent/specs/INDEX.md`). SPEC 본체는 `<spec.dir>/<slug>.md` (slug 모드, default `.agent/specs/<slug>.md`) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일). 직접 호출 (`@grace …`) 또는 Rocky 라우팅으로 들어옴. 외부 에이전트가 협의에 참여해도 SPEC frontmatter / INDEX 는 grace 만 쓴다. |
 
 Rocky 는 `mode: all` 이라 사용자 직접 호출(primary, Tab 사이클)과 다른 primary agent 의 위임(subagent) 둘 다 가능. Grace 는 `mode: subagent` 라 Rocky / 외부 primary / 사용자가 명시적으로 `@grace` 로 호출할 때만 동작. agent frontmatter 에 `model:` 을 박지 않아 사용자가 opencode 세션에서 고른 기본 모델을 그대로 사용한다. 다른 agent 는 turn 시작 시 받는 subagent 목록의 `description` 만으로 라우팅 — Rocky / Grace 의 존재를 system prompt 에 박지 않아도 toolkit-shaped / 작업 컨텍스트 / SPEC lifecycle 관련 요청이 알아서 들어온다. OmO (Sisyphus) / Superpowers 같은 외부 primary agent 가 환경에 있으면 Rocky / Grace 가 자연스럽게 그 위임 대상으로 잡히지만 — **외부 primary 는 토킷의 필수 조건이 아니라 같이 있을 때 시너지가 나는 옵션**이다.

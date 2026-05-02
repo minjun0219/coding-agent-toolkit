@@ -67,6 +67,74 @@
         }
       },
       "additionalProperties": false
+    },
+    "mysql": {
+      "type": "object",
+      "description": "MySQL read-only inspection registry. Maps `host:env:db` handles to connection profiles. Plaintext passwords are forbidden — each profile must declare exactly one of `passwordEnv` or `dsnEnv`.",
+      "properties": {
+        "connections": {
+          "type": "object",
+          "description": "host name → environment name → db name → connection profile. Names must match ^[a-zA-Z0-9_-]+$ (handles are colon-separated, so colons are reserved).",
+          "patternProperties": {
+            "^[a-zA-Z0-9_-]+$": {
+              "type": "object",
+              "description": "Environments under one logical host (project / cluster).",
+              "minProperties": 1,
+              "patternProperties": {
+                "^[a-zA-Z0-9_-]+$": {
+                  "type": "object",
+                  "description": "DB name → connection profile.",
+                  "minProperties": 1,
+                  "patternProperties": {
+                    "^[a-zA-Z0-9_-]+$": {
+                      "type": "object",
+                      "description": "MySQL connection profile. `passwordEnv` and `dsnEnv` are mutually exclusive — exactly one is required. Plaintext credentials in this file are not supported.",
+                      "properties": {
+                        "host": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "TCP host. Required when using `passwordEnv`. Ignored when using `dsnEnv`."
+                        },
+                        "port": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 65535,
+                          "description": "TCP port (1..65535). Optional. Ignored when using `dsnEnv`."
+                        },
+                        "user": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Login user. Required when using `passwordEnv`. Should be a read-only account (e.g. `GRANT SELECT` only). Ignored when using `dsnEnv`."
+                        },
+                        "database": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Default database. Required when using `passwordEnv`. Ignored when using `dsnEnv`."
+                        },
+                        "passwordEnv": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Name of the environment variable holding the password. Mutually exclusive with `dsnEnv`."
+                        },
+                        "dsnEnv": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Name of the environment variable holding a `mysql://user:pass@host:port/db` DSN. Mutually exclusive with `passwordEnv`. When set, decomposed fields (host / port / user / database) must NOT be declared."
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

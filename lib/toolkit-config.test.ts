@@ -198,6 +198,226 @@ describe("validateConfig", () => {
       validateConfig({ spec: { unknown: 1 } } as any, "p"),
     ).toThrow(/unsupported key "unknown"/);
   });
+
+  it("accepts mysql.connections with passwordEnv profile", () => {
+    expect(() =>
+      validateConfig(
+        {
+          mysql: {
+            connections: {
+              acme: {
+                prod: {
+                  users: {
+                    host: "db.example.com",
+                    port: 3306,
+                    user: "readonly",
+                    database: "app",
+                    passwordEnv: "MYSQL_ACME_PROD_USERS_PASSWORD",
+                  },
+                },
+              },
+            },
+          },
+        },
+        "p",
+      ),
+    ).not.toThrow();
+  });
+
+  it("accepts mysql.connections with dsnEnv profile (decomposed fields omitted)", () => {
+    expect(() =>
+      validateConfig(
+        {
+          mysql: {
+            connections: {
+              acme: { prod: { users: { dsnEnv: "MYSQL_ACME_PROD_USERS_DSN" } } },
+            },
+          },
+        },
+        "p",
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects mysql profile that declares both passwordEnv and dsnEnv", () => {
+    expect(() =>
+      validateConfig(
+        {
+          mysql: {
+            connections: {
+              acme: {
+                prod: {
+                  users: {
+                    host: "db.example.com",
+                    user: "u",
+                    database: "app",
+                    passwordEnv: "P",
+                    dsnEnv: "D",
+                  },
+                },
+              },
+            },
+          },
+        },
+        "p",
+      ),
+    ).toThrow(/exactly one of "passwordEnv" or "dsnEnv".*both/);
+  });
+
+  it("rejects mysql profile that declares neither passwordEnv nor dsnEnv", () => {
+    expect(() =>
+      validateConfig(
+        {
+          mysql: {
+            connections: {
+              acme: {
+                prod: {
+                  users: { host: "db.example.com", user: "u", database: "app" },
+                },
+              },
+            },
+          },
+        },
+        "p",
+      ),
+    ).toThrow(/exactly one of "passwordEnv" or "dsnEnv".*neither/);
+  });
+
+  it("rejects mysql profile with dsnEnv plus a decomposed field", () => {
+    expect(() =>
+      validateConfig(
+        {
+          mysql: {
+            connections: {
+              acme: {
+                prod: { users: { dsnEnv: "D", host: "db.example.com" } },
+              },
+            },
+          },
+        },
+        "p",
+      ),
+    ).toThrow(/dsnEnv.*host/);
+  });
+
+  it("rejects mysql profile missing host / user / database when passwordEnv is used", () => {
+    expect(() =>
+      validateConfig(
+        {
+          mysql: {
+            connections: {
+              acme: { prod: { users: { passwordEnv: "P", user: "u", database: "app" } } },
+            },
+          },
+        },
+        "p",
+      ),
+    ).toThrow(/\.host must be a non-empty string/);
+  });
+
+  it("rejects mysql.port outside 1..65535", () => {
+    expect(() =>
+      validateConfig(
+        {
+          mysql: {
+            connections: {
+              acme: {
+                prod: {
+                  users: {
+                    host: "h",
+                    port: 0,
+                    user: "u",
+                    database: "d",
+                    passwordEnv: "P",
+                  },
+                },
+              },
+            },
+          },
+        },
+        "p",
+      ),
+    ).toThrow(/port must be an integer in 1\.\.65535/);
+  });
+
+  it("rejects mysql host name with colon (handle separator reserved)", () => {
+    expect(() =>
+      validateConfig(
+        {
+          mysql: {
+            connections: {
+              "ac:me": {
+                prod: { users: { dsnEnv: "D" } },
+              },
+            },
+          },
+        },
+        "p",
+      ),
+    ).toThrow(/mysql host name/);
+  });
+
+  it("rejects unsupported mysql profile keys (typo guard, schema lockstep)", () => {
+    expect(() =>
+      validateConfig(
+        {
+          mysql: {
+            connections: {
+              acme: {
+                prod: {
+                  users: { dsnEnv: "D", typo: "x" },
+                },
+              },
+            },
+          },
+        } as any,
+        "p",
+      ),
+    ).toThrow(/unsupported key "typo"/);
+  });
+});
+
+describe("mergeConfigs — mysql.connections", () => {
+  it("project overrides user at the profile leaf", () => {
+    const user: ToolkitConfig = {
+      mysql: {
+        connections: {
+          acme: { prod: { users: { dsnEnv: "USER_DSN" } } },
+        },
+      },
+    };
+    const project: ToolkitConfig = {
+      mysql: {
+        connections: {
+          acme: { prod: { users: { dsnEnv: "PROJECT_DSN" } } },
+        },
+      },
+    };
+    const merged = mergeConfigs(user, project);
+    expect(merged.mysql?.connections?.acme?.prod?.users?.dsnEnv).toBe("PROJECT_DSN");
+  });
+
+  it("project introduces new mysql host / env / db", () => {
+    const user: ToolkitConfig = {
+      mysql: {
+        connections: {
+          acme: { prod: { users: { dsnEnv: "U_DSN" } } },
+        },
+      },
+    };
+    const project: ToolkitConfig = {
+      mysql: {
+        connections: {
+          acme: { prod: { orders: { dsnEnv: "O_DSN" } } },
+          beta: { dev: { svc: { dsnEnv: "S_DSN" } } },
+        },
+      },
+    };
+    const merged = mergeConfigs(user, project);
+    expect(merged.mysql?.connections?.acme?.prod?.users?.dsnEnv).toBe("U_DSN");
+    expect(merged.mysql?.connections?.acme?.prod?.orders?.dsnEnv).toBe("O_DSN");
+    expect(merged.mysql?.connections?.beta?.dev?.svc?.dsnEnv).toBe("S_DSN");
+  });
 });
 
 describe("mergeConfigs", () => {
