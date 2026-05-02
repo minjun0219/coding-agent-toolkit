@@ -275,12 +275,12 @@ apps/web/orders/
 bun install
 bun test          # lib/ + .opencode/plugins/ 단위 테스트
 bun run typecheck
-bun run notion:extract -- <markdown-file> [--max-chars 1400]
-bun run notion:extract -- <markdown-file> | bun run notion:promote-todo -- - --slug <slug>
+bun scripts/notion-extract.ts <markdown-file> [--max-chars 1400]
+bun scripts/notion-extract.ts <markdown-file> | bun scripts/notion-promote-todo.ts - --slug <slug>
 ```
 
-`notion:extract` 는 긴 Notion markdown 을 heading 중심으로 청크 분할하고, 구현 액션 후보(`requirements` / `screens` / `apis` / `todos` / `questions`)를 JSON으로 출력한다.
-`notion:promote-todo` 는 추출 JSON의 `extracted.todos` 를 `.agent/specs/<slug>.md`의 `# 합의 TODO` 섹션으로 승격하고 `.agent/specs/INDEX.md`에 slug/path/status 행을 upsert 한다.
+`scripts/notion-extract.ts` 는 긴 Notion markdown 을 heading 중심으로 청크 분할하고, 구현 액션 후보(`requirements` / `screens` / `apis` / `todos` / `questions`)를 JSON으로 출력하는 개발 보조 스크립트다.
+`scripts/notion-promote-todo.ts` 는 추출 JSON의 `extracted.todos` 를 `.agent/specs/<slug>.md`의 `# 합의 TODO` 섹션으로 승격하고 `.agent/specs/INDEX.md`에 slug/path/status 행을 upsert 한다. 두 스크립트 모두 opencode plugin tool surface 는 아니다.
 
 ## Roadmap
 
