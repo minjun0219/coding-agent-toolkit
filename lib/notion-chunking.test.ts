@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { chunkNotionMarkdown, extractActionItems } from "./notion-chunking";
+import {
+  chunkNotionMarkdown,
+  extractActionItems,
+  summarizeNotionChunks,
+} from "./notion-chunking";
 
 const SAMPLE = `# 문서 요약
 주문 기능 개선을 위한 기획.
@@ -30,6 +34,27 @@ describe("chunkNotionMarkdown", () => {
     expect(chunks[0]?.id).toBe("chunk-001");
     expect(chunks[0]?.startLine).toBeGreaterThan(0);
     expect(chunks[0]?.endLine).toBeGreaterThanOrEqual(chunks[0]?.startLine ?? 0);
+    expect(chunks.some((chunk) => /^#+\s/.test(chunk.text))).toBe(false);
+  });
+
+  it("ignores markdown headings inside fenced code blocks", () => {
+    const chunks = chunkNotionMarkdown("# Top\n\n```\n# not heading\n```\n\n## Real\nbody");
+    expect(chunks.some((chunk) => chunk.headingPath.includes("not heading"))).toBe(false);
+    expect(chunks.some((chunk) => chunk.headingPath.includes("Real"))).toBe(true);
+  });
+
+  it("hard-slices single lines longer than maxChars", () => {
+    const chunks = chunkNotionMarkdown(`# Top\n${"x".repeat(25)}`, { maxCharsPerChunk: 10 });
+    expect(chunks.length).toBe(3);
+    expect(chunks.every((chunk) => chunk.text.length <= 10)).toBe(true);
+    expect(chunks.every((chunk) => chunk.startLine === 2 && chunk.endLine === 2)).toBe(true);
+  });
+
+  it("returns metadata summaries without full chunk text", () => {
+    const chunks = chunkNotionMarkdown(SAMPLE, { maxCharsPerChunk: 300 });
+    const summaries = summarizeNotionChunks(chunks);
+    expect(typeof summaries[0]?.preview).toBe("string");
+    expect("text" in (summaries[0] ?? {})).toBe(false);
   });
 });
 

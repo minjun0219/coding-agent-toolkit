@@ -15,6 +15,15 @@ export interface NotionChunk {
   approxTokens: number;
 }
 
+export interface NotionChunkSummary {
+  id: string;
+  headingPath: string[];
+  startLine: number;
+  endLine: number;
+  approxTokens: number;
+  preview: string;
+}
+
 export interface ExtractedItem {
   text: string;
   chunkId: string;
@@ -42,39 +51,41 @@ function normalizeLine(line: string): string {
   return line.replace(/\s+/g, " ").trim();
 }
 
-function splitLargeText(text: string, maxChars: number): string[] {
-  if (text.length <= maxChars) return [text];
-  const paragraphs = text.split(/\n\s*\n/g);
+function hardSliceLine(line: string, maxChars: number): string[] {
+  if (line.length <= maxChars) return [line];
   const out: string[] = [];
-  let acc = "";
-  for (const para of paragraphs) {
-    const candidate = acc ? `${acc}\n\n${para}` : para;
-    if (candidate.length <= maxChars) {
-      acc = candidate;
-      continue;
-    }
-    if (acc) out.push(acc);
-    if (para.length <= maxChars) {
-      acc = para;
-      continue;
-    }
-    // 문단 자체가 너무 길면 줄 단위로 한 번 더 분할.
-    const lines = para.split("\n");
-    let lineAcc = "";
-    for (const line of lines) {
-      const lineCandidate = lineAcc ? `${lineAcc}\n${line}` : line;
-      if (lineCandidate.length <= maxChars) {
-        lineAcc = lineCandidate;
-      } else {
-        if (lineAcc) out.push(lineAcc);
-        lineAcc = line;
-      }
-    }
-    if (lineAcc) out.push(lineAcc);
-    acc = "";
+  for (let i = 0; i < line.length; i += maxChars) {
+    out.push(line.slice(i, i + maxChars));
   }
-  if (acc) out.push(acc);
   return out;
+}
+
+function makeChunk(
+  id: string,
+  headingPath: string[],
+  startLine: number,
+  endLine: number,
+  text: string,
+): NotionChunk {
+  return {
+    id,
+    headingPath,
+    startLine,
+    endLine,
+    text: text.trim(),
+    approxTokens: approxTokens(text),
+  };
+}
+
+function summarizeChunk(chunk: NotionChunk): NotionChunkSummary {
+  return {
+    id: chunk.id,
+    headingPath: chunk.headingPath,
+    startLine: chunk.startLine,
+    endLine: chunk.endLine,
+    approxTokens: chunk.approxTokens,
+    preview: normalizeLine(chunk.text).slice(0, 160),
+  };
 }
 
 /**
@@ -91,16 +102,23 @@ export function chunkNotionMarkdown(
     headingPath: string[];
     startLine: number;
     endLine: number;
-    text: string;
+    lines: string[];
   }
 
   const blocks: Block[] = [];
   let currentStart = 1;
   let currentPath: string[] = [];
   let stack: Array<{ level: number; title: string }> = [];
+  let inFence = false;
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i] ?? "";
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+
     const m = line.match(/^(#{1,6})\s+(.*)$/);
     if (!m) continue;
 
@@ -109,7 +127,7 @@ export function chunkNotionMarkdown(
         headingPath: [...currentPath],
         startLine: currentStart,
         endLine: i,
-        text: lines.slice(currentStart - 1, i).join("\n").trim(),
+        lines: lines.slice(currentStart - 1, i),
       });
     }
 
@@ -118,7 +136,7 @@ export function chunkNotionMarkdown(
     stack = stack.filter((h) => h.level < level);
     stack.push({ level, title });
     currentPath = stack.map((h) => h.title);
-    currentStart = i + 1;
+    currentStart = i + 2;
   }
 
   if (currentStart <= lines.length) {
@@ -126,7 +144,7 @@ export function chunkNotionMarkdown(
       headingPath: [...currentPath],
       startLine: currentStart,
       endLine: lines.length,
-      text: lines.slice(currentStart - 1).join("\n").trim(),
+      lines: lines.slice(currentStart - 1),
     });
   }
 
@@ -134,26 +152,68 @@ export function chunkNotionMarkdown(
   let index = 1;
 
   for (const block of blocks) {
-    if (!block.text) continue;
-    const pieces = splitLargeText(block.text, maxChars);
-    let cursor = block.startLine;
-    for (const piece of pieces) {
-      const pieceLines = piece.split("\n").length;
-      const chunk: NotionChunk = {
-        id: `chunk-${String(index).padStart(3, "0")}`,
-        headingPath: block.headingPath,
-        startLine: cursor,
-        endLine: Math.min(block.endLine, cursor + pieceLines - 1),
-        text: piece.trim(),
-        approxTokens: approxTokens(piece),
-      };
-      chunks.push(chunk);
+    let acc: string[] = [];
+    let accStart = block.startLine;
+
+    const flush = (endLine: number) => {
+      const text = acc.join("\n").trim();
+      if (!text) {
+        acc = [];
+        accStart = endLine + 1;
+        return;
+      }
+      chunks.push(
+        makeChunk(
+          `chunk-${String(index).padStart(3, "0")}`,
+          block.headingPath,
+          accStart,
+          endLine,
+          text,
+        ),
+      );
       index += 1;
-      cursor = chunk.endLine + 1;
+      acc = [];
+      accStart = endLine + 1;
+    };
+
+    for (let offset = 0; offset < block.lines.length; offset += 1) {
+      const line = block.lines[offset] ?? "";
+      const lineNumber = block.startLine + offset;
+
+      if (line.length > maxChars) {
+        flush(lineNumber - 1);
+        for (const part of hardSliceLine(line, maxChars)) {
+          chunks.push(
+            makeChunk(
+              `chunk-${String(index).padStart(3, "0")}`,
+              block.headingPath,
+              lineNumber,
+              lineNumber,
+              part,
+            ),
+          );
+          index += 1;
+        }
+        accStart = lineNumber + 1;
+        continue;
+      }
+
+      const candidate = acc.length > 0 ? `${acc.join("\n")}\n${line}` : line;
+      if (candidate.length > maxChars) {
+        flush(lineNumber - 1);
+        accStart = lineNumber;
+      }
+      acc.push(line);
     }
+    flush(block.endLine);
   }
 
   return chunks;
+}
+
+/** 원문 전체를 반환하지 않는 tool-response 용 청크 메타데이터. */
+export function summarizeNotionChunks(chunks: NotionChunk[]): NotionChunkSummary[] {
+  return chunks.map(summarizeChunk);
 }
 
 function dedupe(items: ExtractedItem[]): ExtractedItem[] {
