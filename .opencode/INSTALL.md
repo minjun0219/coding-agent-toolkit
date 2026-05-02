@@ -51,6 +51,7 @@ Then verify the tools are registered:
 ```
 > use notion_status tool with input "<pageId or url>"
 > use notion_get tool with input "<pageId or url>"
+> use notion_extract tool with input "<pageId or url>" maxCharsPerChunk 1400
 > use swagger_status tool with input "<spec URL or host:env:spec handle>"
 > use swagger_get tool with input "<spec URL or host:env:spec handle>"
 > use swagger_envs tool   # flatten the registry from agent-toolkit.json

@@ -1,7 +1,7 @@
 ---
 name: spec-pact
 description: Negotiate, anchor, verify, and amend a project-local SPEC against a Notion 기획문서. Four-mode lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND) on top of an LLM-wiki-inspired INDEX (`<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md`) and per-page SPEC files (`<spec.dir>/<slug>.md` slug mode, default `.agent/specs/<slug>.md`, or `**/SPEC.md` directory mode). Conducted by the `grace` sub-agent. Auto-trigger when a Notion URL / page id appears together with phrases like "스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영".
-allowed-tools: [notion_get, notion_status, notion_refresh, journal_append, journal_read, journal_search, read, write, edit, glob]
+allowed-tools: [notion_get, notion_extract, notion_status, notion_refresh, journal_append, journal_read, journal_search, read, write, edit, glob]
 license: MIT
 version: 0.1.0
 ---
@@ -22,7 +22,7 @@ agent (grace)
   ├── 0. read INDEX        ← <spec.dir>/<spec.indexFile> (default .agent/specs/INDEX.md, entry point)
   ├── 0'. glob '**/SPEC.md'← directory-mode discovery (only when spec.scanDirectorySpec=true)
   ├── 1. journal_read      ← cite spec_anchor / spec_drift / spec_amendment / spec_verify_result for the same pageId
-  ├── 2. notion_get        ← cache-first; remote MCP once on cache miss
+  ├── 2. notion_get/extract← cache-first; extract for long docs / action candidates
   ├── 3. read / write/edit ← SPEC body + INDEX update (slug or directory mode)
   └── 4. journal_append    ← exactly one append per mode (mode → kind / tags table below)
 ```
@@ -49,7 +49,7 @@ The four `spec_*` kinds are the **new reserved kinds** introduced by this skill.
 
 ## Tool usage rules
 
-1. `notion_*` follows the `notion-context` skill's cache-first policy — never fetch the same page twice in one turn. Call `notion_refresh` only when the user explicitly says "최신화".
+1. `notion_*` follows the `notion-context` skill's cache-first policy — never fetch the same page twice in one turn. Use `notion_extract` for long documents / 기능 단위 TODO 후보. Call `notion_refresh` only when the user explicitly says "최신화".
 2. Use `journal_read` / `journal_append` / `journal_search` only — `journal_status` is not needed in this skill's flow.
 3. Touch SPEC / INDEX files through `read` / `write` / `edit` only. Never write back to Notion — Notion is the source of truth, the SPEC is the surface grace owns.
 4. Use `glob` only for directory-mode discovery — only the `**/SPEC.md` pattern.
@@ -63,8 +63,8 @@ Write a new SPEC.
 
 1. **Read the INDEX.** Resolve the INDEX path from `agent-toolkit.json` — `<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md` — then read it and check whether the same `source_page_id` already exists. If yes, jump straight to AMEND ("A SPEC already exists — switching to AMEND." on a single line and switch the mode).
 2. **Read the journal.** `journal_read({ pageId, kind: "spec_anchor" })` — quote any prior agreement when present.
-3. **Read Notion.** `notion_get(input)` — cache-first.
-4. **Decompose the Notion body using the `notion-context` spec-mode format** — `# 문서 요약 / # 요구사항 / # 화면 단위 / # API 의존성 / # TODO / # 확인 필요 사항`.
+3. **Read Notion.** For short/normal pages, `notion_get(input)` — cache-first. For long pages or requests about "필요한 작업만" / "기능 단위" / "이슈로 쪼개기", use `notion_extract(input)` and keep `chunkId` provenance for TODO candidates.
+4. **Decompose the Notion body using the `notion-context` spec-mode format** — `# 문서 요약 / # 요구사항 / # 화면 단위 / # API 의존성 / # TODO / # 확인 필요 사항`. When `notion_extract` was used, seed `# 합의 TODO` negotiation from `extracted.todos` and API negotiation from `extracted.apis`, but do not auto-lock them without caller agreement.
 5. **Negotiate section by section with the caller.** For each section, ask in a single turn whether to keep / drop / edit / defer (multiple questions are fine in one turn). When `합의 TODO > 5` or the request mentions "리팩터 / 재설계 / 마이그레이션", attach a single suggestion line ("Recommend delegating negotiation to Sisyphus / Superpowers — delegate?").
 6. **Write the SPEC.** Default to slug mode at `<spec.dir>/<slug>.md` (default `.agent/specs/<slug>.md`). When the user supplied a path, write there (directory mode).
 7. **Update the INDEX.** Add a new row, update `generated_at`.
