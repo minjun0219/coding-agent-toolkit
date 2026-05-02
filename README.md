@@ -1,6 +1,6 @@
 # Agent Toolkit
 
-opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, MySQL 을 read-only 로만 검사하는 도구 5 개 (envs / status / tables / schema / query — write·DDL·multi-statement 모두 거부), 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드 / read-only DB 검사 / Notion ↔ project-local SPEC 합의 lifecycle 로 정리하는 skill 4 개 (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`), 그리고 프론트엔드 전문성을 가진 풀스택 업무 파트너이자 agent-toolkit 의 1차 지휘자인 primary agent 1 개 (`rocky`) + SPEC 합의 lifecycle 의 finalize/lock 권한자인 sub-agent 1 개 (`grace`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. MySQL 쪽도 같은 모양의 host(서비스/클러스터) → env → db 3-단계 레지스트리 (`mysql.connections`) 를 두고 `host:env:db` handle 로 호출, 자격증명은 *항상* env 변수 (`passwordEnv` 또는 `dsnEnv`) 에서만 읽는다. SPEC 쪽은 `.agent/specs/INDEX.md` 를 LLM-wiki 컨셉을 빌린 wiki-style entry point 로 두고 본문은 `.agent/specs/<slug>.md` (slug 모드) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일) 둘 다 인정. Notion 은 시작 소스이고, 작업 컨텍스트의 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행). prod dependency 는 `mysql2` 한 개 — DB 클라이언트는 자체 구현이 비현실적이라는 명시적 예외.
+opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽고 긴 문서에서 chunk / 구현 액션 후보를 뽑는 도구 4 개, OpenAPI / Swagger JSON 을 캐시 우선으로 가져와 endpoint 검색·환경별 등록 관리까지 해 주는 도구 5 개, turn 단위 결정 / blocker / 사용자 답변을 append-only 로 적재하고 다음 turn 에 인용 가능하게 하는 저널 도구 4 개, MySQL 을 read-only 로만 검사하는 도구 5 개 (envs / status / tables / schema / query — write·DDL·multi-statement 모두 거부), 그 도구들을 묶어 컨텍스트 / 한국어 스펙 / `fetch`·`axios` 호출 코드 / read-only DB 검사 / Notion ↔ project-local SPEC 합의 lifecycle 로 정리하는 skill 4 개 (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`), 그리고 프론트엔드 전문성을 가진 풀스택 업무 파트너이자 agent-toolkit 의 1차 지휘자인 primary agent 1 개 (`rocky`) + SPEC 합의 lifecycle 의 finalize/lock 권한자인 sub-agent 1 개 (`grace`) 를 제공한다. OpenAPI 쪽은 host(API 묶음) → env(dev/staging/prod) → spec(개별 API) 3-단계 레지스트리를 `agent-toolkit.json` 으로 선언하면 `host:env:spec` handle 로 직접 호출 가능. MySQL 쪽도 같은 모양의 host(서비스/클러스터) → env → db 3-단계 레지스트리 (`mysql.connections`) 를 두고 `host:env:db` handle 로 호출, 자격증명은 *항상* env 변수 (`passwordEnv` 또는 `dsnEnv`) 에서만 읽는다. SPEC 쪽은 `.agent/specs/INDEX.md` 를 LLM-wiki 컨셉을 빌린 wiki-style entry point 로 두고 본문은 `.agent/specs/<slug>.md` (slug 모드) 또는 `**/SPEC.md` (directory 모드, AGENTS.md 스타일) 둘 다 인정. Notion 은 시작 소스이고, 작업 컨텍스트의 표면은 이후 더 넓혀질 수 있다. 런타임은 **Bun (>=1.0)** 만 사용하며, 별도 빌드 단계는 없다 (Bun 이 TS 직접 실행). prod dependency 는 `mysql2` 한 개 — DB 클라이언트는 자체 구현이 비현실적이라는 명시적 예외.
 
 구조는 [obra/superpowers](https://github.com/obra/superpowers) 형식을 따른다 — 단일 plugin 파일이 `skills/` / `agents/` 디렉터리를 opencode 탐색 경로에 등록하고 도구를 노출한다. `rocky` 의 캐릭터/네이밍 컨벤션은 [code-yeongyu/oh-my-openagent (OmO)](https://github.com/code-yeongyu/oh-my-openagent) 의 named-specialist 패턴에서 빌렸고, `grace` 는 [Project Hail Mary](https://en.wikipedia.org/wiki/Project_Hail_Mary) 의 Ryland Grace (Rocky 의 인간 파트너) 에서 따왔다 — toolkit 안에서는 역할이 뒤집혀 Rocky 가 1차 지휘자, Grace 가 SPEC lifecycle 담당. 책임은 agent-toolkit 1차 지휘 / SPEC 합의 lifecycle / 필요 시 외부 sub-agent / skill 위임 세 줄로 한정한다.
 
@@ -19,10 +19,11 @@ opencode 전용 plugin. Notion 페이지를 캐시 우선으로 읽는 도구 3 
 ├── .opencode/
 │   ├── INSTALL.md                  # opencode 사용자용 설치 안내
 │   └── plugins/
-│       ├── agent-toolkit.ts        # plugin entrypoint + 도구 17 개 (notion 3 + swagger 5 + journal 4 + mysql 5)
+│       ├── agent-toolkit.ts        # plugin entrypoint + 도구 18 개 (notion 4 + swagger 5 + journal 4 + mysql 5)
 │       └── agent-toolkit.test.ts
 ├── lib/
 │   ├── notion-context.ts           # Notion TTL 파일 캐시 + key 정규화 + normalize
+│   ├── notion-chunking.ts          # 긴 Notion markdown chunk + 구현 액션 후보 추출
 │   ├── notion-context.test.ts
 │   ├── openapi-context.ts          # OpenAPI TTL 파일 캐시 + endpoint 검색
 │   ├── openapi-context.test.ts
@@ -84,7 +85,7 @@ MySQL 자격증명용 env 변수는 사용자가 직접 이름을 정한다 — 
 
 ## 도구
 
-plugin 이 opencode 에 다음 17 개를 등록한다.
+plugin 이 opencode 에 다음 18 개를 등록한다.
 
 ### Notion (`notion_*`)
 
@@ -93,6 +94,7 @@ plugin 이 opencode 에 다음 17 개를 등록한다.
 | `notion_get` | 캐시 우선. hit 면 즉시 반환, miss 면 remote MCP 호출 → id 검증 → 캐시 저장 |
 | `notion_refresh` | 캐시 무시하고 remote 강제 fetch → id 검증 → 캐시 갱신 |
 | `notion_status` | 캐시 메타(저장 시각, TTL, 만료 여부) 만 조회. remote 호출 없음 |
+| `notion_extract` | 캐시 우선으로 Notion markdown 을 읽은 뒤 heading 기반 chunk 와 구현 액션 후보(`requirements` / `screens` / `apis` / `todos` / `questions`)를 반환 |
 
 `input` 파라미터는 page id 또는 Notion URL 모두 허용.
 
