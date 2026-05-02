@@ -33,21 +33,33 @@ describe("chunkNotionMarkdown", () => {
     expect(chunks.length).toBeGreaterThan(3);
     expect(chunks[0]?.id).toBe("chunk-001");
     expect(chunks[0]?.startLine).toBeGreaterThan(0);
-    expect(chunks[0]?.endLine).toBeGreaterThanOrEqual(chunks[0]?.startLine ?? 0);
+    expect(chunks[0]?.endLine).toBeGreaterThanOrEqual(
+      chunks[0]?.startLine ?? 0,
+    );
     expect(chunks.some((chunk) => /^#+\s/.test(chunk.text))).toBe(false);
   });
 
   it("ignores markdown headings inside fenced code blocks", () => {
-    const chunks = chunkNotionMarkdown("# Top\n\n```\n# not heading\n```\n\n## Real\nbody");
-    expect(chunks.some((chunk) => chunk.headingPath.includes("not heading"))).toBe(false);
-    expect(chunks.some((chunk) => chunk.headingPath.includes("Real"))).toBe(true);
+    const chunks = chunkNotionMarkdown(
+      "# Top\n\n```\n# not heading\n```\n\n## Real\nbody",
+    );
+    expect(
+      chunks.some((chunk) => chunk.headingPath.includes("not heading")),
+    ).toBe(false);
+    expect(chunks.some((chunk) => chunk.headingPath.includes("Real"))).toBe(
+      true,
+    );
   });
 
   it("hard-slices single lines longer than maxChars", () => {
-    const chunks = chunkNotionMarkdown(`# Top\n${"x".repeat(25)}`, { maxCharsPerChunk: 10 });
+    const chunks = chunkNotionMarkdown(`# Top\n${"x".repeat(25)}`, {
+      maxCharsPerChunk: 10,
+    });
     expect(chunks.length).toBe(3);
     expect(chunks.every((chunk) => chunk.text.length <= 10)).toBe(true);
-    expect(chunks.every((chunk) => chunk.startLine === 2 && chunk.endLine === 2)).toBe(true);
+    expect(
+      chunks.every((chunk) => chunk.startLine === 2 && chunk.endLine === 2),
+    ).toBe(true);
   });
 
   it("falls back to the default chunk size for non-positive or invalid maxChars", () => {
@@ -72,19 +84,35 @@ describe("extractActionItems", () => {
   it("extracts requirements/screens/apis/todos/questions", () => {
     const chunks = chunkNotionMarkdown(SAMPLE, { maxCharsPerChunk: 300 });
     const extracted = extractActionItems(chunks);
-    expect(extracted.requirements.some((x) => x.text.includes("페이지네이션"))).toBe(true);
-    expect(extracted.screens.some((x) => x.text.includes("주문 목록 화면"))).toBe(true);
+    expect(
+      extracted.requirements.some((x) => x.text.includes("페이지네이션")),
+    ).toBe(true);
+    expect(
+      extracted.screens.some((x) => x.text.includes("주문 목록 화면")),
+    ).toBe(true);
     expect(extracted.apis.some((x) => x.text === "GET /api/orders")).toBe(true);
-    expect(extracted.todos.some((x) => x.text.includes("주문 목록 API 연동"))).toBe(true);
-    expect(extracted.questions.some((x) => x.text.includes("전환 가능한가"))).toBe(true);
+    expect(
+      extracted.todos.some((x) => x.text.includes("주문 목록 API 연동")),
+    ).toBe(true);
+    expect(
+      extracted.questions.some((x) => x.text.includes("전환 가능한가")),
+    ).toBe(true);
   });
 
   it("does not extract APIs or TODOs from fenced code blocks", () => {
-    const chunks = chunkNotionMarkdown(`## API\n\n\`\`\`ts\n// TODO: 예시 코드만 수정\nfetch("GET /api/example")\n\`\`\`\n\n- GET /api/orders\n- [ ] 주문 목록 API 연동`);
+    const chunks = chunkNotionMarkdown(
+      `## API\n\n\`\`\`ts\n// TODO: 예시 코드만 수정\nfetch("GET /api/example")\n\`\`\`\n\n- GET /api/orders\n- [ ] 주문 목록 API 연동`,
+    );
     const extracted = extractActionItems(chunks);
-    expect(extracted.apis.some((x) => x.text === "GET /api/example")).toBe(false);
-    expect(extracted.todos.some((x) => x.text.includes("예시 코드만 수정"))).toBe(false);
+    expect(extracted.apis.some((x) => x.text === "GET /api/example")).toBe(
+      false,
+    );
+    expect(
+      extracted.todos.some((x) => x.text.includes("예시 코드만 수정")),
+    ).toBe(false);
     expect(extracted.apis.some((x) => x.text === "GET /api/orders")).toBe(true);
-    expect(extracted.todos.some((x) => x.text.includes("주문 목록 API 연동"))).toBe(true);
+    expect(
+      extracted.todos.some((x) => x.text.includes("주문 목록 API 연동")),
+    ).toBe(true);
   });
 });

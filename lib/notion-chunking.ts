@@ -60,7 +60,11 @@ function normalizeLine(line: string): string {
 }
 
 function hardSliceLine(line: string, maxChars: number): string[] {
-  if (!Number.isFinite(maxChars) || !Number.isInteger(maxChars) || maxChars < 1) {
+  if (
+    !Number.isFinite(maxChars) ||
+    !Number.isInteger(maxChars) ||
+    maxChars < 1
+  ) {
     throw new Error("maxChars must be a positive integer");
   }
   if (line.length <= maxChars) return [line];
@@ -223,7 +227,9 @@ export function chunkNotionMarkdown(
 }
 
 /** 원문 전체를 반환하지 않는 tool-response 용 청크 메타데이터. */
-export function summarizeNotionChunks(chunks: NotionChunk[]): NotionChunkSummary[] {
+export function summarizeNotionChunks(
+  chunks: NotionChunk[],
+): NotionChunkSummary[] {
   return chunks.map(summarizeChunk);
 }
 
@@ -272,7 +278,9 @@ function isLikelyActionLine(line: string): boolean {
  * 청크 텍스트의 규칙 기반 분류로 구현 액션 후보를 뽑는다.
  * LLM 없이도 반복 가능한 최소 추출 파이프라인을 제공한다.
  */
-export function extractActionItems(chunks: NotionChunk[]): NotionActionExtraction {
+export function extractActionItems(
+  chunks: NotionChunk[],
+): NotionActionExtraction {
   const requirements: ExtractedItem[] = [];
   const screens: ExtractedItem[] = [];
   const apis: ExtractedItem[] = [];
@@ -284,7 +292,10 @@ export function extractActionItems(chunks: NotionChunk[]): NotionActionExtractio
   for (const chunk of chunks) {
     const heading = chunk.headingPath.join(" > ").toLowerCase();
     const extractableText = stripFencedCode(chunk.text);
-    const lines = extractableText.split("\n").map((line) => line.trim()).filter(Boolean);
+    const lines = extractableText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
     const bullets = extractBullets(extractableText);
 
     for (const match of extractableText.matchAll(apiRe)) {
@@ -296,7 +307,10 @@ export function extractActionItems(chunks: NotionChunk[]): NotionActionExtractio
       const normalized = normalizeLine(line);
       if (!normalized) continue;
 
-      if (/\?$/.test(normalized) || /확인 필요|미정|논의 필요/i.test(normalized)) {
+      if (
+        /\?$/.test(normalized) ||
+        /확인 필요|미정|논의 필요/i.test(normalized)
+      ) {
         questions.push({ text: normalized, chunkId: chunk.id });
       }
 
@@ -304,16 +318,24 @@ export function extractActionItems(chunks: NotionChunk[]): NotionActionExtractio
       const isBullet = /^(-|\*|\d+\.)\s+/.test(line);
       if (isCheckbox || (isBullet && isLikelyActionLine(normalized))) {
         todos.push({
-          text: normalized.replace(/^-\s*\[\s*\]\s+/i, "").replace(/^(-|\*|\d+\.)\s+/, ""),
+          text: normalized
+            .replace(/^-\s*\[\s*\]\s+/i, "")
+            .replace(/^(-|\*|\d+\.)\s+/, ""),
           chunkId: chunk.id,
         });
       }
 
-      if (/필수|반드시|지원해야|요구사항|제약/i.test(normalized) || heading.includes("요구사항")) {
+      if (
+        /필수|반드시|지원해야|요구사항|제약/i.test(normalized) ||
+        heading.includes("요구사항")
+      ) {
         requirements.push({ text: normalized, chunkId: chunk.id });
       }
 
-      if (/화면|페이지|모달|컴포넌트|폼|버튼/i.test(normalized) || heading.includes("화면")) {
+      if (
+        /화면|페이지|모달|컴포넌트|폼|버튼/i.test(normalized) ||
+        heading.includes("화면")
+      ) {
         screens.push({ text: normalized, chunkId: chunk.id });
       }
     }
