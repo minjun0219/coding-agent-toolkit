@@ -42,7 +42,9 @@ describe("AgentJournal.append", () => {
 
   it("rejects empty / whitespace content", async () => {
     await expect(journal.append({ content: "" })).rejects.toThrow(/non-empty/i);
-    await expect(journal.append({ content: "   " })).rejects.toThrow(/non-empty/i);
+    await expect(journal.append({ content: "   " })).rejects.toThrow(
+      /non-empty/i,
+    );
   });
 
   it("rejects an invalid pageId string via resolveCacheKey", async () => {
@@ -114,7 +116,11 @@ describe("AgentJournal.search", () => {
   beforeEach(async () => {
     await journal.append({ content: "Decided to use Bun", kind: "decision" });
     await journal.append({ content: "Blocked on auth", kind: "blocker" });
-    await journal.append({ content: "User confirmed PRD", kind: "answer", tags: ["prd"] });
+    await journal.append({
+      content: "User confirmed PRD",
+      kind: "answer",
+      tags: ["prd"],
+    });
     await journal.append({ content: "linked page", pageId: PAGE });
   });
 
@@ -174,11 +180,7 @@ describe("AgentJournal.status", () => {
 describe("graceful degradation", () => {
   it("skips corrupt JSON lines but keeps valid ones", async () => {
     await journal.append({ content: "first" });
-    appendFileSync(
-      join(dir, JOURNAL_FILE),
-      "{ this is not json\n",
-      "utf8",
-    );
+    appendFileSync(join(dir, JOURNAL_FILE), "{ this is not json\n", "utf8");
     await journal.append({ content: "second" });
     const r = await journal.read();
     expect(r.map((e) => e.content)).toEqual(["second", "first"]);

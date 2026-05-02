@@ -30,6 +30,11 @@ opencode-only plugin. Three Notion cache tools + five OpenAPI tools (cache, sear
 
 ```bash
 bun install
+bun run check     # verify Biome formatter / linter / import organizer without writing changes
+bun run fix       # apply Biome safe fixes and formatting
+bun run lint      # verify Biome lint rules without writing changes
+bun run lint:fix  # apply Biome lint safe fixes
+bun run format    # apply Biome formatting
 bun test           # unit tests under lib/ + .opencode/plugins/
 bun run typecheck  # tsc --noEmit
 ```
@@ -43,7 +48,7 @@ Only `AGENT_TOOLKIT_NOTION_MCP_URL` is required. See the README env-var table fo
 - **ESM safety**: never use `__dirname`. Use `import.meta.url` + `fileURLToPath`, or Bun's `import.meta.dir`.
 - **Repo-local JSDoc**: write JSDoc on exported functions / classes when touching this repository, but do not treat it as a custom hard-lint gate. Korean comments are fine for tricky logic.
 - **Errors**: include context in messages (input value, timeout, status code, pageId mismatch, …).
-- **Dependencies**: avoid adding any if possible. Prefer the standard library and Bun built-ins. **Single explicit exception: `mysql2`** (prod dep) — MySQL has no native Bun client and the wire protocol / TLS / auth-plugin handling is too large to hand-roll for a "read-only inspection" surface. New deps beyond this require a separate scope discussion.
+- **Dependencies**: avoid adding any if possible. Prefer the standard library and Bun built-ins. **Single explicit exception: `mysql2`** (prod dep) — MySQL has no native Bun client and the wire protocol / TLS / auth-plugin handling is too large to hand-roll for a "read-only inspection" surface. Dev-only tooling dependencies such as linters / formatters are allowed when explicitly agreed for repository workflow. New runtime deps beyond this require a separate scope discussion.
 - **Tests**: keep `*.test.ts` next to the source and run with `bun test`. Isolate fs-dependent tests with `mkdtempSync`.
 
 ## MVP scope (hold the line)
@@ -65,12 +70,13 @@ When this toolkit is used against a runtime / downstream project, JSDoc and Kore
 
 ## Change checklist
 
-1. `bun run typecheck` passes
-2. `bun test` passes
-3. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
-4. If a new env var is added, also update the plugin's `readEnv()`
-5. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`, `skills/mysql-query/SKILL.md` for `mysql_*`, `skills/spec-pact/SKILL.md` for the lifecycle modes that touch `notion_*` / `journal_*` / file IO) **and** the corresponding routing / tool rules in `agents/rocky.md` (Rocky conducts the three cache-first skills + journal and routes the lifecycle, so changes on either side propagate to it; `journal_*` is owned by `rocky` directly — no separate skill) **and** `agents/grace.md` (Grace conducts `spec-pact` end-to-end and is the single finalize/lock authority over `.agent/specs/INDEX.md` + SPEC files)
-6. If `agent-toolkit.json` shape changes, update **both** `agent-toolkit.schema.json` (IDE autocomplete) **and** `lib/toolkit-config.ts` (runtime validation) — they must stay in lockstep. Currently the `openapi.registry`, the `spec` (dir / scanDirectorySpec / indexFile), and the `mysql.connections` (host / env / db → host / port / user / database / passwordEnv / dsnEnv) objects are the three top-level keys with explicit validation
+1. `bun run check` passes
+2. `bun run typecheck` passes
+3. `bun test` passes
+4. If the user-facing surface (tools / env vars) changes, sync `README.md` and `.opencode/INSTALL.md`
+5. If a new env var is added, also update the plugin's `readEnv()`
+6. If the plugin's tool contract changes, update the tool-usage rules in the relevant skill (`skills/notion-context/SKILL.md` for `notion_*`, `skills/openapi-client/SKILL.md` for `swagger_*`, `skills/mysql-query/SKILL.md` for `mysql_*`, `skills/spec-pact/SKILL.md` for the lifecycle modes that touch `notion_*` / `journal_*` / file IO) **and** the corresponding routing / tool rules in `agents/rocky.md` (Rocky conducts the three cache-first skills + journal and routes the lifecycle, so changes on either side propagate to it; `journal_*` is owned by `rocky` directly — no separate skill) **and** `agents/grace.md` (Grace conducts `spec-pact` end-to-end and is the single finalize/lock authority over `.agent/specs/INDEX.md` + SPEC files)
+7. If `agent-toolkit.json` shape changes, update **both** `agent-toolkit.schema.json` (IDE autocomplete) **and** `lib/toolkit-config.ts` (runtime validation) — they must stay in lockstep. Currently the `openapi.registry`, the `spec` (dir / scanDirectorySpec / indexFile), and the `mysql.connections` (host / env / db → host / port / user / database / passwordEnv / dsnEnv) objects are the three top-level keys with explicit validation
 
 ## MCP servers
 

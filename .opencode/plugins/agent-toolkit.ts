@@ -1,7 +1,7 @@
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  NotionCache,
+  type NotionCache,
   resolveCacheKey,
   notionToMarkdown,
   createCacheFromEnv,
@@ -17,7 +17,7 @@ import {
   type NotionChunkSummary,
 } from "../../lib/notion-chunking";
 import {
-  OpenapiCache,
+  type OpenapiCache,
   createOpenapiCacheFromEnv,
   resolveSpecKey,
   searchEndpoints,
@@ -40,7 +40,7 @@ import {
   type ToolkitConfig,
 } from "../../lib/toolkit-config";
 import {
-  AgentJournal,
+  type AgentJournal,
   createJournalFromEnv,
   type JournalAppendInput,
   type JournalEntry,
@@ -98,7 +98,8 @@ export const DEFAULT_NOTION_MCP_URL = "https://mcp.notion.com/mcp";
 export const DEFAULT_OPENAPI_DOWNLOAD_TIMEOUT_MS = 30_000;
 
 function readEnv() {
-  const url = process.env.AGENT_TOOLKIT_NOTION_MCP_URL ?? DEFAULT_NOTION_MCP_URL;
+  const url =
+    process.env.AGENT_TOOLKIT_NOTION_MCP_URL ?? DEFAULT_NOTION_MCP_URL;
   const timeoutMs = Number.parseInt(
     process.env.AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS ?? "15000",
     10,
@@ -157,7 +158,9 @@ export async function callRemoteNotionMcp(
     }
     const data = (await res.json()) as RawNotionPage;
     if (!data || typeof data !== "object" || typeof data.id !== "string") {
-      throw new Error("Remote Notion MCP returned malformed payload (missing id)");
+      throw new Error(
+        "Remote Notion MCP returned malformed payload (missing id)",
+      );
     }
     return data;
   } catch (err) {
@@ -389,7 +392,8 @@ export async function handleSwaggerSearch(
   registry?: OpenapiRegistry,
 ): Promise<OpenapiEndpointMatch[]> {
   const { limit, scope } = options;
-  const cap = Number.isFinite(limit) && (limit as number) > 0 ? (limit as number) : 20;
+  const cap =
+    Number.isFinite(limit) && (limit as number) > 0 ? (limit as number) : 20;
   const all = await cache.list();
   let pool = all;
   if (scope) {
@@ -664,7 +668,12 @@ export default async function agentToolkitPlugin(_input: unknown) {
           limit?: number;
           scope?: string;
         }) {
-          return handleSwaggerSearch(openapi, query, { limit, scope }, registry);
+          return handleSwaggerSearch(
+            openapi,
+            query,
+            { limit, scope },
+            registry,
+          );
         },
       },
       swagger_envs: {
@@ -725,7 +734,13 @@ export default async function agentToolkitPlugin(_input: unknown) {
           pageId?: string;
           since?: string;
         }) {
-          return handleJournalRead(journal, { limit, kind, tag, pageId, since });
+          return handleJournalRead(journal, {
+            limit,
+            kind,
+            tag,
+            pageId,
+            since,
+          });
         },
       },
       journal_search: {
@@ -808,7 +823,9 @@ export default async function agentToolkitPlugin(_input: unknown) {
           sql: string;
           limit?: number;
         }) {
-          return handleMysqlQuery(mysqlRegistry, toolkitConfig, handle, sql, { limit });
+          return handleMysqlQuery(mysqlRegistry, toolkitConfig, handle, sql, {
+            limit,
+          });
         },
       },
     },

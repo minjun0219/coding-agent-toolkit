@@ -108,7 +108,9 @@ export function resolveScopeToEntries(
     const [, host, env] = fullEnv as unknown as [string, string, string];
     const dbs = conns[host]?.[env];
     if (!dbs) return [];
-    return Object.entries(dbs).map(([db, profile]) => toEntry(host, env, db, profile));
+    return Object.entries(dbs).map(([db, profile]) =>
+      toEntry(host, env, db, profile),
+    );
   }
   if (HANDLE_HOST.test(scope)) {
     const envs = conns[scope];
@@ -152,9 +154,9 @@ function toEntry(
     handle: `${host}:${env}:${db}`,
     authMode: usingDsn ? "dsnEnv" : "passwordEnv",
     authEnv: usingDsn ? profile.dsnEnv! : profile.passwordEnv!,
-    hostName: usingDsn ? null : profile.host ?? null,
+    hostName: usingDsn ? null : (profile.host ?? null),
     port: profile.port ?? null,
-    user: usingDsn ? null : profile.user ?? null,
-    database: usingDsn ? null : profile.database ?? null,
+    user: usingDsn ? null : (profile.user ?? null),
+    database: usingDsn ? null : (profile.database ?? null),
   };
 }

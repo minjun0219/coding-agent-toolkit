@@ -162,15 +162,15 @@ describe("validateConfig", () => {
   });
 
   it("rejects spec.dir that is empty / whitespace / non-string", () => {
-    expect(() =>
-      validateConfig({ spec: { dir: "" } } as any, "p"),
-    ).toThrow(/spec\.dir/);
-    expect(() =>
-      validateConfig({ spec: { dir: "  " } } as any, "p"),
-    ).toThrow(/spec\.dir/);
-    expect(() =>
-      validateConfig({ spec: { dir: 42 } } as any, "p"),
-    ).toThrow(/spec\.dir/);
+    expect(() => validateConfig({ spec: { dir: "" } } as any, "p")).toThrow(
+      /spec\.dir/,
+    );
+    expect(() => validateConfig({ spec: { dir: "  " } } as any, "p")).toThrow(
+      /spec\.dir/,
+    );
+    expect(() => validateConfig({ spec: { dir: 42 } } as any, "p")).toThrow(
+      /spec\.dir/,
+    );
   });
 
   it("rejects spec.scanDirectorySpec that is not boolean", () => {
@@ -188,15 +188,12 @@ describe("validateConfig", () => {
   it("rejects unsupported spec keys (typo guard, schema lockstep)", () => {
     // 오타 — 'scanDirectorySpec' 가 아닌 'scanDirectorySpecs'
     expect(() =>
-      validateConfig(
-        { spec: { scanDirectorySpecs: true } } as any,
-        "p",
-      ),
+      validateConfig({ spec: { scanDirectorySpecs: true } } as any, "p"),
     ).toThrow(/unsupported key "scanDirectorySpecs"/);
     // 알지 못하는 미래 키도 거부 — 단, top-level 미지원 키는 forward-compat 으로 통과해야.
-    expect(() =>
-      validateConfig({ spec: { unknown: 1 } } as any, "p"),
-    ).toThrow(/unsupported key "unknown"/);
+    expect(() => validateConfig({ spec: { unknown: 1 } } as any, "p")).toThrow(
+      /unsupported key "unknown"/,
+    );
   });
 
   it("accepts mysql.connections with passwordEnv profile", () => {
@@ -230,7 +227,9 @@ describe("validateConfig", () => {
         {
           mysql: {
             connections: {
-              acme: { prod: { users: { dsnEnv: "MYSQL_ACME_PROD_USERS_DSN" } } },
+              acme: {
+                prod: { users: { dsnEnv: "MYSQL_ACME_PROD_USERS_DSN" } },
+              },
             },
           },
         },
@@ -306,7 +305,11 @@ describe("validateConfig", () => {
         {
           mysql: {
             connections: {
-              acme: { prod: { users: { passwordEnv: "P", user: "u", database: "app" } } },
+              acme: {
+                prod: {
+                  users: { passwordEnv: "P", user: "u", database: "app" },
+                },
+              },
             },
           },
         },
@@ -394,7 +397,9 @@ describe("mergeConfigs — mysql.connections", () => {
       },
     };
     const merged = mergeConfigs(user, project);
-    expect(merged.mysql?.connections?.acme?.prod?.users?.dsnEnv).toBe("PROJECT_DSN");
+    expect(merged.mysql?.connections?.acme?.prod?.users?.dsnEnv).toBe(
+      "PROJECT_DSN",
+    );
   });
 
   it("project introduces new mysql host / env / db", () => {
@@ -425,7 +430,12 @@ describe("mergeConfigs", () => {
     const user: ToolkitConfig = {
       openapi: {
         registry: {
-          acme: { dev: { users: "https://user/u.json", orders: "https://user/o.json" } },
+          acme: {
+            dev: {
+              users: "https://user/u.json",
+              orders: "https://user/o.json",
+            },
+          },
         },
       },
     };
@@ -448,7 +458,9 @@ describe("mergeConfigs", () => {
 
   it("project can introduce new host / env / spec", () => {
     const user: ToolkitConfig = {
-      openapi: { registry: { acme: { dev: { users: "https://u.example/u.json" } } } },
+      openapi: {
+        registry: { acme: { dev: { users: "https://u.example/u.json" } } },
+      },
     };
     const project: ToolkitConfig = {
       openapi: {
@@ -538,7 +550,9 @@ describe("loadConfig", () => {
       openapi: { registry: { acme: { dev: { users: "https://u/u.json" } } } },
     });
     const r = await loadConfig({ userPath, projectRoot });
-    expect(r.config.openapi?.registry?.acme?.dev?.users).toBe("https://u/u.json");
+    expect(r.config.openapi?.registry?.acme?.dev?.users).toBe(
+      "https://u/u.json",
+    );
     expect(r.errors).toEqual([]);
   });
 
@@ -555,7 +569,9 @@ describe("loadConfig", () => {
 
   it("merges with project taking precedence", async () => {
     writeUser({
-      openapi: { registry: { acme: { dev: { users: "https://user/u.json" } } } },
+      openapi: {
+        registry: { acme: { dev: { users: "https://user/u.json" } } },
+      },
     });
     writeProject({
       openapi: {

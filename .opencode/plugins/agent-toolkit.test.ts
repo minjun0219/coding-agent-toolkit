@@ -47,7 +47,7 @@ beforeEach(() => {
   cache = new NotionCache({ baseDir: dir, defaultTtlSeconds: 60 });
   calls = 0;
   respondWithWrongId = false;
-    server = Bun.serve({
+  server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
     fetch(req) {
@@ -55,11 +55,10 @@ beforeEach(() => {
       if (url.pathname === "/getPage" && req.method === "POST") {
         calls += 1;
         return Response.json({
-          id: respondWithWrongId
-            ? "deadbeefdeadbeefdeadbeefdeadbeef"
-            : PAGE,
+          id: respondWithWrongId ? "deadbeefdeadbeefdeadbeefdeadbeef" : PAGE,
           title: "Hello",
-          markdown: "# Hello\n\nworld\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n\n## API\n\n- GET /api/orders",
+          markdown:
+            "# Hello\n\nworld\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n\n## API\n\n- GET /api/orders",
         });
       }
       return new Response("not found", { status: 404 });
@@ -105,14 +104,20 @@ describe("plugin handlers", () => {
   });
 
   it("notion_extract: returns chunks and extracted action candidates", async () => {
-    const result = await handleNotionExtract(cache, PAGE, { maxCharsPerChunk: 200 });
+    const result = await handleNotionExtract(cache, PAGE, {
+      maxCharsPerChunk: 200,
+    });
     expect(result.fromCache).toBe(false);
     expect(result.entry.pageId).toBe(PAGE_DASHED);
     expect(result.chunkCount).toBeGreaterThan(0);
     expect(result.chunks[0]?.id).toBe("chunk-001");
     expect("text" in (result.chunks[0] ?? {})).toBe(false);
-    expect(result.extracted.todos.some((x) => x.text.includes("주문 목록 API 연동"))).toBe(true);
-    expect(result.extracted.apis.some((x) => x.text === "GET /api/orders")).toBe(true);
+    expect(
+      result.extracted.todos.some((x) => x.text.includes("주문 목록 API 연동")),
+    ).toBe(true);
+    expect(
+      result.extracted.apis.some((x) => x.text === "GET /api/orders"),
+    ).toBe(true);
 
     const second = await handleNotionExtract(cache, PAGE);
     expect(second.fromCache).toBe(true);
@@ -140,7 +145,11 @@ describe("swagger handlers", () => {
     paths: {
       "/pets": {
         get: { operationId: "listPets", summary: "List pets", tags: ["pet"] },
-        post: { operationId: "createPet", summary: "Create pet", tags: ["pet"] },
+        post: {
+          operationId: "createPet",
+          summary: "Create pet",
+          tags: ["pet"],
+        },
       },
       "/users/{id}": {
         get: { operationId: "getUser", summary: "Fetch user", tags: ["user"] },
@@ -237,7 +246,9 @@ describe("swagger handlers", () => {
 
   it("rejects YAML specs because only JSON OpenAPI documents are supported", async () => {
     const url = `${baseUrl}/spec.yaml`;
-    await expect(handleSwaggerGet(oaCache, url)).rejects.toThrow(/non-JSON body/i);
+    await expect(handleSwaggerGet(oaCache, url)).rejects.toThrow(
+      /non-JSON body/i,
+    );
     const s = await handleSwaggerStatus(oaCache, url);
     expect(s.exists).toBe(false);
   });
@@ -312,7 +323,11 @@ describe("swagger handlers — registry handles", () => {
     info: { title, version: "1.0.0" },
     paths: {
       "/pets": {
-        get: { operationId: `${title}-listPets`, summary: "List", tags: ["pet"] },
+        get: {
+          operationId: `${title}-listPets`,
+          summary: "List",
+          tags: ["pet"],
+        },
       },
     },
   });
@@ -325,9 +340,12 @@ describe("swagger handlers — registry handles", () => {
       hostname: "127.0.0.1",
       fetch(req) {
         const u = new URL(req.url);
-        if (u.pathname === "/dev/users.json") return Response.json(SAMPLE("dev-users"));
-        if (u.pathname === "/dev/orders.json") return Response.json(SAMPLE("dev-orders"));
-        if (u.pathname === "/prod/users.json") return Response.json(SAMPLE("prod-users"));
+        if (u.pathname === "/dev/users.json")
+          return Response.json(SAMPLE("dev-users"));
+        if (u.pathname === "/dev/orders.json")
+          return Response.json(SAMPLE("dev-orders"));
+        if (u.pathname === "/prod/users.json")
+          return Response.json(SAMPLE("prod-users"));
         return new Response("not found", { status: 404 });
       },
     });
@@ -354,7 +372,10 @@ describe("swagger handlers — registry handles", () => {
     expect(r.fromCache).toBe(false);
     expect(r.entry.title).toBe("dev-users");
     // 캐시에 같은 URL 로 박혀 있어야 — handle 이 아니라.
-    const status = await handleSwaggerStatus(oaCache, `${baseUrl}/dev/users.json`);
+    const status = await handleSwaggerStatus(
+      oaCache,
+      `${baseUrl}/dev/users.json`,
+    );
     expect(status.exists).toBe(true);
   });
 
@@ -399,7 +420,11 @@ describe("swagger handlers — registry handles", () => {
     const flat = handleSwaggerEnvs({ openapi: { registry } });
     expect(flat.length).toBe(3);
     const names = flat.map((e) => `${e.host}:${e.env}:${e.spec}`).sort();
-    expect(names).toEqual(["acme:dev:orders", "acme:dev:users", "acme:prod:users"]);
+    expect(names).toEqual([
+      "acme:dev:orders",
+      "acme:dev:users",
+      "acme:prod:users",
+    ]);
   });
 
   it("swagger_envs returns [] for empty config", () => {
@@ -428,8 +453,14 @@ describe("journal handlers", () => {
   });
 
   it("journal_read: returns most recent first across turns", async () => {
-    await handleJournalAppend(journal, { content: "turn-1 decision", kind: "decision" });
-    await handleJournalAppend(journal, { content: "turn-2 blocker", kind: "blocker" });
+    await handleJournalAppend(journal, {
+      content: "turn-1 decision",
+      kind: "decision",
+    });
+    await handleJournalAppend(journal, {
+      content: "turn-2 blocker",
+      kind: "blocker",
+    });
     // 시뮬레이션: 다음 turn 에서 새 인스턴스로 읽기.
     const next = new AgentJournal({ baseDir: jDir });
     const r = await handleJournalRead(next);
@@ -447,8 +478,14 @@ describe("journal handlers", () => {
   });
 
   it("journal_search: matches across content and tags", async () => {
-    await handleJournalAppend(journal, { content: "use Bun for runtime", tags: ["infra"] });
-    await handleJournalAppend(journal, { content: "auth blocker", kind: "blocker" });
+    await handleJournalAppend(journal, {
+      content: "use Bun for runtime",
+      tags: ["infra"],
+    });
+    await handleJournalAppend(journal, {
+      content: "auth blocker",
+      kind: "blocker",
+    });
     expect((await handleJournalSearch(journal, "bun")).length).toBe(1);
     expect((await handleJournalSearch(journal, "infra")).length).toBe(1);
     expect((await handleJournalSearch(journal, "MISSING")).length).toBe(0);
@@ -478,7 +515,9 @@ describe("plugin config hook", () => {
     const expectPath = (key: string, leaf: string) => {
       expect(cfg[key]).toBeDefined();
       expect(Array.isArray(cfg[key].paths)).toBe(true);
-      const matches = cfg[key].paths.filter((p: string) => basename(p) === leaf);
+      const matches = cfg[key].paths.filter(
+        (p: string) => basename(p) === leaf,
+      );
       expect(matches.length).toBe(1);
     };
 
@@ -504,7 +543,10 @@ describe("plugin config hook", () => {
 class MysqlPluginFakeExecutor implements MysqlExecutor {
   public seen: string[] = [];
   constructor(
-    private readonly responses: Array<{ rows: RowDataPacket[]; fields: FieldPacket[] }>,
+    private readonly responses: Array<{
+      rows: RowDataPacket[];
+      fields: FieldPacket[];
+    }>,
   ) {}
   async query(sql: string) {
     this.seen.push(sql);
@@ -539,8 +581,13 @@ const mysqlConfig: ToolkitConfig = {
  */
 function shimRegistry(executor: MysqlExecutor): MysqlExecutorRegistry {
   // factory 가 호출되지 않도록 getExecutor 만 override.
-  const reg = new MysqlExecutorRegistry({}, () => ({ end: async () => {} }) as any);
-  (reg as unknown as { getExecutor: (h: string) => MysqlExecutor }).getExecutor = () => executor;
+  const reg = new MysqlExecutorRegistry(
+    {},
+    () => ({ end: async () => {} }) as any,
+  );
+  (
+    reg as unknown as { getExecutor: (h: string) => MysqlExecutor }
+  ).getExecutor = () => executor;
   return reg;
 }
 
@@ -563,7 +610,11 @@ describe("handleMysqlStatus", () => {
     const fake = new MysqlPluginFakeExecutor([
       { rows: [{ ok: 1 } as unknown as RowDataPacket], fields: noFields },
     ]);
-    const r = await handleMysqlStatus(shimRegistry(fake), mysqlConfig, "acme:prod:users");
+    const r = await handleMysqlStatus(
+      shimRegistry(fake),
+      mysqlConfig,
+      "acme:prod:users",
+    );
     expect(r.handle).toBe("acme:prod:users");
     expect(r.ok).toBe(true);
   });
@@ -581,12 +632,19 @@ describe("handleMysqlTables", () => {
     const fake = new MysqlPluginFakeExecutor([
       {
         rows: [
-          { Tables_in_app: "users", Table_type: "BASE TABLE" } as unknown as RowDataPacket,
+          {
+            Tables_in_app: "users",
+            Table_type: "BASE TABLE",
+          } as unknown as RowDataPacket,
         ],
         fields: noFields,
       },
     ]);
-    const r = await handleMysqlTables(shimRegistry(fake), mysqlConfig, "acme:prod:users");
+    const r = await handleMysqlTables(
+      shimRegistry(fake),
+      mysqlConfig,
+      "acme:prod:users",
+    );
     expect(r).toEqual([{ name: "users", type: "BASE TABLE" }]);
   });
 });
@@ -609,7 +667,11 @@ describe("handleMysqlSchema", () => {
         fields: noFields,
       },
     ]);
-    const r = await handleMysqlSchema(shimRegistry(fake), mysqlConfig, "acme:prod:users");
+    const r = await handleMysqlSchema(
+      shimRegistry(fake),
+      mysqlConfig,
+      "acme:prod:users",
+    );
     expect(r.mode).toBe("summary");
   });
 
@@ -617,7 +679,10 @@ describe("handleMysqlSchema", () => {
     const fake = new MysqlPluginFakeExecutor([
       {
         rows: [
-          { Table: "users", "Create Table": "CREATE TABLE users (id INT)" } as unknown as RowDataPacket,
+          {
+            Table: "users",
+            "Create Table": "CREATE TABLE users (id INT)",
+          } as unknown as RowDataPacket,
         ],
         fields: noFields,
       },
@@ -638,7 +703,12 @@ describe("handleMysqlQuery", () => {
   it("rejects writes before reaching the executor", async () => {
     const fake = new MysqlPluginFakeExecutor([]);
     await expect(
-      handleMysqlQuery(shimRegistry(fake), mysqlConfig, "acme:prod:users", "DELETE FROM users"),
+      handleMysqlQuery(
+        shimRegistry(fake),
+        mysqlConfig,
+        "acme:prod:users",
+        "DELETE FROM users",
+      ),
     ).rejects.toThrow(/MySQL read-only guard/);
     expect(fake.seen).toEqual([]);
   });

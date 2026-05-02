@@ -16,8 +16,5 @@
     "noImplicitOverride": true,
     "useUnknownInCatchVariables": true
   },
-  "include": [
-    "lib/**/*.ts",
-    ".opencode/plugins/**/*.ts"
-  ]
+  "include": ["lib/**/*.ts", ".opencode/plugins/**/*.ts"]
 }

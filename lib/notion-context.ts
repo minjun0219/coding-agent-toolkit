@@ -68,7 +68,10 @@ export interface NotionCacheOptions {
  * - 32자 hex (dash 유무 무관) 추출 → dash 포함 8-4-4-4-12 형식으로 정규화.
  * - 추출 실패 시 던진다 (호출 측에서 4xx 로 매핑 가능하도록 메시지에 입력값 포함).
  */
-export function resolveCacheKey(input: string): { pageId: string; key: string } {
+export function resolveCacheKey(input: string): {
+  pageId: string;
+  key: string;
+} {
   if (!input || typeof input !== "string") {
     throw new Error("resolveCacheKey: input must be a non-empty string");
   }
@@ -97,7 +100,10 @@ export function resolveCacheKey(input: string): { pageId: string; key: string } 
 
 /** 짧은(앞 16자) sha256 — 본문 동일성 비교용. */
 export function contentHash(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex").slice(0, 16);
+  return createHash("sha256")
+    .update(content, "utf8")
+    .digest("hex")
+    .slice(0, 16);
 }
 
 /**
