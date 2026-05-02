@@ -29,8 +29,8 @@
 | # | 항목 | 상태 | 추적 issue | 비고 |
 | --- | --- | --- | --- | --- |
 | 1 | 에이전트 자동 기억/기록 | ✅ MVP | [#5](https://github.com/minjun0219/agent-toolkit/issues/5) | `journal_append` / `journal_read` / `journal_search` / `journal_status`, `lib/agent-journal.ts` (append-only JSONL, 디스크 영속, 시간순 + page-key 기반 lookup) |
-| 2 | 상세 주석 | 🚧 부분 | [#7](https://github.com/minjun0219/agent-toolkit/issues/7) | JSDoc 규칙 (`AGENTS.md`) 으로 정책은 박힘; 강제 / 검증은 미구현 |
-| 3 | 한글 주석/설명 | ✅ 정책 (검증 미구현) | [#7](https://github.com/minjun0219/agent-toolkit/issues/7) | `AGENTS.md` coding rules + output 정책 |
+| 2 | 상세 주석 | ✅ guidance | [#7](https://github.com/minjun0219/agent-toolkit/issues/7) | runtime/downstream project 대상 agent guidance 로 재정의. 중요한 public/shared method, 복잡한 로직, 공유 contract, 호출자 요청에 JSDoc 적용; hard lint 아님 |
+| 3 | 한글 주석/설명 | ✅ guidance | [#7](https://github.com/minjun0219/agent-toolkit/issues/7) | 설명 prose 는 한국어 우선, identifiers / paths / commands / API paths / library names 는 원문 유지; hard lint 아님 |
 | 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
 | 5 | Notion → 개발 스펙 분해 | ✅ MVP+합의 lifecycle | — | `skills/notion-context/SKILL.md` spec mode (단발성) + `skills/spec-pact/SKILL.md` 4 모드 (`grace` sub-agent 가 conduct, INDEX·SPEC·journal 4 종 kind 로 lock / drift / amend 까지 추적) |
 | 6 | 스펙 → GitHub Issue 추적 | 📋 planned (Phase 5 SPEC 위에 올라감) | [#4](https://github.com/minjun0219/agent-toolkit/issues/4) | issue body source-of-truth 를 노션 본문 대신 grace 가 잠근 SPEC body 로 — drift / 양방향 sync 단순화 |
@@ -130,7 +130,8 @@
   - 함께 결정해야 할 것: npm publish 여부 (`@minjun0219/agent-toolkit` 또는 unscoped `agent-toolkit`) vs git+ 만 유지, semver 정책 (현재 `0.1.0`).
   - **트리거**: 첫 회사 use case 가 등장할 때 (현재는 사용자 본인 N=1).
 - **횡단 — 코드 품질 정책 강화** *(memo #2, #3, issue [#7](https://github.com/minjun0219/agent-toolkit/issues/7))*
-  - 한글 주석 / JSDoc 정책의 lint 단 검증 (필요해지면)
+  - repository 자체는 Biome 기반 최소 lint gate 로 관리한다.
+  - JSDoc / 한글 주석은 runtime/downstream project 에서 agent 가 따르는 guidance 로 유지한다. 모든 exported symbol 강제나 hint-level hard lint 는 기본값이 아니다.
 
 ## 워크플로 관리
 
