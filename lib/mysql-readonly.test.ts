@@ -9,19 +9,27 @@ import {
 
 describe("stripSqlComments", () => {
   it("strips -- line comments", () => {
-    expect(stripSqlComments("SELECT 1 -- DELETE FROM users\n")).not.toContain("DELETE");
+    expect(stripSqlComments("SELECT 1 -- DELETE FROM users\n")).not.toContain(
+      "DELETE",
+    );
   });
 
   it("strips # line comments", () => {
-    expect(stripSqlComments("SELECT 1 # DROP TABLE users\n")).not.toContain("DROP");
+    expect(stripSqlComments("SELECT 1 # DROP TABLE users\n")).not.toContain(
+      "DROP",
+    );
   });
 
   it("strips /* block */ comments", () => {
-    expect(stripSqlComments("SELECT /* DROP TABLE x */ 1")).not.toContain("DROP");
+    expect(stripSqlComments("SELECT /* DROP TABLE x */ 1")).not.toContain(
+      "DROP",
+    );
   });
 
   it("strips single-quoted string literals", () => {
-    expect(stripSqlComments("SELECT 'DELETE FROM users'")).not.toContain("DELETE");
+    expect(stripSqlComments("SELECT 'DELETE FROM users'")).not.toContain(
+      "DELETE",
+    );
   });
 
   it("respects doubled-quote escape inside strings", () => {
@@ -101,28 +109,34 @@ describe("assertReadOnlySql — deny first keyword", () => {
 describe("assertReadOnlySql — deny in body", () => {
   it("rejects WITH ... DELETE", () => {
     expect(() =>
-      assertReadOnlySql("WITH cte AS (SELECT id FROM t) DELETE FROM users WHERE id IN (SELECT id FROM cte)"),
+      assertReadOnlySql(
+        "WITH cte AS (SELECT id FROM t) DELETE FROM users WHERE id IN (SELECT id FROM cte)",
+      ),
     ).toThrow(/forbidden keyword "DELETE"/);
   });
 
   it("rejects SELECT followed by another SELECT (multi-statement)", () => {
-    expect(() => assertReadOnlySql("SELECT 1; SELECT 2")).toThrow(/multi-statement/);
+    expect(() => assertReadOnlySql("SELECT 1; SELECT 2")).toThrow(
+      /multi-statement/,
+    );
   });
 
   it("rejects SELECT followed by a write statement", () => {
-    expect(() => assertReadOnlySql("SELECT 1; DELETE FROM users")).toThrow(/multi-statement/);
+    expect(() => assertReadOnlySql("SELECT 1; DELETE FROM users")).toThrow(
+      /multi-statement/,
+    );
   });
 
   it("rejects INTO OUTFILE", () => {
-    expect(() => assertReadOnlySql("SELECT * FROM users INTO OUTFILE '/tmp/x'")).toThrow(
-      /INTO OUTFILE/,
-    );
+    expect(() =>
+      assertReadOnlySql("SELECT * FROM users INTO OUTFILE '/tmp/x'"),
+    ).toThrow(/INTO OUTFILE/);
   });
 
   it("rejects INTO DUMPFILE", () => {
-    expect(() => assertReadOnlySql("SELECT * FROM users LIMIT 1 INTO DUMPFILE '/tmp/x'")).toThrow(
-      /INTO OUTFILE/,
-    );
+    expect(() =>
+      assertReadOnlySql("SELECT * FROM users LIMIT 1 INTO DUMPFILE '/tmp/x'"),
+    ).toThrow(/INTO OUTFILE/);
   });
 
   it("rejects empty / whitespace-only", () => {
@@ -131,7 +145,9 @@ describe("assertReadOnlySql — deny in body", () => {
   });
 
   it("rejects comment-only input", () => {
-    expect(() => assertReadOnlySql("-- nothing here\n")).toThrow(/comments \/ whitespace/);
+    expect(() => assertReadOnlySql("-- nothing here\n")).toThrow(
+      /comments \/ whitespace/,
+    );
   });
 
   it("rejects bypass via comment containing forbidden keyword tail", () => {

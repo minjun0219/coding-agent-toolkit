@@ -286,12 +286,16 @@ export function enforceLimit(
 ): EnforceLimitResult {
   const max = clampPositive(options.max, MAX_LIMIT);
   const userLimit =
-    typeof options.limit === "number" && Number.isFinite(options.limit) && options.limit > 0
+    typeof options.limit === "number" &&
+    Number.isFinite(options.limit) &&
+    options.limit > 0
       ? Math.floor(options.limit)
       : null;
   const userBound = userLimit === null ? max : Math.min(userLimit, max);
 
-  const stripped = stripSqlComments(sql).trim().replace(/\s*;+\s*$/, "");
+  const stripped = stripSqlComments(sql)
+    .trim()
+    .replace(/\s*;+\s*$/, "");
   const firstKeyword = readFirstKeyword(stripped);
   if (firstKeyword !== "SELECT" && firstKeyword !== "WITH") {
     return { sql, effectiveLimit: null, capped: false };
@@ -315,7 +319,11 @@ export function enforceLimit(
       const wasCapped = capped < rowCount;
       const prefix = body.slice(0, m.index);
       const replaced = `${prefix}LIMIT ${a}, ${capped}`;
-      return { sql: replaced + trailingSemi, effectiveLimit: capped, capped: wasCapped };
+      return {
+        sql: replaced + trailingSemi,
+        effectiveLimit: capped,
+        capped: wasCapped,
+      };
     } else {
       // LIMIT <rowCount> [OFFSET <m>]
       const rowCount = a;
@@ -324,12 +332,17 @@ export function enforceLimit(
       const prefix = body.slice(0, m.index);
       const offsetStr = offset !== undefined ? ` OFFSET ${offset}` : "";
       const replaced = `${prefix}LIMIT ${capped}${offsetStr}`;
-      return { sql: replaced + trailingSemi, effectiveLimit: capped, capped: wasCapped };
+      return {
+        sql: replaced + trailingSemi,
+        effectiveLimit: capped,
+        capped: wasCapped,
+      };
     }
   }
 
   // SQL 에 LIMIT 없음 — 사용자가 명시한 limit 또는 디폴트를 부착 (max 로 cap).
-  const attached = userLimit === null ? Math.min(DEFAULT_LIMIT, max) : userBound;
+  const attached =
+    userLimit === null ? Math.min(DEFAULT_LIMIT, max) : userBound;
   return {
     sql: `${body}\nLIMIT ${attached}${trailingSemi}`,
     effectiveLimit: attached,

@@ -62,9 +62,9 @@ describe("resolveHandle", () => {
   });
 
   it("throws on malformed handle", () => {
-    expect(() => resolveHandle("acme:prod", sampleConfig.mysql?.connections)).toThrow(
-      /Not a host:env:db handle/,
-    );
+    expect(() =>
+      resolveHandle("acme:prod", sampleConfig.mysql?.connections),
+    ).toThrow(/Not a host:env:db handle/);
   });
 
   it("throws on unregistered handle", () => {
@@ -108,7 +108,9 @@ describe("resolveScopeToEntries", () => {
   it("returns [] when scope matches nothing", () => {
     expect(resolveScopeToEntries("nonexistent", sampleConfig)).toEqual([]);
     expect(resolveScopeToEntries("acme:nonexistent", sampleConfig)).toEqual([]);
-    expect(resolveScopeToEntries("acme:prod:nonexistent", sampleConfig)).toEqual([]);
+    expect(
+      resolveScopeToEntries("acme:prod:nonexistent", sampleConfig),
+    ).toEqual([]);
   });
 
   it("returns [] when connections is missing", () => {
@@ -140,7 +142,9 @@ describe("listRegistry", () => {
   });
 
   it("returns dsnEnv mode entries with hostName/user/database null", () => {
-    const out = listRegistry(sampleConfig).find((e) => e.handle === "acme:prod:orders");
+    const out = listRegistry(sampleConfig).find(
+      (e) => e.handle === "acme:prod:orders",
+    );
     expect(out?.authMode).toBe("dsnEnv");
     expect(out?.hostName).toBe(null);
     expect(out?.user).toBe(null);
@@ -148,7 +152,9 @@ describe("listRegistry", () => {
   });
 
   it("returns passwordEnv mode entries with hostName / user / database surfaced", () => {
-    const out = listRegistry(sampleConfig).find((e) => e.handle === "acme:prod:users");
+    const out = listRegistry(sampleConfig).find(
+      (e) => e.handle === "acme:prod:users",
+    );
     expect(out?.authMode).toBe("passwordEnv");
     expect(out?.hostName).toBe("db.acme.com");
     expect(out?.port).toBe(3306);
