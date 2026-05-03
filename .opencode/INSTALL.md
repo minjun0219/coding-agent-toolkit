@@ -57,6 +57,7 @@ Then verify the tools are registered:
 > use swagger_envs tool   # flatten the registry from agent-toolkit.json
 > use journal_append tool with content "decided to ship Phase 3" kind "decision"
 > use journal_read tool   # most recent first
+> use spec_pact_fragment tool with mode "draft"   # Phase 6.A — returns the DRAFT mode body from the plugin's absolute path
 ```
 
 Optional MySQL smoke (only after registering a `host:env:db` handle in `agent-toolkit.json` and exporting the matching `passwordEnv` / `dsnEnv` variable):

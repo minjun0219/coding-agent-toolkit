@@ -48,6 +48,13 @@ import {
   type JournalStatus,
 } from "../../lib/agent-journal";
 import {
+  loadSpecPactFragment,
+  SPEC_PACT_MODES,
+  type SpecPactFragment,
+  type SpecPactMode,
+  assertSpecPactMode,
+} from "../../lib/spec-pact-fragments";
+import {
   MysqlExecutorRegistry,
   describeHandle as mysqlDescribeHandle,
   describeTable as mysqlDescribeTable,
@@ -824,6 +831,16 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleMysqlQuery(mysqlRegistry, toolkitConfig, handle, sql, {
             limit,
           });
+        },
+      },
+      spec_pact_fragment: {
+        description: `spec-pact 의 모드별 fragment 본문을 반환한다 (Phase 6.A — 모드 본문이 SKILL.md 에서 분리되어 plugin 절대경로 fragment 파일에 산다). grace 가 모드를 결정한 뒤 정확히 한 번만 호출. 외부 설치 (\`agent-toolkit@git+...\`) 환경에서도 사용자 cwd 와 무관하게 동작한다. (mode: ${SPEC_PACT_MODES.join(" / ")})`,
+        parameters: {
+          mode: { type: "string", required: true },
+        },
+        async handler({ mode }: { mode: string }): Promise<SpecPactFragment> {
+          const validated: SpecPactMode = assertSpecPactMode(mode);
+          return loadSpecPactFragment(SKILLS_DIR, validated);
         },
       },
     },
