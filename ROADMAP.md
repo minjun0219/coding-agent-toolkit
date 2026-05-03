@@ -68,12 +68,14 @@
   - **opencode 단독 능력 한계**: opencode plugin API 의 `tool` 만 동적 등록 가능, agent / skill / command 는 path-based (`.md` 정적). 즉 TS-based loader 는 (a) OmO 같은 외부 harness 가 있는 환경에서만 의미가 있거나 (b) 토킷이 자체 loader 를 만들어 `.ts` AgentConfig → runtime `.md` 로 emit 해야 한다.
   - **방향**: `.md` 가 baseline 으로 남고, `.ts` 정의는 OmO 가 있을 때 옵트인으로 활성화 — 토킷이 OmO 의존을 강제하지 않는다. plugin entrypoint 가 `agents/*.ts` 가 있으면 OmO loader 에 위임, 없으면 `.md` 만 노출.
   - 의존성 0 의 자체 loader (b) 는 별도 PR 로 검토 — 트리거는 "정적 prompt 로는 부족한 첫 use case 가 등장할 때". 지금은 추적만.
-  - **Phase 6.A — Runtime 프롬프트 동적 조립** *(6 의 sub, OmO 없이도 자체 적용 가능)*
+  - **Phase 6.A — Runtime 프롬프트 동적 조립 — 🟡 in-flight (PR1 진행 중)** *(6 의 sub, OmO 없이도 자체 적용 가능)*
     - 정적 prompt 를 두 부분으로 쪼갠다 — "고정 (persona / scope / 일반 규칙)" + "조건부 fragment (모드별 본문, 최근 journal entry, INDEX row, drift diff)".
     - agent 가 turn 시작 시 caller 입력 → 모드 결정 → 필요한 fragment 만 끼워 넣어 최종 prompt 생성. DRAFT turn 일 때 VERIFY/AMEND 본문이 prompt 에 안 들어가는 식의 token 절감.
     - fragment 카탈로그 (예시): `grace.fragment.{draft,verify,drift-check,amend}.md`, `grace.fragment.journal-recent.md`, `grace.fragment.index-row.md`.
     - **Phase 7 와의 관계**: 각 fragment 도 capability manifest (`tokenClass` / `requires`) 를 갖게 되면 Phase 7 router 가 cheapest fragment 만 활성화 가능. 즉 6.A = primitive **내부** token cost, Phase 7 = primitive **사이** token cost — 두 층이 서로 보완.
-    - **트리거**: 한 agent 의 정적 prompt 가 ~3-4k token 을 넘기 시작할 때 (현재 grace.md ~150 줄, 한참 멀음).
+    - **트리거**: 한 agent 의 정적 prompt 가 ~3-4k token 을 넘기 시작할 때 (현재 grace.md ~150 줄, 한참 멀음). 트리거 미달이지만 토대 선행 결정 — 측정으로 다음 PR 진입 여부를 결정한다.
+    - **PR1 (이 PR)** — `spec-pact` 4 모드 본문을 `skills/spec-pact/fragments/{draft,verify,drift-check,amend}.md` 로 분리. SKILL.md 코어는 router 화 (Role / Mental model / journal kind 표 / Tool / Writing / Do-NOT / Failure 만 보존, 240 줄 → ~100 줄). `agents/grace.md` Behavior step 3.5 에 "모드 결정 후 매칭 fragment 하나만 read" 규칙 1 줄. 측정: `scripts/measure-fragment-cost.ts` (의존성 0, Bun + `node:fs`). granularity 결정 = **mode-only** — agent 단위는 너무 거칠고 journal 항목 단위는 너무 잘게. 측정 결과는 PR body 참조.
+    - **다음 PR 후보** (측정 결과 보고 트리거 결정): rocky 분리 / journal-recent fragment / index-row fragment / Phase 7 manifest. opencode 호스트가 fragments/ 디렉터리까지 auto-load 한다고 측정되면 — 절감이 0 이면 — fragments 디렉터리를 skill 레지스트리 밖으로 이전 (예: dotfile prefix) 하는 PR 이 먼저.
   - **Phase 6.B — OmO harness leverage** *(6 의 sub, OmO 가 있을 때만; 없으면 6.A 또는 baseline `.md` 로 fallback)*
     - OmO 의 두 layer 가 명확히 분리되어 있다 (context7 source 확인):
       - **`claude-code-plugin-loader`** (`src/features/claude-code-plugin-loader/`) — 순수 ingestion 파이프라인. `.opencode/plugins` / `~/.claude/plugins` 스캔, `plugin.json` 매니페스트 파싱, commands / agents / skills / hooks / MCP / LSP 를 OmO registry 에 등록. WHY: "existing Claude Code plugins can be used unchanged within OmO".

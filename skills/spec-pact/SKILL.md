@@ -15,6 +15,8 @@ version: 0.1.0
 * Four modes only — DRAFT / VERIFY / DRIFT-CHECK / AMEND. One turn = one mode.
 * Finalize/lock authority always belongs to grace. Even when an external sub-agent / skill participates in negotiation, only grace writes the SPEC frontmatter and INDEX.
 
+> **Mode bodies live under `./fragments/`.** This SKILL.md is the router — it carries the shared rules (Role / Mental model / journal kinds / Tool / Writing / Do-NOT / Failure). The per-mode steps + output formats sit in `skills/spec-pact/fragments/{draft,verify,drift-check,amend}.md`. After grace picks the mode, it `read`s exactly one fragment and follows that fragment verbatim. Phase 6.A foundation — see ROADMAP.
+
 ## Mental model
 
 ```
@@ -55,161 +57,18 @@ The four `spec_*` kinds are the **new reserved kinds** introduced by this skill.
 4. Use `glob` only for directory-mode discovery — only the `**/SPEC.md` pattern.
 5. One mode per turn. After DRAFT, do not advance into VERIFY in the same turn (the user must request it explicitly in a follow-up turn).
 
-## Mode 1 — DRAFT
+## Mode dispatch
 
-Write a new SPEC.
+Each mode lives in its own fragment under `./fragments/`. After picking the mode, `read` exactly one fragment and follow the Steps + output format verbatim. **Never read more than one fragment per turn** — that defeats the whole point of the split.
 
-### Steps
+| Mode | Fragment path | Trigger phrases (caller intent) |
+|---|---|---|
+| DRAFT | `skills/spec-pact/fragments/draft.md` | "스펙 합의" / "SPEC 작성" — first time the page is seen |
+| VERIFY | `skills/spec-pact/fragments/verify.md` | "SPEC 검증" / "체크리스트" / "코드와 대조" |
+| DRIFT-CHECK | `skills/spec-pact/fragments/drift-check.md` | "drift" / "노션 변경" / "기획 바뀜" / "동기화" |
+| AMEND | `skills/spec-pact/fragments/amend.md` | "AMEND" / "drift 반영" / "patch" — only when INDEX already has the page |
 
-1. **Read the INDEX.** Resolve the INDEX path from `agent-toolkit.json` — `<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md` — then read it and check whether the same `source_page_id` already exists. If yes, stop with "A SPEC already exists — request AMEND to update it." on a single line; do not switch modes in the same turn.
-2. **Read the journal.** `journal_read({ pageId, kind: "spec_anchor" })` — quote any prior agreement when present.
-3. **Read Notion.** For short/normal pages, `notion_get(input)` — cache-first. For long pages or requests about "필요한 작업만" / "기능 단위" / "이슈로 쪼개기", use `notion_extract(input)` and keep `chunkId` provenance for TODO candidates.
-4. **Decompose the Notion body using the `notion-context` spec-mode format** — `# 문서 요약 / # 요구사항 / # 화면 단위 / # API 의존성 / # TODO / # 확인 필요 사항`. When `notion_extract` was used, seed `# 합의 TODO` negotiation from `extracted.todos` and API negotiation from `extracted.apis`, but do not auto-lock them without caller agreement.
-5. **Negotiate section by section with the caller.** For each section, ask in a single turn whether to keep / drop / edit / defer (multiple questions are fine in one turn). When `합의 TODO > 5` or the request mentions "리팩터 / 재설계 / 마이그레이션", attach a single suggestion line ("Recommend delegating negotiation to Sisyphus / Superpowers — delegate?").
-6. **Write the SPEC.** Default to slug mode at `<spec.dir>/<slug>.md` (default `.agent/specs/<slug>.md`). When the user supplied a path, write there (directory mode).
-7. **Update the INDEX.** Add a new row, update `generated_at`.
-8. **Append to the journal.** `journal_append({ kind: "spec_anchor", content: "<slug> v1 anchored", tags: ["spec-pact","v1"], pageId })`. When negotiation was delegated, add `"delegated:<agent>"` to `tags`.
-
-### SPEC frontmatter (DRAFT)
-
-```yaml
----
-source_page_id: "<8-4-4-4-12>"
-source_url: "https://www.notion.so/..."
-source_content_hash: "<entry.contentHash from notion_get>"
-agreed_at: "<ISO8601>"
-agreed_sections: ["요구사항", "화면", "API", "TODO"]
-negotiator_agent: "grace"
-spec_pact_version: 1
-slug: "<slug>"
-status: "locked"
----
-```
-
-### SPEC body (DRAFT, in this exact order)
-
-```markdown
-# 요약
-한 단락. 합의된 작업의 목적과 맥락.
-
-# 합의 요구사항
-- 합의된 요구만. 보류 / 미결정은 `보류된 이슈` 로.
-
-# 합의 화면
-- 화면명 — 합의된 컴포넌트 / 동작 / 상태.
-
-# API 의존성
-- METHOD /path — 호출 시점, 요청/응답 핵심 필드. 외부 spec 이 있으면 host:env:spec handle 인용.
-
-# 합의 TODO
-- 1 bullet = 1 작업 단위. 코드 작성 가능한 수준.
-
-# 보류된 이슈
-- "확인 필요 / 다음 합의로 미룸" 항목. 합의 항목과 분리.
-
-# 변경 이력
-- 2026-05-01 v1 anchored — 노션 hash <앞 8자> 기준
-```
-
-## Mode 2 — VERIFY
-
-Convert the SPEC's `합의 TODO` and `API 의존성` into a checklist that the caller verifies against the code. grace does not run code or grep itself — the caller answers.
-
-### Steps
-
-1. **Locate the SPEC path from the INDEX.** Look up by `source_page_id`, or by the slug / path the user provided.
-2. **Read the SPEC.** Pull frontmatter + `합의 TODO` + `API 의존성`.
-3. **Build the checklist.** For each item: `- [ ] <item> — grep hint: \`<token>\` / expected location: <path glob>`. Pull grep hints / location patterns directly from the agreed tokens (operationId, path segments, component names) — never guess.
-4. **Collect the caller's response.** The caller answers each item with ✅ / ❌ / ⏸ and optionally a `file:line`. When no answer comes back, stop the turn — the caller must come back with answers in a follow-up turn.
-5. **Append to the journal.** `journal_append({ kind: "spec_verify_result", content: "<slug> verify: <pass>/<fail>/<defer>", tags: ["spec-pact","verify"], pageId })`.
-6. **Update the INDEX (conditional).** When all items pass, add `status: verified` + `verified_at` to the SPEC frontmatter and flip the INDEX status to `verified`. Otherwise leave the status as is.
-
-### Output format (VERIFY)
-
-```markdown
-# SPEC 검증 — <slug> (v<n>)
-
-> source: <Notion URL>
-> path: <SPEC path>
-
-## 합의 TODO 체크리스트
-- [ ] <TODO 1> — grep hint: `<token>` / expected location: `<path glob>`
-- [ ] <TODO 2> — …
-
-## API 의존성 체크리스트
-- [ ] METHOD /path — grep hint: `<operationId or path>` / expected location: `<path glob>`
-- [ ] …
-
-## 다음 단계
-- 항목별 응답 (✅ / ❌ / ⏸ + file:line) 을 들고 다시 `@grace` 로 호출하면 결과를 INDEX 에 반영합니다.
-```
-
-## Mode 3 — DRIFT-CHECK
-
-Compare the SPEC's `source_content_hash` against the current Notion body's hash.
-
-### Steps
-
-1. **Locate the SPEC path from the INDEX.**
-2. **Read the SPEC frontmatter.** Pull `source_page_id`, `source_content_hash`.
-3. **Call `notion_get(source_page_id)`** — compare against `entry.contentHash`.
-4. **When equal**: emit a single "no drift" line + `journal_append({ kind: "note", content: "<slug> drift-clear", tags: ["spec-pact","drift-clear"], pageId })` + stop.
-5. **When different**: re-decompose the Notion body in `notion-context` spec mode → produce a section-by-section unified diff against the SPEC's `agreed_sections` → flip the INDEX status to `drifted` → `journal_append({ kind: "spec_drift", content: "<slug> drift detected", tags: ["spec-pact","drift"], pageId })` → recommend AMEND on a single line.
-
-### Output format (DRIFT-CHECK, on drift)
-
-```markdown
-# SPEC drift — <slug> (v<n>)
-
-> source: <Notion URL>
-> SPEC hash: <앞 8자> → Notion hash: <앞 8자>
-
-## 섹션별 변경
-### 합의 요구사항
-```diff
-- 기존 항목 …
-+ 변경된 항목 …
-```
-
-### 합의 화면 / API 의존성 / 합의 TODO …
-
-## 다음 단계
-- `@grace AMEND <slug>` 로 항목별 keep / update / reject 를 합의해 SPEC 을 v<n+1> 로 잠급니다.
-```
-
-## Mode 4 — AMEND
-
-Patch the SPEC in response to drift or an explicit user request.
-
-### Steps
-
-1. **Locate the SPEC path from the INDEX.**
-2. **Reuse the DRIFT-CHECK diff** — either attached to the caller's message in the same turn, or pulled from the prior `journal_read({ pageId, kind: "spec_drift" })`.
-3. **Negotiate per item** — keep / update / reject. `update` writes new content; `reject` removes the item from the SPEC and moves it to `보류된 이슈`.
-4. **Patch the SPEC body and frontmatter** — set `source_content_hash` to the new Notion hash, `agreed_at` to the current ISO8601, `status: locked`, and append a single line to `# 변경 이력` (`<date> v<n+1> amended — based on Notion hash <첫 8자>`).
-5. **Update the INDEX** — set the row's `v` / `Anchored` / `Status` to the new values.
-6. **Append to the journal.** `journal_append({ kind: "spec_amendment", content: "<slug> v<n+1> amended", tags: ["spec-pact","v<n+1>"], pageId })`.
-
-### Output format (AMEND)
-
-```markdown
-# SPEC amend — <slug> v<n> → v<n+1>
-
-> source: <Notion URL>
-> SPEC: <SPEC path>
-
-## 적용된 변경
-- 합의 요구사항 → <update / reject / keep summary>
-- 합의 화면 → …
-- API 의존성 → …
-- 합의 TODO → …
-
-## 보류된 이슈 (정식 합의 외)
-- …
-
-## 변경 이력 (한 줄 append)
-- <date> v<n+1> amended — based on Notion hash <첫 8자>
-```
+The fragments contain the per-mode `Steps` and `Output format`. The journal kind / tag table above stays in this SKILL.md core — it is shared across modes.
 
 ## Writing rules
 
