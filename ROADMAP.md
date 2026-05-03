@@ -87,8 +87,8 @@
     - **Out-of-scope**: OmO source 변경, OmO 가 없는 환경에서 OmO harness 흉내내기.
     - **트리거**: 첫 사용자 환경에서 OmO 와 함께 굴리면서 "이 부분은 OmO 에 맡기는 게 더 깔끔하다" 가 관찰될 때.
   - **Phase 6.C — Journal 기반 compaction snapshot** *(6 의 sub, deps 0)*
-    - opencode `experimental.session.compacting` hook 에서 journal 의 최근 항목을 우선순위 정렬 (`spec_anchor` / `spec_amendment` / `decision` / `blocker` 우선, `note` 후순위, 같은 kind 면 최신순) 해 짧은 스냅샷 (`.agent/session-resume.md` 또는 journal 의 `note` kind 의 reserved 태그) 으로 떨궈두고, 다음 turn 시작 시 Rocky 가 자동 read.
-    - token budget 안에서 잘라낸다 (e.g., ≤2 KB) — 낮은 우선순위 항목부터 drop. journal 자체는 손대지 않는다 (스냅샷은 파생 산출물).
+    - opencode `experimental.session.compacting` hook 에서 journal 의 최근 항목을 우선순위 정렬 (`spec_anchor` / `spec_amendment` / `decision` / `blocker` 우선, `note` 후순위, 같은 kind 면 최신순) 해 짧은 스냅샷 파일 (`.agent/session-resume.md`) 로 떨궈두고, 다음 turn 시작 시 Rocky 가 자동 read.
+    - 스냅샷 크기는 짧게 유지 (e.g., 파일 ≤2 KB) — 한도 초과 시 낮은 우선순위 항목부터 drop. journal 자체는 손대지 않는다 (스냅샷은 파생 산출물).
     - opencode SessionStart hook 이 ship 되면 — 새 세션 / `--continue` 진입 시점에서도 같은 스냅샷을 자동 주입해 "직전 작업 재개" 가 한 hop 으로 줄어든다. 현재는 사용자가 명시적으로 `journal_search` 해야 하는 단계.
     - 의존성 0 — 외부 store (SQLite / FTS5 등) 는 도입하지 않는다. journal 은 이미 디스크에 있고 우선순위 정렬은 in-memory 로 충분.
     - **6.A 와의 관계**: 스냅샷은 6.A 의 "조건부 fragment" 의 한 종류 (`rocky.fragment.session-resume.md` 류). 6.A 가 정착하면 같은 layer 위에 자연스럽게 올라간다.
