@@ -7,7 +7,6 @@ import { AgentJournal, JOURNAL_FILE } from "./agent-journal";
 const PAGE = "1234abcd1234abcd1234abcd1234abcd";
 const PAGE_DASHED = "1234abcd-1234-abcd-1234-abcd1234abcd";
 const OTHER_PAGE = "abcd1234abcd1234abcd1234abcd1234";
-const OTHER_PAGE_DASHED = "abcd1234-abcd-1234-abcd-1234abcd1234";
 
 let dir: string;
 let journal: AgentJournal;

@@ -4,6 +4,9 @@
     "indentStyle": "space",
     "indentWidth": 2
   },
+  "files": {
+    "includes": ["**", "!.sisyphus"]
+  },
   "assist": {
     "enabled": false
   },

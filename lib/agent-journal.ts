@@ -351,7 +351,7 @@ function capOrDefault(limit: unknown): number {
 function entryMatchesNeedle(entry: JournalEntry, needle: string): boolean {
   if (entry.content.toLowerCase().includes(needle)) return true;
   if (entry.kind.toLowerCase().includes(needle)) return true;
-  if (entry.pageId && entry.pageId.toLowerCase().includes(needle)) return true;
+  if (entry.pageId?.toLowerCase().includes(needle)) return true;
   for (const t of entry.tags) {
     if (t.toLowerCase().includes(needle)) return true;
   }

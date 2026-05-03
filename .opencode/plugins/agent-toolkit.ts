@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url";
 import {
   type NotionCache,
   resolveCacheKey,
-  notionToMarkdown,
   createCacheFromEnv,
   type RawNotionPage,
   type NotionPageResult,
@@ -55,7 +54,6 @@ import {
   listTables as mysqlListTables,
   pingHandle as mysqlPingHandle,
   runReadonlyQuery as mysqlRunReadonlyQuery,
-  type MysqlExecutor,
   type MysqlQueryResult,
   type RunReadonlyQueryOptions,
 } from "../../lib/mysql-context";
@@ -275,7 +273,7 @@ export async function downloadOpenapiSpec(
     let data: unknown;
     try {
       data = JSON.parse(text);
-    } catch (parseErr) {
+    } catch {
       throw new Error(
         `OpenAPI download from ${specUrl} returned non-JSON body (first 120 chars: ${text.slice(0, 120)})`,
       );
