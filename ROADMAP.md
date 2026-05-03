@@ -86,6 +86,13 @@
     - **감지 방법**: opencode plugin API 가 다른 plugin 을 introspect 못 하므로, 환경변수 (`AGENT_TOOLKIT_OMO_HARNESS=1`) 또는 `opencode.json` 의 `plugin` 배열에 `oh-my-openagent` 가 보이는지로 판단. 자동 감지가 어려우면 사용자 명시적 opt-in.
     - **Out-of-scope**: OmO source 변경, OmO 가 없는 환경에서 OmO harness 흉내내기.
     - **트리거**: 첫 사용자 환경에서 OmO 와 함께 굴리면서 "이 부분은 OmO 에 맡기는 게 더 깔끔하다" 가 관찰될 때.
+  - **Phase 6.C — Journal 기반 compaction snapshot** *(6 의 sub, deps 0)*
+    - opencode `experimental.session.compacting` hook 에서 journal 의 최근 항목을 우선순위 정렬 (`spec_anchor` / `spec_amendment` / `decision` / `blocker` 우선, `note` 후순위, 같은 kind 면 최신순) 해 짧은 스냅샷 (`.agent/session-resume.md` 또는 journal 의 `note` kind 의 reserved 태그) 으로 떨궈두고, 다음 turn 시작 시 Rocky 가 자동 read.
+    - token budget 안에서 잘라낸다 (e.g., ≤2 KB) — 낮은 우선순위 항목부터 drop. journal 자체는 손대지 않는다 (스냅샷은 파생 산출물).
+    - opencode SessionStart hook 이 ship 되면 — 새 세션 / `--continue` 진입 시점에서도 같은 스냅샷을 자동 주입해 "직전 작업 재개" 가 한 hop 으로 줄어든다. 현재는 사용자가 명시적으로 `journal_search` 해야 하는 단계.
+    - 의존성 0 — 외부 store (SQLite / FTS5 등) 는 도입하지 않는다. journal 은 이미 디스크에 있고 우선순위 정렬은 in-memory 로 충분.
+    - **6.A 와의 관계**: 스냅샷은 6.A 의 "조건부 fragment" 의 한 종류 (`rocky.fragment.session-resume.md` 류). 6.A 가 정착하면 같은 layer 위에 자연스럽게 올라간다.
+    - **트리거**: 사용자가 compaction 후 "직전 turn 의 결정 / blocker 를 다시 인용" 을 두 번 이상 호소할 때, 또는 opencode SessionStart hook 이 ship 될 때.
 - **Phase 7 — Primitive composition foundation** *(미정 후보, 토대 우선)*
   - 새 tool / skill / agent / command / MCP 가 추가될 때 자동으로 "어느 자리에 슬롯되는지 / 어떤 token cost 를 갖는지" 를 surface 하는 **manifest 층**.
   - 각 primitive 가 frontmatter / config 로 다음을 선언:
@@ -161,3 +168,4 @@
 - **Phase 7 의 composition router 자동 vs 수동** — manifest 기반 라우팅이 description-driven routing 을 자동 대체할지, Rocky 가 명시적으로 manifest 를 lookup 할지. 자동화는 token 절감이 크지만 디버그 가능성 / 사용자 control 이 떨어진다. 첫 도입 시점에 결정.
 - **Phase 8 의 외부 primary 충돌 해소 정책** — agent-toolkit 의 키워드와 외부 primary 의 키워드가 겹칠 때, 어느 쪽이 양보할지의 기본 원칙 (트리거 빈도 vs 해당 surface 책임 vs 사용자 선택권). 첫 충돌 사례가 등장하면 해당 규약을 `COEXISTENCE.md` 에 박는다.
 - **Phase 9 의 license / publish 전략** — npm 공개 vs git+ 내부만, scoped vs unscoped, MIT 유지 vs 회사 정책 대응. Phase 9 진입 시 결정.
+- **표면별 출력 cap 정책의 공통화 여부** — `mysql_query` 의 자동 LIMIT, `swagger_search` 의 endpoint 단위 매칭 등 표면별로 큰 응답을 자르는 정책이 박혀 있다. 새 surface 가 늘 때마다 임의 결정하기보다 공통 규칙 (응답 size threshold 넘으면 호출자 intent 로 substring 필터 + 후속 검색용 vocab 노출 같은 패턴) 을 `lib/` 한 곳에 모을지의 결정. 트리거: 새 surface (e.g., GitHub Issue 조회) 가 추가되며 표면별 임의 정책이 두 종 이상 더 늘 때.
