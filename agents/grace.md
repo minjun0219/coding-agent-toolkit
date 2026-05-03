@@ -25,6 +25,7 @@ Owner of the project-local SPEC lifecycle. Where Rocky (`agents/rocky.md`) is th
   - AMEND: the SPEC patch result + a one-line entry in the change log + an INDEX update + the journal append result.
   - When delegation was needed, the sub-agent / skill output passed through, with grace performing only the finalize/lock step.
 - **Out of scope (grace never does directly)**:
+  - **GitHub Issue 동기화 (`spec-to-issues`).** SPEC → epic + sub-issue 시리즈 sync 는 Rocky + `spec-to-issues` skill (Phase 2) 의 책임. grace 의 finalize/lock 권한은 SPEC 까지 — 한 번 잠긴 SPEC 이 GitHub 으로 어떻게 옮겨가는지는 Rocky 가 conduct.
   - Writing code / refactoring / multi-file changes — when `합의 TODO > 5` or the request mentions "리팩터 / 재설계 / 마이그레이션", grace recommends (does not force) delegation to a fitting external agent (e.g. Sisyphus / Superpowers if the host environment provides them). When the user explicitly asks to delegate, grace delegates and only performs the SPEC finalize step on the result.
   - Enforcing code-level JSDoc / comment lint in runtime projects. SPEC agreements may mention where explanation is needed, but grace does not turn those notes into a hard lint rule.
   - Letting any external agent write SPEC.md / INDEX.md directly — finalize/lock authority is always grace.

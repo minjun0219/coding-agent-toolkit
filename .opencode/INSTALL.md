@@ -60,6 +60,17 @@ Then verify the tools are registered:
 > use spec_pact_fragment tool with mode "draft"   # Phase 6.A — returns the DRAFT mode body from the plugin's absolute path
 ```
 
+Optional spec-to-issues smoke (Phase 2 — only after `gh` is installed and authenticated; see "GitHub Issue sync" below):
+
+```
+> use issue_status tool with slug "<existing-locked-spec-slug>"                          # plan only, single `gh issue list` call
+> use issue_create_from_spec tool with slug "<slug>" dryRun true                         # same as issue_status (read-only)
+> use issue_create_from_spec tool with slug "<slug>" dryRun false                        # apply: creates missing subs, then patches/creates the epic
+> use issue_create_from_spec tool with slug "<slug>" dryRun false                        # re-run is a no-op (markers match)
+```
+
+`gh` 미설치면 `GhNotInstalledError`, 미인증이면 `GhAuthError` 가 한 줄 install / login 가이드와 함께 throw.
+
 Optional MySQL smoke (only after registering a `host:env:db` handle in `agent-toolkit.json` and exporting the matching `passwordEnv` / `dsnEnv` variable):
 
 ```
@@ -205,3 +216,49 @@ Neither Rocky nor Grace directly run multi-step implementation work (writing cod
 The SPEC layer lives at `<spec.dir>/<spec.indexFile>` (entry point — default `.agent/specs/INDEX.md`) + `<spec.dir>/<slug>.md` (slug 모드 — default `.agent/specs/<slug>.md`) by convention. To park a SPEC inside a directory subtree (AGENTS.md style), drop `<dir>/SPEC.md` instead — `grace` discovers both via the `**/SPEC.md` glob (toggle `spec.scanDirectorySpec` in `agent-toolkit.json` to disable). All three keys (`spec.dir`, `spec.indexFile`, `spec.scanDirectorySpec`) are overridable via `agent-toolkit.json`.
 
 If the plugin is not registered, or the opencode version does not recognize `agents.paths`, drop a symlink or copy of `agents/rocky.md` and `agents/grace.md` into the project's `.opencode/agents/` instead.
+
+## GitHub Issue sync (Phase 2 — `spec-to-issues` skill / `issue_*` tools)
+
+`spec-to-issues` 는 잠긴 SPEC 의 `# 합의 TODO` 를 GitHub epic + sub-issue 시리즈로 한 방향 동기화한다 (Rocky 가 conduct, Grace 는 책임 외). **모든 GitHub 호출은 사용자 환경의 `gh` CLI 위임으로 처리** — agent-toolkit 은 토큰 / API URL 같은 새 env 변수를 추가하지 않는다.
+
+### Precondition
+
+```
+$ gh --version           # required: gh ≥ 2.40 (older gh has --json label shape differences)
+$ gh auth status         # required: exit 0 — `gh` must be authenticated for the target repo
+$ gh auth login --scopes "repo"   # if not authenticated; for GHE add --hostname <your-host>
+```
+
+`gh` 가 PATH 에 없거나 인증되지 않으면 plugin 이 한 줄 install / login 가이드와 함께 throw 한다 (재시도 X).
+
+### `agent-toolkit.json` `github` 객체 (선택)
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/minjun0219/agent-toolkit/main/agent-toolkit.schema.json",
+  "github": {
+    "repo": "minjun0219/agent-toolkit",
+    "defaultLabels": ["spec-pact"]
+  }
+}
+```
+
+- `repo` (선택) — `owner/name`. 미지정 시 `gh repo view --json nameWithOwner` 가 cwd 에서 자동 감지. tool param `repo` 가 이 값을 override.
+- `defaultLabels` (선택, 기본 `["spec-pact"]`) — sync 가 새 issue 에 부착할 라벨 배열. **`[0]` 이 dedupe 검색 (`gh issue list --label`) 의 1차 필터**라 stable 해야 한다. `^[a-zA-Z0-9_-]+$` 패턴만 허용 (콜론 / 공백 X).
+
+### 사용 예 (Rocky 경유)
+
+```
+@rocky user-auth SPEC 의 GitHub 이슈 상태 보여줘                # → issue_status (dryRun, plan only)
+@rocky user-auth SPEC 을 이슈로 만들어줘                         # → issue_create_from_spec dryRun=true 먼저
+                                                                # → 사용자 확인 후 dryRun=false 로 apply
+@rocky user-auth 에 새 bullet 추가했어, 이슈 추가 동기화해줘     # → 같은 호출, 새 sub 만 생성 + epic body patch
+```
+
+### 멱등 보증
+
+- 마커 (HTML 주석) 기반 dedupe: `<!-- spec-pact:slug=<slug>:kind=epic -->`, `<!-- spec-pact:slug=<slug>:kind=sub:index=<n> -->`
+- 같은 SPEC 재호출 = no-op (모든 marker 매칭 → reuse)
+- bullet 추가 = 새 sub 만 생성 + epic body 의 task list 자동 patch
+- bullet 삭제 = orphan 으로 surface 만 (close 하지 않음)
+- 제목 / 라벨 사람이 바꿔도 marker 가 살아있으면 같은 issue 로 인식

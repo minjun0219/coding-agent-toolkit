@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { NotionCache } from "../../lib/notion-context";
@@ -7,7 +7,10 @@ import { OpenapiCache } from "../../lib/openapi-context";
 import type { OpenapiRegistry } from "../../lib/toolkit-config";
 import { AgentJournal } from "../../lib/agent-journal";
 import type { FieldPacket, RowDataPacket } from "mysql2/promise";
+import type { GhExecResult, GhExecutor } from "../../lib/gh-cli";
 import agentToolkitPlugin, {
+  handleIssueCreateFromSpec,
+  handleIssueStatus,
   handleJournalAppend,
   handleJournalRead,
   handleJournalSearch,
@@ -775,5 +778,214 @@ describe("handleMysqlQuery", () => {
       "SHOW TABLES",
     );
     expect(fake.seen[0]).toBe("SHOW TABLES");
+  });
+});
+
+// ── spec-to-issues (Phase 2 — gh CLI delegated) ──────────────────────────────
+
+const SPEC_PAGE_ID = "1234abcd1234abcd1234abcd1234abcd";
+const validSpec = `---
+slug: "user-auth"
+status: locked
+source_url: "https://www.notion.so/abc"
+source_page_id: "${SPEC_PAGE_ID}"
+spec_pact_version: 1
+---
+
+# 요약
+test
+
+# 합의 TODO
+- 로그인 화면
+- 비밀번호 재설정
+`;
+
+class FakeGhExecutor implements GhExecutor {
+  public seen: Array<{ args: readonly string[]; stdin?: string }> = [];
+  constructor(private readonly responses: GhExecResult[]) {}
+  async run(args: readonly string[], stdin?: string): Promise<GhExecResult> {
+    this.seen.push({ args, stdin });
+    const next = this.responses.shift();
+    if (!next) {
+      throw new Error(
+        `FakeGhExecutor: no response queued for \`gh ${args.join(" ")}\``,
+      );
+    }
+    return next;
+  }
+}
+
+const newJournalDir = (): { dir: string; journal: AgentJournal } => {
+  const dir = mkdtempSync(join(tmpdir(), "issues-journal-"));
+  return { dir, journal: new AgentJournal({ baseDir: dir }) };
+};
+
+const writeSpecFile = (contents: string): { specPath: string; cwd: string } => {
+  const cwd = mkdtempSync(join(tmpdir(), "issues-spec-"));
+  mkdirSync(join(cwd, ".agent", "specs"), { recursive: true });
+  const specPath = join(cwd, ".agent", "specs", "user-auth.md");
+  writeFileSync(specPath, contents);
+  return { specPath, cwd };
+};
+
+describe("handleIssueCreateFromSpec", () => {
+  it("dryRun=true: only `gh auth status` + `gh repo view` + `gh issue list`, plan returned", async () => {
+    const { specPath, cwd } = writeSpecFile(validSpec);
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status
+      { stdout: "x/y\n", stderr: "", exitCode: 0 }, // repo view
+      { stdout: "[]", stderr: "", exitCode: 0 }, // issue list
+    ]);
+    const cwdBefore = process.cwd();
+    process.chdir(cwd);
+    try {
+      const result = await handleIssueCreateFromSpec(
+        exec,
+        journal,
+        {},
+        { slug: "user-auth", dryRun: true },
+      );
+      expect(result.applied).toBeUndefined();
+      expect(result.plan.toCreate.epic).toBe(true);
+      expect(result.plan.toCreate.subs).toEqual([1, 2]);
+      expect(exec.seen.length).toBe(3);
+      expect(exec.seen[0]?.args).toEqual(["auth", "status"]);
+      // journal 1 entry, tagged dry-run
+      const entries = await journal.read({ limit: 1 });
+      expect(entries[0]?.tags).toContain("dry-run");
+      // pageId is normalized by journal — leading char check is enough
+      expect(entries[0]?.pageId?.replace(/-/g, "")).toBe(SPEC_PAGE_ID);
+      expect(specPath).toMatch(/user-auth\.md$/);
+    } finally {
+      process.chdir(cwdBefore);
+    }
+  });
+
+  it("dryRun=false: applies and tags journal `applied`", async () => {
+    const { cwd } = writeSpecFile(validSpec);
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status
+      { stdout: "x/y\n", stderr: "", exitCode: 0 }, // repo view
+      { stdout: "[]", stderr: "", exitCode: 0 }, // issue list
+      { stdout: "https://github.com/x/y/issues/11\n", stderr: "", exitCode: 0 }, // sub 1
+      { stdout: "https://github.com/x/y/issues/12\n", stderr: "", exitCode: 0 }, // sub 2
+      { stdout: "https://github.com/x/y/issues/10\n", stderr: "", exitCode: 0 }, // epic
+    ]);
+    const cwdBefore = process.cwd();
+    process.chdir(cwd);
+    try {
+      const result = await handleIssueCreateFromSpec(
+        exec,
+        journal,
+        {},
+        { slug: "user-auth", dryRun: false },
+      );
+      expect(result.applied?.created.subs.map((s) => s.number)).toEqual([
+        11, 12,
+      ]);
+      expect(result.applied?.created.epic?.number).toBe(10);
+      const entries = await journal.read({ limit: 1 });
+      expect(entries[0]?.tags).toContain("applied");
+    } finally {
+      process.chdir(cwdBefore);
+    }
+  });
+
+  it("rejects when neither slug nor path is given", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([]);
+    await expect(
+      handleIssueCreateFromSpec(exec, journal, {}, { dryRun: true }),
+    ).rejects.toThrow(/one of `slug` or `path` is required/);
+  });
+
+  it("rejects when both slug and path are given", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([]);
+    await expect(
+      handleIssueCreateFromSpec(
+        exec,
+        journal,
+        {},
+        { slug: "x", path: "y", dryRun: true },
+      ),
+    ).rejects.toThrow(/exactly one of `slug` or `path`/);
+  });
+
+  it("uses config.github.repo when no override is given", async () => {
+    const { cwd } = writeSpecFile(validSpec);
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status
+      { stdout: "[]", stderr: "", exitCode: 0 }, // issue list (no repo view since override given)
+    ]);
+    const cwdBefore = process.cwd();
+    process.chdir(cwd);
+    try {
+      await handleIssueCreateFromSpec(
+        exec,
+        journal,
+        { github: { repo: "from-config/repo" } },
+        { slug: "user-auth", dryRun: true },
+      );
+      // 2nd call (issue list) should target from-config/repo
+      const listCall = exec.seen[1];
+      expect(listCall?.args).toContain("from-config/repo");
+    } finally {
+      process.chdir(cwdBefore);
+    }
+  });
+
+  it("tool param `repo` overrides config.github.repo", async () => {
+    const { cwd } = writeSpecFile(validSpec);
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status
+      { stdout: "[]", stderr: "", exitCode: 0 }, // issue list
+    ]);
+    const cwdBefore = process.cwd();
+    process.chdir(cwd);
+    try {
+      await handleIssueCreateFromSpec(
+        exec,
+        journal,
+        { github: { repo: "from-config/repo" } },
+        { slug: "user-auth", repo: "from-param/repo", dryRun: true },
+      );
+      const listCall = exec.seen[1];
+      expect(listCall?.args).toContain("from-param/repo");
+    } finally {
+      process.chdir(cwdBefore);
+    }
+  });
+});
+
+describe("handleIssueStatus", () => {
+  it("forces dryRun=true (read-only alias)", async () => {
+    const { cwd } = writeSpecFile(validSpec);
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status
+      { stdout: "x/y\n", stderr: "", exitCode: 0 }, // repo view
+      { stdout: "[]", stderr: "", exitCode: 0 }, // issue list
+    ]);
+    const cwdBefore = process.cwd();
+    process.chdir(cwd);
+    try {
+      const result = await handleIssueStatus(
+        exec,
+        journal,
+        {},
+        { slug: "user-auth" },
+      );
+      expect(result.applied).toBeUndefined();
+      expect(exec.seen.length).toBe(3); // never called create / edit
+      const entries = await journal.read({ limit: 1 });
+      expect(entries[0]?.tags).toContain("dry-run");
+    } finally {
+      process.chdir(cwdBefore);
+    }
   });
 });
