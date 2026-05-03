@@ -74,12 +74,37 @@ export interface MysqlConnections {
   };
 }
 
+/**
+ * 한 GitHub repository 의 메타. 토킷은 GitHub API 를 직접 호출하지 않으므로 토큰 / 비밀은
+ * 들고 있지 않는다 — 외부 GitHub MCP 서버가 OAuth / PAT 자체 처리.
+ *
+ * 모든 필드 optional — 등록만으로도 의미가 있다 (allow-list 역할).
+ */
+export interface GithubRepositoryProfile {
+  /** 짧은 별명. MVP 에서는 surface 만 — `<alias>#<num>` 핸들 파싱은 미지원. */
+  alias?: string;
+  /** mindy 가 답글 작성 시 고려할 레이블 권고 list (strict 가드는 외부 MCP 책임). */
+  labels?: string[];
+  /** repository default branch 표기 (`main` / `master`). 검증은 안 함. */
+  defaultBranch?: string;
+  /** 머지 권고 모드. 실제 머지는 외부 MCP 가 처리. */
+  mergeMode?: "merge" | "squash" | "rebase";
+}
+
+/** github.repositories 트리. `owner/repo` → profile. */
+export interface GithubRepositories {
+  [ownerRepo: string]: GithubRepositoryProfile;
+}
+
 export interface ToolkitConfig {
   $schema?: string;
   openapi?: {
     registry?: OpenapiRegistry;
   };
   spec?: SpecConfig;
+  github?: {
+    repositories?: GithubRepositories;
+  };
   mysql?: {
     connections?: MysqlConnections;
   };
@@ -128,6 +153,25 @@ export const ID_BODY = "[a-zA-Z0-9_-]+";
 /** host / env / spec 식별자 정규식 (앵커 포함). 콜론은 handle separator 로 예약. */
 export const ID_PATTERN = new RegExp(`^${ID_BODY}$`);
 
+/**
+ * GitHub `owner/repo` 키 패턴.
+ * 슬래시 정확히 1 개 + 양쪽이 `[a-zA-Z0-9_.-]` 본문. 다른 핸들의 콜론 separator 와
+ * 의도적으로 분리된다 (`ID_BODY` 가 슬래시를 허용하지 않으므로 별도 정규식 신설).
+ */
+const GITHUB_REPO_BODY = "[a-zA-Z0-9_.-]+";
+const GITHUB_REPO_PATTERN = new RegExp(
+  `^${GITHUB_REPO_BODY}\\/${GITHUB_REPO_BODY}$`,
+);
+
+const ALLOWED_GITHUB_REPO_KEYS = new Set([
+  "alias",
+  "labels",
+  "defaultBranch",
+  "mergeMode",
+]);
+
+const ALLOWED_GITHUB_MERGE_MODES = new Set(["merge", "squash", "rebase"]);
+
 /** 레지스트리 leaf URL 에 허용되는 스킴. spec 다운로드 단이 받는 종류와 동일. */
 const URL_SCHEMES = new Set(["http:", "https:", "file:"]);
 
@@ -170,7 +214,103 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
       validateMysqlConnections(my.connections, source);
     }
   }
+  if (config.github !== undefined) {
+    if (
+      config.github === null ||
+      typeof config.github !== "object" ||
+      Array.isArray(config.github)
+    ) {
+      throw new Error(`${source}: github must be an object`);
+    }
+    const gh = config.github as Record<string, unknown>;
+    if (gh.repositories !== undefined) {
+      validateGithubRepositories(gh.repositories, source);
+    }
+  }
   return config as ToolkitConfig;
+}
+
+/**
+ * `github.repositories` 트리 검증. owner/repo 패턴 + leaf profile 의 4 종 필드 허용.
+ * 미지원 key 는 reject (오타 가드, 스키마 lockstep). 스키마와 동일 모양으로 외부 GitHub
+ * MCP 의 책임 영역인 토큰 / 비밀은 받지 않는다 — token / passwordEnv 같은 키가 들어오면 reject.
+ */
+function validateGithubRepositories(
+  repos: unknown,
+  source: string,
+): asserts repos is GithubRepositories {
+  if (repos === null || typeof repos !== "object" || Array.isArray(repos)) {
+    throw new Error(`${source}: github.repositories must be an object`);
+  }
+  for (const [key, profile] of Object.entries(
+    repos as Record<string, unknown>,
+  )) {
+    if (!GITHUB_REPO_PATTERN.test(key)) {
+      throw new Error(
+        `${source}: github repository key "${key}" must match ${GITHUB_REPO_PATTERN} (owner/repo, body characters: alphanumeric, "_", ".", "-")`,
+      );
+    }
+    validateGithubRepositoryProfile(
+      profile,
+      `${source}: github.repositories["${key}"]`,
+    );
+  }
+}
+
+function validateGithubRepositoryProfile(
+  profile: unknown,
+  where: string,
+): void {
+  if (
+    profile === null ||
+    typeof profile !== "object" ||
+    Array.isArray(profile)
+  ) {
+    throw new Error(`${where} must be a repository-profile object`);
+  }
+  const p = profile as Record<string, unknown>;
+  for (const key of Object.keys(p)) {
+    if (!ALLOWED_GITHUB_REPO_KEYS.has(key)) {
+      throw new Error(
+        `${where} has unsupported key "${key}" — allowed: ${[...ALLOWED_GITHUB_REPO_KEYS].join(", ")}`,
+      );
+    }
+  }
+  if (p.alias !== undefined) {
+    if (typeof p.alias !== "string" || !ID_PATTERN.test(p.alias)) {
+      throw new Error(
+        `${where}.alias must match ${ID_PATTERN} (alphanumeric, "_" or "-")`,
+      );
+    }
+  }
+  if (p.labels !== undefined) {
+    if (!Array.isArray(p.labels)) {
+      throw new Error(`${where}.labels must be an array of strings`);
+    }
+    for (const [i, label] of p.labels.entries()) {
+      if (typeof label !== "string" || label.trim().length === 0) {
+        throw new Error(`${where}.labels[${i}] must be a non-empty string`);
+      }
+    }
+  }
+  if (p.defaultBranch !== undefined) {
+    if (
+      typeof p.defaultBranch !== "string" ||
+      p.defaultBranch.trim().length === 0
+    ) {
+      throw new Error(`${where}.defaultBranch must be a non-empty string`);
+    }
+  }
+  if (p.mergeMode !== undefined) {
+    if (
+      typeof p.mergeMode !== "string" ||
+      !ALLOWED_GITHUB_MERGE_MODES.has(p.mergeMode)
+    ) {
+      throw new Error(
+        `${where}.mergeMode must be one of ${[...ALLOWED_GITHUB_MERGE_MODES].join(" / ")}`,
+      );
+    }
+  }
 }
 
 /**
@@ -470,6 +610,14 @@ export function mergeConfigs(
           out.mysql.connections[host]![env]![db] = profile;
         }
       }
+    }
+  }
+  if (project.github?.repositories) {
+    out.github ??= {};
+    out.github.repositories ??= {};
+    for (const [repo, profile] of Object.entries(project.github.repositories)) {
+      // profile 자체가 leaf — project 가 user 의 profile 을 통째로 덮어쓴다 (mysql 과 동일).
+      out.github.repositories[repo] = profile;
     }
   }
   return out;

@@ -61,6 +61,18 @@ import {
   listRegistry as listMysqlRegistry,
   type MysqlRegistryEntry,
 } from "../../lib/mysql-registry";
+import {
+  buildAppend as buildPrAppend,
+  normalizeEventRef,
+  parsePrHandle,
+  reduceActiveWatches,
+  reducePendingEvents,
+  RESOLVE_DECISIONS,
+  type PendingPrEvent,
+  type PrEventType,
+  type PrWatchState,
+  type ResolveDecision,
+} from "../../lib/pr-watch";
 
 /**
  * opencode plugin entrypoint (Superpowers 형식).
@@ -467,6 +479,233 @@ export async function handleJournalStatus(
   return journal.status();
 }
 
+// ── PR review watch 도구 핸들러 ──────────────────────────────────────────────
+//
+// 6개 모두 export 한다 — 단위테스트가 fake `AgentJournal` 을 직접 주입할 수 있도록.
+// 어떤 핸들러도 GitHub API 를 직접 호출하지 않는다 (외부 GitHub MCP 책임). 모든 상태는
+// agent-journal 위에 reducer 로 표현된다 — 핸들러는 reducer 와 buildAppend 결과를
+// `journal.append` 로 흘려보내는 얇은 layer 일 뿐.
+//
+// 사용 패턴 요약:
+//   - `pr_watch_start` / `_stop` / `_status`        watch lifecycle
+//   - `pr_event_record`                             외부 MCP 가 가져온 코멘트/리뷰/체크/머지 신호 1 건 흡수
+//   - `pr_event_pending`                            한 핸들의 미처리 이벤트 list
+//   - `pr_event_resolve`                            mindy 의 검증 결과 (accepted / rejected / deferred)
+
+export interface PrWatchStartInput {
+  handle: string;
+  note?: string;
+  labels?: string[];
+  mergeMode?: string;
+}
+
+export interface PrWatchStartResult {
+  entry: JournalEntry;
+  state: PrWatchState;
+}
+
+/** 도구 핸들러: PR watch 시작. `pr_watch_start` 한 줄 append + 갱신된 state 반환. */
+export async function handlePrWatchStart(
+  journal: AgentJournal,
+  input: PrWatchStartInput,
+): Promise<PrWatchStartResult> {
+  const handle = parsePrHandle(input.handle);
+  const entry = await journal.append(
+    buildPrAppend({
+      kind: "pr_watch_start",
+      data: {
+        handle,
+        note: input.note,
+        labels: input.labels,
+        mergeMode: input.mergeMode,
+      },
+    }),
+  );
+  const state =
+    findStateForHandle(
+      await readAllJournalEntries(journal),
+      handle.canonical,
+    ) ??
+    ({
+      handle,
+      active: true,
+      startedAt: entry.timestamp,
+    } satisfies PrWatchState);
+  return { entry, state };
+}
+
+export interface PrWatchStopInput {
+  handle: string;
+  reason?: string;
+}
+
+export interface PrWatchStopResult {
+  entry: JournalEntry;
+  /** stop 직후 active 가 빠진 final state — caller 가 watch 가 끊긴 시점을 한 번에 본다. */
+  state: PrWatchState;
+}
+
+export async function handlePrWatchStop(
+  journal: AgentJournal,
+  input: PrWatchStopInput,
+): Promise<PrWatchStopResult> {
+  const handle = parsePrHandle(input.handle);
+  const entry = await journal.append(
+    buildPrAppend({
+      kind: "pr_watch_stop",
+      data: { handle, reason: input.reason },
+    }),
+  );
+  return {
+    entry,
+    state: {
+      handle,
+      active: false,
+      stoppedAt: entry.timestamp,
+    },
+  };
+}
+
+export interface PrWatchStatusResult {
+  active: PrWatchState[];
+  totals: { active: number; pending: number };
+}
+
+/**
+ * 등록된 모든 active watch + 그 PR 들의 미처리 이벤트 합계.
+ * 인자가 없는 도구 — `*_envs` / `journal_status` 와 같은 패턴.
+ */
+export async function handlePrWatchStatus(
+  journal: AgentJournal,
+): Promise<PrWatchStatusResult> {
+  const all = await readAllJournalEntries(journal);
+  const active = reduceActiveWatches(all);
+  let pending = 0;
+  for (const s of active) {
+    pending += reducePendingEvents(s.handle, all).length;
+  }
+  return {
+    active,
+    totals: { active: active.length, pending },
+  };
+}
+
+export interface PrEventRecordInput {
+  handle: string;
+  type: string;
+  externalId: string;
+  summary: string;
+}
+
+export interface PrEventRecordResult {
+  entry: JournalEntry;
+  ref: { type: PrEventType; externalId: string; toolkitKey: string };
+  /** 같은 toolkitKey 가 이미 inbound 로 박혀 있었던 경우 true — caller (mindy) 가 처리 안 함. */
+  alreadySeen: boolean;
+}
+
+/**
+ * 외부 GitHub MCP 가 가져온 이벤트 1 건을 큐에 등록한다.
+ *
+ * polling 정의상 같은 코멘트가 두 번 들어올 수 있다 — 같은 toolkitKey 가 이미 있으면 entry
+ * 자체는 두 번째도 append 하되 (append-only 원칙), `alreadySeen: true` 로 caller 에 신호.
+ * mindy 는 이 플래그를 보고 처리 분기 — *디스크 dedup 은 하지 않는다*.
+ */
+export async function handlePrEventRecord(
+  journal: AgentJournal,
+  input: PrEventRecordInput,
+): Promise<PrEventRecordResult> {
+  const handle = parsePrHandle(input.handle);
+  const ref = normalizeEventRef(input.type, input.externalId);
+  const before = await readAllJournalEntries(journal);
+  const alreadySeen = reducePendingEvents(handle, before).some(
+    (p) => p.ref.toolkitKey === ref.toolkitKey,
+  );
+  const entry = await journal.append(
+    buildPrAppend({
+      kind: "pr_event_inbound",
+      data: { handle, ref, summary: input.summary },
+    }),
+  );
+  return { entry, ref, alreadySeen };
+}
+
+/**
+ * 한 핸들의 미처리 이벤트 (inbound 가 있고 같은 toolkitKey 의 resolved 가 없는 것).
+ * 시간 오름차순 — caller (mindy) 가 PULL → VALIDATE 흐름으로 위에서부터 본다.
+ */
+export async function handlePrEventPending(
+  journal: AgentJournal,
+  handleInput: string,
+): Promise<PendingPrEvent[]> {
+  const handle = parsePrHandle(handleInput);
+  return reducePendingEvents(handle, await readAllJournalEntries(journal));
+}
+
+export interface PrEventResolveInput {
+  handle: string;
+  type: string;
+  externalId: string;
+  decision: ResolveDecision;
+  reasoning: string;
+  replyExternalId?: string;
+}
+
+export interface PrEventResolveResult {
+  entry: JournalEntry;
+  resolved: { type: PrEventType; externalId: string; toolkitKey: string };
+}
+
+/** mindy 의 검증 결과를 박는다. decision 검증은 `buildPrAppend` 가 처리. */
+export async function handlePrEventResolve(
+  journal: AgentJournal,
+  input: PrEventResolveInput,
+): Promise<PrEventResolveResult> {
+  const handle = parsePrHandle(input.handle);
+  const ref = normalizeEventRef(input.type, input.externalId);
+  if (!RESOLVE_DECISIONS.includes(input.decision)) {
+    throw new Error(
+      `pr_event_resolve: decision must be one of ${RESOLVE_DECISIONS.join(", ")} — got "${input.decision}"`,
+    );
+  }
+  const entry = await journal.append(
+    buildPrAppend({
+      kind: "pr_event_resolved",
+      data: {
+        handle,
+        ref,
+        decision: input.decision,
+        reasoning: input.reasoning,
+        replyExternalId: input.replyExternalId,
+      },
+    }),
+  );
+  return { entry, resolved: ref };
+}
+
+/**
+ * journal 전체를 시간 오름차순으로 한 번 읽어 reducer 들에 넘긴다.
+ * `journal.read({ limit })` 는 최신순 → reducer 의 가정 (시간순) 에 맞게 reverse.
+ */
+async function readAllJournalEntries(
+  journal: AgentJournal,
+): Promise<JournalEntry[]> {
+  // 큰 PR 라이프사이클이라도 entry 수가 폭증하기 전에 caller (sub-agent) 가 stop /
+  // resolve 로 추리는 흐름이라, 단일 read 의 비용이 실용적이다. 한계가 보이면 별도 인덱싱.
+  const recent = await journal.read({ limit: 5000 });
+  return [...recent].reverse();
+}
+
+function findStateForHandle(
+  entries: JournalEntry[],
+  canonical: string,
+): PrWatchState | undefined {
+  for (const s of reduceActiveWatches(entries)) {
+    if (s.handle.canonical === canonical) return s;
+  }
+  return undefined;
+}
+
 // ── MySQL 도구 핸들러 ────────────────────────────────────────────────────────
 //
 // 5개 모두 export 한다 — 단위테스트가 fake `MysqlExecutor` 또는 fake `ToolkitConfig` 를
@@ -767,6 +1006,129 @@ export default async function agentToolkitPlugin(_input: unknown) {
         parameters: {},
         async handler() {
           return handleJournalStatus(journal);
+        },
+      },
+      pr_watch_start: {
+        description:
+          "GitHub PR review watch 를 시작한다. journal 에 `pr_watch_start` 한 줄 append + 갱신된 watch state 반환. 토킷은 GitHub API 를 직접 호출하지 않는다 — 코멘트/리뷰 수신은 외부 GitHub MCP 가 처리한 결과를 `pr_event_record` 로 등록. (handle: `owner/repo#123` 또는 https://github.com/.../pull/N URL, note?: 한 줄 메모, labels?: 권고 레이블 list, mergeMode?: `merge`/`squash`/`rebase`)",
+        parameters: {
+          handle: { type: "string", required: true },
+          note: { type: "string", required: false },
+          labels: {
+            type: "array",
+            items: { type: "string" },
+            required: false,
+          },
+          mergeMode: { type: "string", required: false },
+        },
+        async handler({
+          handle,
+          note,
+          labels,
+          mergeMode,
+        }: {
+          handle: string;
+          note?: string;
+          labels?: string[];
+          mergeMode?: string;
+        }) {
+          return handlePrWatchStart(journal, {
+            handle,
+            note,
+            labels,
+            mergeMode,
+          });
+        },
+      },
+      pr_watch_stop: {
+        description:
+          "GitHub PR review watch 를 종료한다. journal 에 `pr_watch_stop` 한 줄 append + final state 반환. 머지/닫힘은 외부 GitHub MCP 응답을 caller (mindy) 가 보고 reason 을 박는다. (handle: 등록된 watch 의 handle, reason?: `merged`/`closed`/`manual` 등)",
+        parameters: {
+          handle: { type: "string", required: true },
+          reason: { type: "string", required: false },
+        },
+        async handler({ handle, reason }: { handle: string; reason?: string }) {
+          return handlePrWatchStop(journal, { handle, reason });
+        },
+      },
+      pr_watch_status: {
+        description:
+          "현재 active 인 모든 PR watch 와 그 PR 들의 미처리 이벤트 합계를 반환한다. journal 한 번만 reduce — remote 호출 없음. 인자 없음.",
+        parameters: {},
+        async handler() {
+          return handlePrWatchStatus(journal);
+        },
+      },
+      pr_event_record: {
+        description:
+          "외부 GitHub MCP 가 가져온 PR 이벤트 1 건 (코멘트/리뷰/리뷰 코멘트/체크/머지/닫힘) 을 watch 큐에 등록한다. polling 정의상 같은 코멘트가 두 번 들어올 수 있어 — 같은 (type, externalId) 가 이미 있으면 entry 는 두 번째도 append 되지만 `alreadySeen: true` 로 응답 (디스크 dedup 안 함). (handle: PR 핸들, type: `issue_comment`/`pr_review`/`pr_review_comment`/`check_run`/`status`/`merge`/`close`, externalId: 외부 MCP 의 numeric/sha/timestamp id, summary: 한 줄 요약 — author + 짧은 발췌)",
+        parameters: {
+          handle: { type: "string", required: true },
+          type: { type: "string", required: true },
+          externalId: { type: "string", required: true },
+          summary: { type: "string", required: true },
+        },
+        async handler({
+          handle,
+          type,
+          externalId,
+          summary,
+        }: {
+          handle: string;
+          type: string;
+          externalId: string;
+          summary: string;
+        }) {
+          return handlePrEventRecord(journal, {
+            handle,
+            type,
+            externalId,
+            summary,
+          });
+        },
+      },
+      pr_event_pending: {
+        description:
+          "한 PR 핸들의 미처리 이벤트 list. inbound 가 있고 같은 toolkitKey 의 resolved 가 없는 것만 시간 오름차순으로 반환. remote 호출 없음. (handle: PR 핸들)",
+        parameters: { handle: { type: "string", required: true } },
+        async handler({ handle }: { handle: string }) {
+          return handlePrEventPending(journal, handle);
+        },
+      },
+      pr_event_resolve: {
+        description:
+          "PR 이벤트 1 건의 검증 결과를 박는다 — accepted (수정/답글 완료) / rejected (반박 답글 완료) / deferred (다음 turn 으로 미룸). 같은 (type, externalId) 의 inbound 가 이미 있어야 의미가 있음. 외부 GitHub MCP 로의 reply post 자체는 caller (mindy) 가 직접 호출 — 그 commentId 를 `replyExternalId` 로 함께 박아 추후 추적. (handle, type, externalId, decision, reasoning: 한 줄 근거, replyExternalId?: 외부 MCP 가 돌려준 reply commentId)",
+        parameters: {
+          handle: { type: "string", required: true },
+          type: { type: "string", required: true },
+          externalId: { type: "string", required: true },
+          decision: { type: "string", required: true },
+          reasoning: { type: "string", required: true },
+          replyExternalId: { type: "string", required: false },
+        },
+        async handler({
+          handle,
+          type,
+          externalId,
+          decision,
+          reasoning,
+          replyExternalId,
+        }: {
+          handle: string;
+          type: string;
+          externalId: string;
+          decision: ResolveDecision;
+          reasoning: string;
+          replyExternalId?: string;
+        }) {
+          return handlePrEventResolve(journal, {
+            handle,
+            type,
+            externalId,
+            decision,
+            reasoning,
+            replyExternalId,
+          });
         },
       },
       mysql_envs: {

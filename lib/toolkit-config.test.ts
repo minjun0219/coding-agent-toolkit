@@ -378,6 +378,98 @@ describe("validateConfig", () => {
       ),
     ).toThrow(/unsupported key "typo"/);
   });
+
+  it("accepts a github.repositories block with all known fields", () => {
+    expect(() =>
+      validateConfig(
+        {
+          github: {
+            repositories: {
+              "minjun0219/agent-toolkit": {
+                alias: "toolkit",
+                labels: ["bug", "review"],
+                defaultBranch: "main",
+                mergeMode: "squash",
+              },
+            },
+          },
+        },
+        "p",
+      ),
+    ).not.toThrow();
+  });
+
+  it("accepts an empty github.repositories profile object", () => {
+    // 등록만으로도 의미가 있다 — allow-list 역할.
+    expect(() =>
+      validateConfig({ github: { repositories: { "o/r": {} } } }, "p"),
+    ).not.toThrow();
+  });
+
+  it("rejects github repo key without slash", () => {
+    expect(() =>
+      validateConfig({ github: { repositories: { "no-slash": {} } } }, "p"),
+    ).toThrow(/github repository key/);
+  });
+
+  it("rejects github repo key with too many slashes", () => {
+    expect(() =>
+      validateConfig({ github: { repositories: { "a/b/c": {} } } }, "p"),
+    ).toThrow(/github repository key/);
+  });
+
+  it("rejects github profile alias that violates ID_PATTERN", () => {
+    expect(() =>
+      validateConfig(
+        { github: { repositories: { "o/r": { alias: "bad alias" } } } },
+        "p",
+      ),
+    ).toThrow(/alias/);
+  });
+
+  it("rejects github profile mergeMode outside enum", () => {
+    expect(() =>
+      validateConfig(
+        {
+          github: { repositories: { "o/r": { mergeMode: "fast-forward" } } },
+        } as any,
+        "p",
+      ),
+    ).toThrow(/mergeMode/);
+  });
+
+  it("rejects github profile labels with empty string", () => {
+    expect(() =>
+      validateConfig(
+        { github: { repositories: { "o/r": { labels: ["bug", ""] } } } },
+        "p",
+      ),
+    ).toThrow(/labels\[1\]/);
+  });
+
+  it("rejects unsupported github profile keys (typo / token leakage guard)", () => {
+    // token / passwordEnv 같은 키가 들어오면 reject — 외부 MCP 책임 영역과 명확히 분리.
+    expect(() =>
+      validateConfig(
+        {
+          github: {
+            repositories: { "o/r": { token: "ghp_xxx" } },
+          },
+        } as any,
+        "p",
+      ),
+    ).toThrow(/unsupported key "token"/);
+    expect(() =>
+      validateConfig(
+        {
+          github: {
+            repositories: { "o/r": { typo: 1 } },
+          },
+        } as any,
+        "p",
+      ),
+    ).toThrow(/unsupported key "typo"/);
+  });
 });
 
 describe("mergeConfigs — mysql.connections", () => {
@@ -422,6 +514,36 @@ describe("mergeConfigs — mysql.connections", () => {
     expect(merged.mysql?.connections?.acme?.prod?.users?.dsnEnv).toBe("U_DSN");
     expect(merged.mysql?.connections?.acme?.prod?.orders?.dsnEnv).toBe("O_DSN");
     expect(merged.mysql?.connections?.beta?.dev?.svc?.dsnEnv).toBe("S_DSN");
+  });
+});
+
+describe("mergeConfigs — github.repositories", () => {
+  it("project overrides user at the repo profile leaf", () => {
+    const user: ToolkitConfig = {
+      github: {
+        repositories: { "o/r": { alias: "user", mergeMode: "merge" } },
+      },
+    };
+    const project: ToolkitConfig = {
+      github: {
+        repositories: { "o/r": { alias: "project", mergeMode: "squash" } },
+      },
+    };
+    const merged = mergeConfigs(user, project);
+    expect(merged.github?.repositories?.["o/r"]?.alias).toBe("project");
+    expect(merged.github?.repositories?.["o/r"]?.mergeMode).toBe("squash");
+  });
+
+  it("project introduces new repos while user repos survive", () => {
+    const user: ToolkitConfig = {
+      github: { repositories: { "o/r": { alias: "u" } } },
+    };
+    const project: ToolkitConfig = {
+      github: { repositories: { "x/y": { alias: "p" } } },
+    };
+    const merged = mergeConfigs(user, project);
+    expect(merged.github?.repositories?.["o/r"]?.alias).toBe("u");
+    expect(merged.github?.repositories?.["x/y"]?.alias).toBe("p");
   });
 });
 

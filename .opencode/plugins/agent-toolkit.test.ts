@@ -21,6 +21,12 @@ import agentToolkitPlugin, {
   handleNotionExtract,
   handleNotionRefresh,
   handleNotionStatus,
+  handlePrEventPending,
+  handlePrEventRecord,
+  handlePrEventResolve,
+  handlePrWatchStart,
+  handlePrWatchStatus,
+  handlePrWatchStop,
   handleSwaggerEnvs,
   handleSwaggerGet,
   handleSwaggerRefresh,
@@ -501,6 +507,194 @@ describe("journal handlers", () => {
     expect(after.exists).toBe(true);
     expect(after.totalEntries).toBe(1);
     expect(after.lastEntryAt).toBe(last.timestamp);
+  });
+});
+
+// ── PR review watch handlers ────────────────────────────────────────────────
+
+describe("pr-watch handlers", () => {
+  let prDir: string;
+  let prJournal: AgentJournal;
+  const HANDLE = "minjun0219/agent-toolkit#42";
+
+  beforeEach(() => {
+    prDir = mkdtempSync(join(tmpdir(), "plugin-pr-watch-"));
+    prJournal = new AgentJournal({ baseDir: prDir });
+  });
+
+  it("pr_watch_start: writes a pr_watch_start entry and returns active state", async () => {
+    const r = await handlePrWatchStart(prJournal, {
+      handle: HANDLE,
+      note: "review 1차",
+    });
+    expect(r.entry.kind).toBe("pr_watch_start");
+    expect(r.entry.tags[0]).toBe("pr-watch");
+    expect(r.entry.tags).toContain("pr:minjun0219/agent-toolkit#42");
+    expect(r.state.active).toBe(true);
+    expect(r.state.handle.canonical).toBe("minjun0219/agent-toolkit#42");
+  });
+
+  it("pr_watch_start: rejects malformed handles", async () => {
+    await expect(
+      handlePrWatchStart(prJournal, { handle: "not-a-pr" }),
+    ).rejects.toThrow(/cannot parse/);
+  });
+
+  it("pr_watch_status: aggregates active watches and pending counts", async () => {
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      summary: "typo on /api/orders",
+    });
+    await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "2",
+      summary: "missing await",
+    });
+    await handlePrEventResolve(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      decision: "accepted",
+      reasoning: "fixed",
+    });
+    const status = await handlePrWatchStatus(prJournal);
+    expect(status.totals.active).toBe(1);
+    expect(status.totals.pending).toBe(1);
+    expect(status.active.length).toBe(1);
+    expect(status.active[0]?.handle.canonical).toBe(HANDLE);
+  });
+
+  it("pr_watch_stop: flips state to inactive and removes from status", async () => {
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    const stop = await handlePrWatchStop(prJournal, {
+      handle: HANDLE,
+      reason: "merged",
+    });
+    expect(stop.state.active).toBe(false);
+    expect(stop.entry.kind).toBe("pr_watch_stop");
+    expect(stop.entry.tags).toContain("reason:merged");
+    const status = await handlePrWatchStatus(prJournal);
+    expect(status.totals.active).toBe(0);
+  });
+
+  it("pr_event_record: marks alreadySeen=true on duplicate (handle, type, externalId)", async () => {
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    const first = await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      summary: "first",
+    });
+    expect(first.alreadySeen).toBe(false);
+    expect(first.ref.toolkitKey).toBe("c:1");
+    const second = await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      summary: "second poll same comment",
+    });
+    expect(second.alreadySeen).toBe(true);
+    // pending 은 여전히 1개 — dedupe 는 reduce 에서.
+    const pending = await handlePrEventPending(prJournal, HANDLE);
+    expect(pending.length).toBe(1);
+  });
+
+  it("pr_event_record: rejects unsupported type", async () => {
+    await expect(
+      handlePrEventRecord(prJournal, {
+        handle: HANDLE,
+        type: "workflow_run",
+        externalId: "1",
+        summary: "x",
+      }),
+    ).rejects.toThrow(/unsupported type/);
+  });
+
+  it("pr_event_pending: returns pending events in time-ascending order", async () => {
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      summary: "first",
+    });
+    await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "pr_review_comment",
+      externalId: "9",
+      summary: "review-comment",
+    });
+    const pending = await handlePrEventPending(prJournal, HANDLE);
+    expect(pending.length).toBe(2);
+    expect(pending[0]?.ref.toolkitKey).toBe("c:1");
+    expect(pending[1]?.ref.toolkitKey).toBe("rc:9");
+  });
+
+  it("pr_event_resolve: removes the event from pending after acceptance", async () => {
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      summary: "typo",
+    });
+    await handlePrEventResolve(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      decision: "accepted",
+      reasoning: "fixed in commit abc1234",
+      replyExternalId: "5555",
+    });
+    const pending = await handlePrEventPending(prJournal, HANDLE);
+    expect(pending).toEqual([]);
+  });
+
+  it("pr_event_resolve: rejects unknown decision", async () => {
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      summary: "x",
+    });
+    await expect(
+      handlePrEventResolve(prJournal, {
+        handle: HANDLE,
+        type: "issue_comment",
+        externalId: "1",
+        decision: "yes" as never,
+        reasoning: "y",
+      }),
+    ).rejects.toThrow(/decision/);
+  });
+
+  it("end-to-end one-PR turn: start → record × 2 → resolve × 2 → stop → status 0/0", async () => {
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    for (const id of ["1", "2"]) {
+      await handlePrEventRecord(prJournal, {
+        handle: HANDLE,
+        type: "issue_comment",
+        externalId: id,
+        summary: `comment ${id}`,
+      });
+    }
+    for (const id of ["1", "2"]) {
+      await handlePrEventResolve(prJournal, {
+        handle: HANDLE,
+        type: "issue_comment",
+        externalId: id,
+        decision: "accepted",
+        reasoning: `fixed ${id}`,
+      });
+    }
+    await handlePrWatchStop(prJournal, { handle: HANDLE, reason: "merged" });
+    const status = await handlePrWatchStatus(prJournal);
+    expect(status.totals).toEqual({ active: 0, pending: 0 });
   });
 });
 

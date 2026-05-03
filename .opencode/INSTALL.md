@@ -44,7 +44,7 @@ Once opencode is running:
 > use skill tool to list skills
 ```
 
-If `notion-context`, `openapi-client`, `mysql-query`, and `spec-pact` all show up, skills are loaded.
+If `notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, and `pr-review-watch` all show up, skills are loaded.
 
 Then verify the tools are registered:
 
@@ -57,6 +57,17 @@ Then verify the tools are registered:
 > use swagger_envs tool   # flatten the registry from agent-toolkit.json
 > use journal_append tool with content "decided to ship Phase 3" kind "decision"
 > use journal_read tool   # most recent first
+```
+
+Optional PR review watch smoke (works without external GitHub MCP — the toolkit's six `pr_*` tools never call GitHub; mindy reads PR meta / comments through whichever GitHub MCP server you have registered separately):
+
+```
+> use pr_watch_start tool with handle "owner/repo#42" note "review 1차"
+> use pr_watch_status tool                                                       # active watches + pending counts
+> use pr_event_record tool with handle "owner/repo#42" type "issue_comment" externalId "1" summary "user bob: typo on /api/orders"
+> use pr_event_pending tool with handle "owner/repo#42"                         # surfaces the new event
+> use pr_event_resolve tool with handle "owner/repo#42" type "issue_comment" externalId "1" decision "accepted" reasoning "fixed missing await"
+> use pr_watch_stop tool with handle "owner/repo#42" reason "merged"
 ```
 
 Optional MySQL smoke (only after registering a `host:env:db` handle in `agent-toolkit.json` and exporting the matching `passwordEnv` / `dsnEnv` variable):
@@ -150,13 +161,41 @@ After that:
 
 Same identifier rules as `openapi.registry` — `^[a-zA-Z0-9_-]+$` for `host` / `env` / `db`. Mismatched env vars (missing / empty) raise a precise error naming the variable; the loader never logs the credential value.
 
-## Agents (`rocky` + `grace`)
+## GitHub repositories (`agent-toolkit.json`)
 
-`agents/rocky.md` and `agents/grace.md` are registered into opencode's agent path via the plugin's `config` hook. Rocky's `mode: all` shows up both in the primary cycle (Tab) and as a delegation target from another primary agent; Grace's `mode: subagent` only shows up as a delegation target (called by Rocky, by an external primary that happens to share the environment, or by the user via an explicit `@grace`). Neither agent pins a `model:` in its frontmatter — both inherit whatever model the user has selected in the opencode session, so prompts can be swapped between models without editing the agent files.
+PR review watch (`mindy` + `pr-review-watch`) consults `github.repositories` for repo-shaped metadata (alias, advisory labels, default branch, recommended merge mode). **No tokens / secrets live in this file** — credentials are owned by whichever GitHub MCP server you have registered separately. The block exists so mindy can:
 
-Rocky is a work partner with frontend specialty and fullstack range — it conducts the toolkit's two cache-first skills (`notion-context`, `openapi-client`) and the journal as its primary contract, routes the SPEC 합의 lifecycle to `@grace`, and may delegate to external sub-agents / skills when the work exceeds the toolkit.
+- recognize that a given `owner/repo` is in scope (allow-list),
+- surface `defaultBranch` / `mergeMode` hints in its replies,
+- and consult the advisory `labels` list when drafting reply / triage suggestions.
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/minjun0219/agent-toolkit/main/agent-toolkit.schema.json",
+  "github": {
+    "repositories": {
+      "minjun0219/agent-toolkit": {
+        "alias": "toolkit",
+        "labels": ["bug", "review", "ci"],
+        "defaultBranch": "main",
+        "mergeMode": "squash"
+      }
+    }
+  }
+}
+```
+
+The repo key matches `^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$` (= GitHub's owner/repo body characters). Unknown leaf keys (e.g. `token`, `passwordEnv`, `apiKey`) are rejected by the loader — those belong to the external GitHub MCP, not here.
+
+## Agents (`rocky` + `grace` + `mindy`)
+
+`agents/rocky.md`, `agents/grace.md`, and `agents/mindy.md` are registered into opencode's agent path via the plugin's `config` hook. Rocky's `mode: all` shows up both in the primary cycle (Tab) and as a delegation target from another primary agent; Grace's and Mindy's `mode: subagent` only show up as delegation targets (called by Rocky, by an external primary that happens to share the environment, or by the user via an explicit `@grace` / `@mindy`). None of the three pin a `model:` in their frontmatter — all inherit whatever model the user has selected in the opencode session, so prompts can be swapped between models without editing the agent files.
+
+Rocky is a work partner with frontend specialty and fullstack range — it conducts the toolkit's three cache-first skills (`notion-context`, `openapi-client`, `mysql-query`) and the journal as its primary contract, routes the SPEC 합의 lifecycle to `@grace`, routes the PR review watch lifecycle to `@mindy`, and may delegate to external sub-agents / skills when the work exceeds the toolkit.
 
 Grace is the SPEC 합의 lifecycle owner — it conducts the `spec-pact` skill end-to-end (DRAFT / VERIFY / DRIFT-CHECK / AMEND) and is the single finalize/lock authority over the INDEX file (`<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md`, the LLM-wiki-inspired entry point) + SPEC files (`<spec.dir>/<slug>.md` slug 모드 default `.agent/specs/<slug>.md`, or `**/SPEC.md` directory 모드).
+
+Mindy is the PR review watch lifecycle owner — it conducts the `pr-review-watch` skill end-to-end (WATCH-START / PULL / VALIDATE / WATCH-STOP) and is the single finalize authority over `pr_event_resolved` journal entries. Mindy never edits code (`permission.edit: deny`), never runs `bun test` / `tsc` / `gh` CLI (`permission.bash: deny`), never creates / merges PRs, and never calls the GitHub API directly — PR meta / comments / replies / merge state all go through an external GitHub MCP server that you must register in your opencode session separately.
 
 Direct invocation — Notion (context mode):
 
@@ -191,6 +230,16 @@ OpenAPI snippet mode via registered handle (`agent-toolkit.json`):
 @rocky acme:dev:users 의 GET /users/{id} axios 로 작성해줘
 ```
 
+PR review watch (Rocky 가 `@mindy` 로 즉시 위임 + passthrough — 또는 `@mindy` 직접 호출):
+
+```
+@rocky https://github.com/minjun0219/agent-toolkit/pull/42 리뷰 봐줘     # → mindy WATCH-START
+@mindy minjun0219/agent-toolkit#42 코멘트 확인                            # → mindy PULL (외부 GitHub MCP 호출)
+@mindy minjun0219/agent-toolkit#42 1번 검증해줘                          # → mindy VALIDATE (단일 항목)
+@mindy minjun0219/agent-toolkit#42 모두 검증해줘                          # → mindy VALIDATE (전체)
+@mindy minjun0219/agent-toolkit#42 머지됐어                               # → mindy WATCH-STOP (PULL 에서 자동 stop 도 가능)
+```
+
 Chained (Notion → OpenAPI in one turn):
 
 ```
@@ -199,8 +248,8 @@ Chained (Notion → OpenAPI in one turn):
 
 In a setup that already has its own primary agent (e.g. OmO Sisyphus, Superpowers — these are synergies when present, not dependencies), that agent sees `rocky` (and through Rocky, `grace`) in its subagent list (turn start) and routes toolkit-shaped or working-context requests via the description — no need to hard-code Rocky/Grace existence into the upstream agent's system prompt. Routing is not guaranteed; the primary may decide to handle it directly.
 
-Neither Rocky nor Grace directly run multi-step implementation work (writing code, refactor, multi-file changes). When such work is needed, they delegate to an external sub-agent / skill if one fits, or return the request to the caller.
+None of Rocky / Grace / Mindy directly run multi-step implementation work (writing code, refactor, multi-file changes). When such work is needed, they delegate to an external sub-agent / skill if one fits, or return the request to the caller. Mindy is additionally constrained to never call the GitHub API directly, never create / merge PRs, and never run `bun test` / `tsc` / `gh` CLI — those return to the caller (or the external GitHub MCP).
 
 The SPEC layer lives at `<spec.dir>/<spec.indexFile>` (entry point — default `.agent/specs/INDEX.md`) + `<spec.dir>/<slug>.md` (slug 모드 — default `.agent/specs/<slug>.md`) by convention. To park a SPEC inside a directory subtree (AGENTS.md style), drop `<dir>/SPEC.md` instead — `grace` discovers both via the `**/SPEC.md` glob (toggle `spec.scanDirectorySpec` in `agent-toolkit.json` to disable). All three keys (`spec.dir`, `spec.indexFile`, `spec.scanDirectorySpec`) are overridable via `agent-toolkit.json`.
 
-If the plugin is not registered, or the opencode version does not recognize `agents.paths`, drop a symlink or copy of `agents/rocky.md` and `agents/grace.md` into the project's `.opencode/agents/` instead.
+If the plugin is not registered, or the opencode version does not recognize `agents.paths`, drop a symlink or copy of `agents/rocky.md`, `agents/grace.md`, and `agents/mindy.md` into the project's `.opencode/agents/` instead.
