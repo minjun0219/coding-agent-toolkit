@@ -8,8 +8,8 @@ Convert the SPEC's `합의 TODO` and `API 의존성` into a checklist that the c
 2. **Read the SPEC.** Pull frontmatter + `합의 TODO` + `API 의존성`.
 3. **Build the checklist.** For each item: `- [ ] <item> — grep hint: \`<token>\` / expected location: <path glob>`. Pull grep hints / location patterns directly from the agreed tokens (operationId, path segments, component names) — never guess.
 4. **Collect the caller's response.** The caller answers each item with ✅ / ❌ / ⏸ and optionally a `file:line`. When no answer comes back, stop the turn — the caller must come back with answers in a follow-up turn.
-5. **Append to the journal.** `journal_append({ kind: "spec_verify_result", content: "<slug> verify: <pass>/<fail>/<defer>", tags: ["spec-pact","verify"], pageId })`.
-6. **Update the INDEX (conditional).** When all items pass, add `status: verified` + `verified_at` to the SPEC frontmatter and flip the INDEX status to `verified`. Otherwise leave the status as is.
+5. **Append to the journal.** `journal_append({ kind: "spec_verify_result", content: "<slug> verify: <pass>/<fail>/<defer>", tags: ["spec-pact","verify"], pageId })`. The journal entry's timestamp is the canonical "verified-at" record — do not duplicate it into the SPEC frontmatter.
+6. **Update the INDEX (conditional).** When all items pass, flip the SPEC frontmatter `status` to `verified` (the only frontmatter mutation in this mode — `verified_at` lives in the journal entry above + the INDEX row's `Anchored` column, NOT in the SPEC frontmatter, so the shared frontmatter shape stays as defined in `agents/grace.md` / `fragments/draft.md`) and flip the INDEX status to `verified`. Otherwise leave the status as is.
 
 ## Output format (VERIFY)
 

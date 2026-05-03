@@ -1,7 +1,7 @@
 ---
 name: spec-pact
 description: Negotiate, anchor, verify, and amend a project-local SPEC against a Notion 기획문서. Four-mode lifecycle (DRAFT / VERIFY / DRIFT-CHECK / AMEND) on top of an LLM-wiki-inspired INDEX (`<spec.dir>/<spec.indexFile>`, default `.agent/specs/INDEX.md`) and per-page SPEC files (`<spec.dir>/<slug>.md` slug mode, default `.agent/specs/<slug>.md`, or `**/SPEC.md` directory mode). Conducted by the `grace` sub-agent. Auto-trigger when a Notion URL / page id appears together with phrases like "스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영".
-allowed-tools: [notion_get, notion_extract, notion_status, notion_refresh, journal_append, journal_read, journal_search, read, write, edit, glob]
+allowed-tools: [notion_get, notion_extract, notion_status, notion_refresh, journal_append, journal_read, journal_search, spec_pact_fragment, read, write, edit, glob]
 license: MIT
 version: 0.1.0
 ---
@@ -15,7 +15,7 @@ version: 0.1.0
 * Four modes only — DRAFT / VERIFY / DRIFT-CHECK / AMEND. One turn = one mode.
 * Finalize/lock authority always belongs to grace. Even when an external sub-agent / skill participates in negotiation, only grace writes the SPEC frontmatter and INDEX.
 
-> **Mode bodies live under `./fragments/`.** This SKILL.md is the router — it carries the shared rules (Role / Mental model / journal kinds / Tool / Writing / Do-NOT / Failure). The per-mode steps + output formats sit in `skills/spec-pact/fragments/{draft,verify,drift-check,amend}.md`. After grace picks the mode, it `read`s exactly one fragment and follows that fragment verbatim. Phase 6.A foundation — see ROADMAP.
+> **Mode bodies live under `./fragments/`.** This SKILL.md is the router — it carries the shared rules (Role / Mental model / journal kinds / Tool / Writing / Do-NOT / Failure). The per-mode steps + output formats sit in `skills/spec-pact/fragments/{draft,verify,drift-check,amend}.md`. After grace picks the mode, it calls the **`spec_pact_fragment(mode)` plugin tool** (NOT a workspace-relative `read`) so the plugin resolves the fragment path against its own install location — works even when the toolkit is installed externally as `agent-toolkit@git+...`. Phase 6.A foundation — see ROADMAP.
 
 ## Mental model
 
@@ -59,14 +59,16 @@ The four `spec_*` kinds are the **new reserved kinds** introduced by this skill.
 
 ## Mode dispatch
 
-Each mode lives in its own fragment under `./fragments/`. After picking the mode, `read` exactly one fragment and follow the Steps + output format verbatim. **Never read more than one fragment per turn** — that defeats the whole point of the split.
+Each mode lives in its own fragment, fetched via the `spec_pact_fragment(mode)` plugin tool. After picking the mode, call the tool exactly once and follow the returned `content` (its `Steps` + `Output format`) verbatim. **Never call the tool more than once per turn** — that defeats the whole point of the split.
 
-| Mode | Fragment path | Trigger phrases (caller intent) |
+| Mode | Tool call | Trigger phrases (caller intent) |
 |---|---|---|
-| DRAFT | `skills/spec-pact/fragments/draft.md` | "스펙 합의" / "SPEC 작성" — first time the page is seen |
-| VERIFY | `skills/spec-pact/fragments/verify.md` | "SPEC 검증" / "체크리스트" / "코드와 대조" |
-| DRIFT-CHECK | `skills/spec-pact/fragments/drift-check.md` | "drift" / "노션 변경" / "기획 바뀜" / "동기화" |
-| AMEND | `skills/spec-pact/fragments/amend.md` | "AMEND" / "drift 반영" / "patch" — only when INDEX already has the page |
+| DRAFT | `spec_pact_fragment({ mode: "draft" })` | "스펙 합의" / "SPEC 작성" — first time the page is seen |
+| VERIFY | `spec_pact_fragment({ mode: "verify" })` | "SPEC 검증" / "체크리스트" / "코드와 대조" |
+| DRIFT-CHECK | `spec_pact_fragment({ mode: "drift-check" })` | "drift" / "노션 변경" / "기획 바뀜" / "동기화" / **"기획문서 변경 반영"** — first half of the lifecycle hand-off (drift 확인 → AMEND) |
+| AMEND | `spec_pact_fragment({ mode: "amend" })` | "AMEND" / "drift 반영" / "patch" / "기획문서 변경 반영" 의 **두 번째 turn** — DRIFT-CHECK 결과를 본 후 항목별 합의를 적용할 때 |
+
+"기획문서 변경 반영" 같은 양 모드를 걸치는 trigger 는 항상 **DRIFT-CHECK 부터** 시작 — 같은 turn 에 AMEND 까지 진입하지 말고, drift 결과를 caller 에게 surface 한 뒤 follow-up turn 에서 명시적으로 AMEND 로 진입한다 (`Tool usage rules` 5 와 같은 정신).
 
 The fragments contain the per-mode `Steps` and `Output format`. The journal kind / tag table above stays in this SKILL.md core — it is shared across modes.
 

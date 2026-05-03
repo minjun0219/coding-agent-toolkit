@@ -8,7 +8,7 @@ Compare the SPEC's `source_content_hash` against the current Notion body's hash.
 2. **Read the SPEC frontmatter.** Pull `source_page_id`, `source_content_hash`.
 3. **Call `notion_get(source_page_id)`** — compare against `entry.contentHash`.
 4. **When equal**: emit a single "no drift" line + `journal_append({ kind: "note", content: "<slug> drift-clear", tags: ["spec-pact","drift-clear"], pageId })` + stop.
-5. **When different**: re-decompose the Notion body in `notion-context` spec mode → produce a section-by-section unified diff against the SPEC's `agreed_sections` → flip the INDEX status to `drifted` → `journal_append({ kind: "spec_drift", content: "<slug> drift detected", tags: ["spec-pact","drift"], pageId })` → recommend AMEND on a single line.
+5. **When different**: re-decompose the Notion body in `notion-context` spec mode → produce a section-by-section unified diff against the SPEC's `agreed_sections` → flip **both** the SPEC frontmatter `status` **and** the INDEX row's status to `drifted` (keep them in lockstep — the shared frontmatter defines `status: locked | drifted | verified`, so a SPEC file read on its own must report the same drift state as the INDEX) → `journal_append({ kind: "spec_drift", content: "<slug> drift detected", tags: ["spec-pact","drift"], pageId })` → recommend AMEND on a single line.
 
 ## Output format (DRIFT-CHECK, on drift)
 

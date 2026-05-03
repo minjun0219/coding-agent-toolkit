@@ -69,6 +69,15 @@ const savingsVsMonolith = (s: Stat): Stat => ({
   tokens: monolith.tokens - s.tokens,
 });
 
+// 두 번째 시나리오 — host 가 SKILL.md 뿐 아니라 fragments/ 디렉터리까지 함께
+// auto-load 한다고 가정하면, 매 turn 컨텍스트에 들어가는 양은 monolith 와 같다.
+const fragmentsAutoLoaded: Stat = {
+  label: "loaded set: any mode (auto-load all fragments)",
+  lines: monolith.lines,
+  bytes: monolith.bytes,
+  tokens: monolith.tokens,
+};
+
 console.log("# spec-pact fragment cost — Phase 6.A measurement\n");
 console.log(header);
 console.log("-".repeat(header.length));
@@ -77,7 +86,9 @@ for (const frag of fragments) console.log(fmtRow(frag));
 console.log("-".repeat(header.length));
 console.log(fmtRow(monolith));
 console.log("");
-console.log("# Per-mode loaded set (assumes host auto-loads SKILL.md only)");
+console.log(
+  "# Scenario A — host auto-loads SKILL.md only (per-mode loaded set)",
+);
 console.log(header);
 console.log("-".repeat(header.length));
 for (const m of perMode) {
@@ -87,9 +98,19 @@ for (const m of perMode) {
   console.log(`${fmtRow(savings)}  (${pct}% smaller)`);
 }
 console.log("");
+console.log("# Scenario B — host auto-loads SKILL.md + fragments/ together");
+console.log(header);
+console.log("-".repeat(header.length));
+console.log(fmtRow(fragmentsAutoLoaded));
+{
+  const savings = savingsVsMonolith(fragmentsAutoLoaded);
+  const pct = ((savings.bytes / monolith.bytes) * 100).toFixed(1);
+  console.log(`${fmtRow(savings)}  (${pct}% smaller — i.e. no savings)`);
+}
+console.log("");
 console.log(
   "Note: tokens 칸은 bytes/4 근사. 실제 LLM tokenizer 결과와 다를 수 있으나 상대 비교 목적엔 충분.",
 );
 console.log(
-  "Host가 fragments/ 디렉터리도 auto-load 하면 절감은 0 — 다음 PR 에서 fragments 위치 재배치 검토.",
+  "Scenario B 가 실제로 관찰되면 다음 PR 에서 fragments 디렉터리를 skill 레지스트리 밖으로 옮기거나 plugin tool (`spec_pact_fragment`) 만 쓰도록 강제.",
 );

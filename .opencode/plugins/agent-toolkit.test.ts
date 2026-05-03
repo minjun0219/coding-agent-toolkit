@@ -538,6 +538,28 @@ describe("plugin config hook", () => {
   });
 });
 
+describe("spec_pact_fragment tool", () => {
+  it("returns the matching fragment from the plugin's absolute skills path", async () => {
+    const plugin = await agentToolkitPlugin({});
+    const tool = plugin.tool.spec_pact_fragment;
+    const result = await tool.handler({ mode: "draft" });
+
+    expect(result.mode).toBe("draft");
+    expect(result.path.endsWith("skills/spec-pact/fragments/draft.md")).toBe(
+      true,
+    );
+    expect(result.content).toContain("# spec-pact — DRAFT");
+  });
+
+  it("rejects modes that are not in the four-mode set", async () => {
+    const plugin = await agentToolkitPlugin({});
+    const tool = plugin.tool.spec_pact_fragment;
+    await expect(tool.handler({ mode: "plan" })).rejects.toThrow(
+      /expected one of/,
+    );
+  });
+});
+
 // ── MySQL 도구 핸들러 ────────────────────────────────────────────────────────
 
 class MysqlPluginFakeExecutor implements MysqlExecutor {
