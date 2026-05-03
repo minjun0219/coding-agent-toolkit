@@ -75,7 +75,7 @@ mindy uses four **new reserved kinds** for the PR watch lifecycle. These kinds a
 - **외부 GitHub MCP 미등록 / 호출 실패** → 어떤 MCP 도구가 필요한지 한 줄로 명시 (`mcp__github__pull_request_read` 등) 하고 stop. mindy 가 fallback 으로 fetch / gh CLI 를 굴리지 *않는다* — 권한 모델의 핵심.
 - **`agent-toolkit.json` 의 `github.repositories` 미등록 repo** → 진행은 가능 (등록은 advisory), 단 한 줄 안내 — labels / mergeMode 권고가 빠진다.
 - **`pr_event_record` 결과가 모두 `alreadySeen: true`** → PULL 결과를 "새 이벤트 없음" 한 줄로 응답하고 stop.
-- **`pr_event_resolve` 가 가리키는 inbound 가 없음** → caller 가 잘못된 toolkitKey 를 준 신호. pending 목록을 다시 surface 하고 stop.
+- **`pr_event_resolve` 가 가리키는 inbound 가 없음** → 도구가 throw (`no prior pr_event_inbound …`). orphan resolve 가 박히면 큐 유실로 이어지므로 handler 가 끊는다 — caller 는 `pr_event_pending` 으로 정확한 toolkitKey 확인 후 재호출. mindy 는 throw 메시지를 한 줄로 surface 하고 stop.
 - **머지/닫힘 자동 stop 후에 같은 turn 에서 추가 호출** → "이미 stop 상태" 한 줄로 응답.
 - **Delegated sub-agent / skill not available in the environment** → 한 줄 안내 후 caller 에 반환. mindy 는 multi-step 구현 / 외부 MCP 부재 환경에서의 fetch fallback 모두 직접 처리하지 않는다.
 

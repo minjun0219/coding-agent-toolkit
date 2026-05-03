@@ -63,6 +63,9 @@ import {
 } from "../../lib/mysql-registry";
 import {
   buildAppend as buildPrAppend,
+  hasInboundFor,
+  isMergeMode,
+  MERGE_MODES,
   normalizeEventRef,
   parsePrHandle,
   reduceActiveWatches,
@@ -510,6 +513,15 @@ export async function handlePrWatchStart(
   input: PrWatchStartInput,
 ): Promise<PrWatchStartResult> {
   const handle = parsePrHandle(input.handle);
+  // mergeMode 는 도구 description 과 agent-toolkit.json 의 schema / runtime 검증이 모두
+  // `merge` / `squash` / `rebase` enum 으로 박아두므로, handler 진입 시점에서 동일 enum 으로
+  // 거른다. 이렇게 해야 잘못된 값이 journal 에 silent 로 박혀 mindy 의 후속 권고 / merge
+  // mode 표기가 흔들리는 일이 없다.
+  if (input.mergeMode !== undefined && !isMergeMode(input.mergeMode)) {
+    throw new Error(
+      `pr_watch_start: mergeMode must be one of ${MERGE_MODES.join(" / ")} — got "${input.mergeMode}"`,
+    );
+  }
   const entry = await journal.append(
     buildPrAppend({
       kind: "pr_watch_start",
@@ -600,16 +612,24 @@ export interface PrEventRecordInput {
 export interface PrEventRecordResult {
   entry: JournalEntry;
   ref: { type: PrEventType; externalId: string; toolkitKey: string };
-  /** 같은 toolkitKey 가 이미 inbound 로 박혀 있었던 경우 true — caller (mindy) 가 처리 안 함. */
+  /**
+   * 같은 (handle, toolkitKey) 의 `pr_event_inbound` 가 과거에 한 번이라도 박혀 있었으면 true —
+   * pending 여부와 무관하다 (= 이미 resolve 된 코멘트가 polling 으로 재유입 돼도 true).
+   * caller (mindy) 가 이 플래그를 보고 처리 분기 — *디스크 dedup 은 하지 않는다*.
+   */
   alreadySeen: boolean;
 }
 
 /**
  * 외부 GitHub MCP 가 가져온 이벤트 1 건을 큐에 등록한다.
  *
- * polling 정의상 같은 코멘트가 두 번 들어올 수 있다 — 같은 toolkitKey 가 이미 있으면 entry
- * 자체는 두 번째도 append 하되 (append-only 원칙), `alreadySeen: true` 로 caller 에 신호.
- * mindy 는 이 플래그를 보고 처리 분기 — *디스크 dedup 은 하지 않는다*.
+ * polling 정의상 같은 코멘트가 두 번 (혹은 그 이상) 들어올 수 있다 — GitHub 의 list-comments
+ * 류 API 는 과거 항목을 매 호출마다 반복 반환한다. `alreadySeen` 정의가 "현재 pending" 만 보면
+ * 이미 resolve 처리된 이벤트가 새 이벤트처럼 surface 되어 mindy 가 같은 답글을 두 번 달
+ * 위험이 있다. 따라서 *과거 inbound 의 존재 여부* 로 정의한다 (resolved 여부 무관).
+ *
+ * append 자체는 두 번째도 그대로 박는다 (append-only 원칙) — caller 가 `alreadySeen: true`
+ * 를 보고 후속 처리를 skip 하면 lifecycle 은 그대로 유지된다.
  */
 export async function handlePrEventRecord(
   journal: AgentJournal,
@@ -618,9 +638,7 @@ export async function handlePrEventRecord(
   const handle = parsePrHandle(input.handle);
   const ref = normalizeEventRef(input.type, input.externalId);
   const before = await readAllJournalEntries(journal);
-  const alreadySeen = reducePendingEvents(handle, before).some(
-    (p) => p.ref.toolkitKey === ref.toolkitKey,
-  );
+  const alreadySeen = hasInboundFor(handle, ref.toolkitKey, before);
   const entry = await journal.append(
     buildPrAppend({
       kind: "pr_event_inbound",
@@ -656,7 +674,17 @@ export interface PrEventResolveResult {
   resolved: { type: PrEventType; externalId: string; toolkitKey: string };
 }
 
-/** mindy 의 검증 결과를 박는다. decision 검증은 `buildPrAppend` 가 처리. */
+/**
+ * mindy 의 검증 결과를 박는다.
+ *
+ * orphan resolve 가드: 같은 (handle, toolkitKey) 의 `pr_event_inbound` 가 한 번도 박혀 있지
+ * 않으면 throw 한다. orphan 이 그대로 박히면 `reducePendingEvents` 의 `resolvedKeys` 에 그
+ * toolkitKey 가 포함되어, 이후 진짜 inbound 가 들어와도 영구 제외 (검토 큐 유실) — 그래서
+ * caller (mindy) 의 pending 목록을 다시 보고 정확한 toolkitKey 로 다시 호출하라고 강제한다.
+ *
+ * decision 검증은 `buildPrAppend` 가 한 번 더 깔지만, handler 단에서 먼저 throw 해 동일
+ * 메시지 톤 / context 를 유지한다.
+ */
 export async function handlePrEventResolve(
   journal: AgentJournal,
   input: PrEventResolveInput,
@@ -666,6 +694,12 @@ export async function handlePrEventResolve(
   if (!RESOLVE_DECISIONS.includes(input.decision)) {
     throw new Error(
       `pr_event_resolve: decision must be one of ${RESOLVE_DECISIONS.join(", ")} — got "${input.decision}"`,
+    );
+  }
+  const before = await readAllJournalEntries(journal);
+  if (!hasInboundFor(handle, ref.toolkitKey, before)) {
+    throw new Error(
+      `pr_event_resolve: no prior pr_event_inbound for handle "${handle.canonical}" + toolkitKey "${ref.toolkitKey}" (type=${ref.type}, externalId=${ref.externalId}) — call pr_event_pending to confirm the right key, then resolve.`,
     );
   }
   const entry = await journal.append(

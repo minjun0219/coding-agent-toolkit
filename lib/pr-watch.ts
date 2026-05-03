@@ -230,6 +230,42 @@ export function eventTag(ref: PrEventRef): string {
   return `evt:${ref.toolkitKey}`;
 }
 
+/**
+ * 머지 모드 권고 enum. `agent-toolkit.json` 의 `github.repositories[*].mergeMode` 와 동일 enum —
+ * 한 곳에 두고 schema / config / handler 가 같이 참조한다.
+ */
+export const MERGE_MODES = ["merge", "squash", "rebase"] as const;
+export type MergeMode = (typeof MERGE_MODES)[number];
+
+export function isMergeMode(value: string): value is MergeMode {
+  return (MERGE_MODES as readonly string[]).includes(value);
+}
+
+/**
+ * 한 핸들의 journal 안에 같은 `toolkitKey` 의 `pr_event_inbound` entry 가 한 번이라도 있었는지.
+ * resolve 여부와 *무관* — 라이프사이클 전체 (inbound + resolved) 를 본다.
+ *
+ * 이 helper 는 두 군데에서 쓰인다:
+ *   - `handlePrEventRecord` 의 `alreadySeen` 정의 — pending 만 보면 resolve 된 코멘트가 다시
+ *     polling 으로 들어왔을 때 새 이벤트로 surface 되어 중복 답글 위험.
+ *   - `handlePrEventResolve` 의 orphan 가드 — inbound 없는 resolve 가 박히면 reducer 의
+ *     `resolvedKeys` 에 포함되어 이후 진짜 inbound 가 들어와도 영구 제외 (검토 큐 유실).
+ */
+export function hasInboundFor(
+  handle: PrHandle,
+  toolkitKey: string,
+  entries: JournalEntry[],
+): boolean {
+  const handleKey = handle.canonical;
+  const evtTagValue = `evt:${toolkitKey}`;
+  for (const e of entries) {
+    if (e.kind !== "pr_event_inbound") continue;
+    if (handleFromTags(e.tags)?.canonical !== handleKey) continue;
+    if (e.tags.includes(evtTagValue)) return true;
+  }
+  return false;
+}
+
 // ── Reduce: watch state ───────────────────────────────────────────────────
 
 export interface PrWatchState {

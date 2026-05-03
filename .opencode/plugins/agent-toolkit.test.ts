@@ -603,6 +603,37 @@ describe("pr-watch handlers", () => {
     expect(pending.length).toBe(1);
   });
 
+  it("pr_event_record: still alreadySeen=true after the event was resolved (re-poll guard)", async () => {
+    // GitHub list-comments 류는 과거 항목을 매 호출마다 반환한다 — pending 만 보면 resolve 된
+    // 코멘트가 다시 새 이벤트처럼 보이고 mindy 가 같은 답글을 두 번 달 위험. alreadySeen 은
+    // resolved 여부와 무관하게 "과거 inbound 의 존재" 로 판정해야 한다.
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      summary: "typo",
+    });
+    await handlePrEventResolve(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      decision: "accepted",
+      reasoning: "fixed",
+    });
+    const repolled = await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      summary: "stale poll repeat",
+    });
+    expect(repolled.alreadySeen).toBe(true);
+    // pending 큐도 흔들리지 않는다 — 새 inbound 가 박혀도 같은 toolkitKey 의 resolved 가
+    // 이미 있으니 pending 재진입 0.
+    const pending = await handlePrEventPending(prJournal, HANDLE);
+    expect(pending).toEqual([]);
+  });
+
   it("pr_event_record: rejects unsupported type", async () => {
     await expect(
       handlePrEventRecord(prJournal, {
@@ -671,6 +702,52 @@ describe("pr-watch handlers", () => {
         reasoning: "y",
       }),
     ).rejects.toThrow(/decision/);
+  });
+
+  it("pr_event_resolve: rejects orphan resolve (no prior inbound)", async () => {
+    // orphan resolve 가 박히면 reducePendingEvents 의 resolvedKeys 가 그 toolkitKey 를
+    // 포함해서, 이후 진짜 inbound 가 들어와도 영구 제외 (큐 유실). handler 단에서 throw 로
+    // 끊어 caller 가 pending 목록을 다시 보고 정확한 toolkitKey 로 재호출하게 한다.
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    await expect(
+      handlePrEventResolve(prJournal, {
+        handle: HANDLE,
+        type: "issue_comment",
+        externalId: "999",
+        decision: "accepted",
+        reasoning: "should be rejected — never recorded",
+      }),
+    ).rejects.toThrow(/no prior pr_event_inbound/);
+    // orphan 이 디스크에 남아 큐를 오염시키지 않았는지: 같은 toolkitKey 로 진짜 inbound 를
+    // 박은 뒤 pending 에 그대로 surface 되어야 한다.
+    await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "999",
+      summary: "actual late comment",
+    });
+    const pending = await handlePrEventPending(prJournal, HANDLE);
+    expect(pending.length).toBe(1);
+    expect(pending[0]?.ref.toolkitKey).toBe("c:999");
+  });
+
+  it("pr_watch_start: rejects mergeMode outside the merge / squash / rebase enum", async () => {
+    await expect(
+      handlePrWatchStart(prJournal, {
+        handle: HANDLE,
+        mergeMode: "fast-forward",
+      }),
+    ).rejects.toThrow(/mergeMode/);
+  });
+
+  it("pr_watch_start: accepts the three valid mergeMode values", async () => {
+    for (const mode of ["merge", "squash", "rebase"] as const) {
+      const r = await handlePrWatchStart(prJournal, {
+        handle: HANDLE,
+        mergeMode: mode,
+      });
+      expect(r.entry.tags).toContain(`mergeMode:${mode}`);
+    }
   });
 
   it("end-to-end one-PR turn: start → record × 2 → resolve × 2 → stop → status 0/0", async () => {

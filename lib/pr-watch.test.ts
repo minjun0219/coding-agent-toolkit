@@ -8,6 +8,9 @@ import {
   eventTag,
   formatPrHandle,
   handleTag,
+  hasInboundFor,
+  isMergeMode,
+  MERGE_MODES,
   normalizeEventRef,
   parsePrHandle,
   PR_EVENT_TYPES,
@@ -421,6 +424,59 @@ describe("reducePendingEvents", () => {
       await readEverything(journal),
     );
     expect(pending).toEqual([]);
+  });
+});
+
+describe("hasInboundFor / isMergeMode / MERGE_MODES", () => {
+  it("hasInboundFor: true after the same toolkitKey was once inbound, false otherwise", async () => {
+    const ref = normalizeEventRef("issue_comment", "42");
+    expect(hasInboundFor(HANDLE_A, ref.toolkitKey, [])).toBe(false);
+    await journal.append(
+      buildAppend({
+        kind: "pr_event_inbound",
+        data: { handle: HANDLE_A, ref, summary: "first" },
+      }),
+    );
+    const all = await readEverything(journal);
+    expect(hasInboundFor(HANDLE_A, ref.toolkitKey, all)).toBe(true);
+    // 다른 PR 의 inbound 는 공유되지 않는다.
+    expect(hasInboundFor(HANDLE_B, ref.toolkitKey, all)).toBe(false);
+    // 다른 toolkitKey 는 false.
+    const other = normalizeEventRef("issue_comment", "99");
+    expect(hasInboundFor(HANDLE_A, other.toolkitKey, all)).toBe(false);
+  });
+
+  it("hasInboundFor: stays true even after the inbound was resolved (re-poll guard)", async () => {
+    const ref = normalizeEventRef("issue_comment", "1");
+    await journal.append(
+      buildAppend({
+        kind: "pr_event_inbound",
+        data: { handle: HANDLE_A, ref, summary: "x" },
+      }),
+    );
+    await journal.append(
+      buildAppend({
+        kind: "pr_event_resolved",
+        data: {
+          handle: HANDLE_A,
+          ref,
+          decision: "accepted",
+          reasoning: "ok",
+        },
+      }),
+    );
+    expect(
+      hasInboundFor(HANDLE_A, ref.toolkitKey, await readEverything(journal)),
+    ).toBe(true);
+  });
+
+  it("isMergeMode / MERGE_MODES exhaustiveness", () => {
+    expect(MERGE_MODES).toEqual(["merge", "squash", "rebase"]);
+    for (const mode of MERGE_MODES) {
+      expect(isMergeMode(mode)).toBe(true);
+    }
+    expect(isMergeMode("fast-forward")).toBe(false);
+    expect(isMergeMode("")).toBe(false);
   });
 });
 
