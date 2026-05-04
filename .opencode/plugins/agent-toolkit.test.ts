@@ -1046,6 +1046,24 @@ describe("handleGhRun", () => {
     expect(entries.find((e) => e.tags?.includes("applied"))).toBeUndefined();
   });
 
+  it("rejects empty args before any gh call (Copilot input validation)", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([]);
+    await expect(handleGhRun(exec, journal, [])).rejects.toThrow(
+      /args must be a non-empty array/,
+    );
+    expect(exec.seen.length).toBe(0);
+  });
+
+  it("rejects non-string elements in args before any gh call", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([]);
+    await expect(
+      handleGhRun(exec, journal, ["issue", 42 as unknown as string]),
+    ).rejects.toThrow(/args\[1\] must be a string/);
+    expect(exec.seen.length).toBe(0);
+  });
+
   it("auth status: skips precondition (calls auth status only once)", async () => {
     const { journal } = newJournalDir();
     const exec = new FakeGhExecutor([

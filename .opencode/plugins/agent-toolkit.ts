@@ -656,10 +656,24 @@ export async function handleGhRun(
   args: string[],
   dryRun?: boolean,
 ): Promise<RunGhResult> {
+  // 입력 검증 — assertGhAuthed 전에 (Copilot 지적): 빈 배열이거나 비-string
+  // 요소가 있는 args 로 불필요한 `gh auth status` 호출이 발생하지 않게 한다.
   if (!Array.isArray(args)) {
     throw new Error(
       `gh_run: args must be an array of strings, got ${typeof args}`,
     );
+  }
+  if (args.length === 0) {
+    throw new Error(
+      'gh_run: args must be a non-empty array (e.g. ["auth", "status"] or ["issue", "list"])',
+    );
+  }
+  for (const [i, a] of args.entries()) {
+    if (typeof a !== "string") {
+      throw new Error(
+        `gh_run: args[${i}] must be a string, got ${typeof a} (${JSON.stringify(a)})`,
+      );
+    }
   }
   // 인증은 deny / read / write 모두 일관 — gh_run 의 첫 호출이 `auth status` 가 아니라면 verify 후 진행.
   // 단 `auth status` 자체는 verify 가 곧 본 호출이므로 skip.
@@ -1022,7 +1036,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
       },
       gh_run: {
         description:
-          '사용자 환경의 `gh` CLI 를 ad-hoc 호출. read 명령 (auth status / repo view / issue list / pr view / api / search / ...) 은 즉시 실행. write 명령 (issue create / pr merge / label create / api --method POST / ...) 은 dryRun=true (기본) 면 plan 만, dryRun=false 로 명시해야 실행. 환경 변경 위험 명령 (auth login/logout, extension, alias, config, gist) 은 GhDeniedCommandError 로 거부. (args: gh subcommand 부터 시작하는 문자열 배열 — 예: ["issue", "list", "--repo", "x/y"], dryRun?: write 호출에서만 의미 있음, 기본 true)',
+          '사용자 환경의 `gh` CLI 를 ad-hoc 호출. read 명령 (auth status / repo view / issue list / pr view / api default GET / search / gist list / gist view / ...) 은 즉시 실행. write 명령 (issue create / pr merge / label create / api --method POST / ...) 은 dryRun=true (기본) 면 plan 만, dryRun=false 로 명시해야 실행. 환경 변경 위험 명령 (auth login/logout/refresh/setup-git/token, extension *, alias *, config *, gist create|edit|delete|clone) 은 GhDeniedCommandError 로 거부 — gist 의 list/view 는 read 로 허용. (args: gh subcommand 부터 시작하는 문자열 배열 — 예: ["issue", "list", "--repo", "x/y"], dryRun?: write 호출에서만 의미 있음, 기본 true)',
         parameters: {
           args: {
             type: "array",

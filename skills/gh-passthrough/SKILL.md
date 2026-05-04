@@ -1,6 +1,6 @@
 ---
 name: gh-passthrough
-description: Run ad-hoc `gh` CLI commands through the `gh_run` plugin tool. Read commands (auth status / repo view / issue list / pr view / api / search / ...) execute immediately. Write commands (issue create / pr merge / label create / api --method POST / ...) are guarded by `dryRun: true` (default) — caller must explicitly pass `dryRun: false` to apply. Environment-affecting commands (`auth login|logout`, `extension`, `alias`, `config`, `gist`) are denied. Conducted by `rocky`. Auto-trigger when the user wants to inspect or mutate GitHub state outside the spec-to-issues flow — e.g. "이슈 검색해줘", "label 만들어줘", "PR 머지해줘", "GitHub API 로 release 한번 봐줘".
+description: Run ad-hoc `gh` CLI commands through the `gh_run` plugin tool. Read commands (auth status / repo view / issue list / pr view / api default GET / search / gist list|view / ...) execute immediately. Write commands (issue create / pr merge / label create / api --method POST / ...) are guarded by `dryRun: true` (default) — caller must explicitly pass `dryRun: false` to apply. Environment-affecting commands (`auth login|logout|refresh|setup-git|token`, `extension *`, `alias *`, `config *`, `gist create|edit|delete|clone`) are denied — `gist list|view` itself is allowed as read. Conducted by `rocky`. Auto-trigger when the user wants to inspect or mutate GitHub state outside the spec-to-issues flow — e.g. "이슈 검색해줘", "label 만들어줘", "PR 머지해줘", "GitHub API 로 release 한번 봐줘".
 allowed-tools: [gh_run, journal_append, journal_read, journal_search]
 license: MIT
 version: 0.1.0
@@ -12,7 +12,7 @@ version: 0.1.0
 
 * Single-tool passthrough to the user's `gh` CLI for ad-hoc GitHub work that doesn't fit a high-level skill (`spec-to-issues` 같은 specific flow 가 없을 때).
 * **dryRun-first contract for write** — write 명령은 한 번에 두 단계로: dryRun=true 로 plan 보여주고, 사용자 확인 후 dryRun=false 로 apply.
-* **Environment-affecting commands are denied**, not gated. `auth login` / `extension install` / `config set` / `gist create` 같은 호출은 plugin 단에서 `GhDeniedCommandError` 로 throw — Rocky 가 우회하지 말 것.
+* **Environment-affecting commands are denied**, not gated. `auth login|logout|refresh|setup-git|token` / `extension *` / `alias *` / `config *` / `gist create|edit|delete|clone` 같은 호출은 plugin 단에서 `GhDeniedCommandError` 로 throw — Rocky 가 우회하지 말 것. `gist list|view` 자체는 read 로 허용 (read-only 정보 조회).
 
 ## Mental model
 
