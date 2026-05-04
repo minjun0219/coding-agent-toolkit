@@ -20,14 +20,15 @@ Or, to use a local checkout directly:
 
 ## Installation Verification
 
-Confirm that the plugin is correctly loaded by checking `package.json` for the `main` and `exports` fields:
+opencode installs package plugins under its cache, not the consumer project's `node_modules`. Verify the installed package metadata and server module from the actual package directory:
 
 ```bash
-bun -e 'const p=await Bun.file("package.json").json(); console.log("main:", p.main); console.log("server:", p.exports?.["./server"]?.import)'
+PLUGIN_DIR=$(ls -d "$HOME"/.cache/opencode/packages/agent-toolkit@* | sort | tail -1)
+PLUGIN_DIR="$PLUGIN_DIR" bun -e 'const dir=process.env.PLUGIN_DIR; if (!dir) throw new Error("PLUGIN_DIR is required"); const p=await Bun.file(`${dir}/package.json`).json(); const server=p.exports?.["./server"]?.import; if (p.main!=="./.opencode/plugins/agent-toolkit.ts" || server!==p.main) throw new Error("bad agent-toolkit entrypoint"); const mod=await import(`${dir}/${server.slice(2)}`); console.log("agent-toolkit server:", typeof mod.default)'
 ```
 
-- **Expected `main`**: `./.opencode/plugins/agent-toolkit.ts`
-- **Expected `exports["./server"]`**: `./.opencode/plugins/agent-toolkit.ts`
+- **Expected output**: `agent-toolkit server: function`
+- For a local checkout plugin, set `PLUGIN_DIR` to that checkout path instead of using the cache lookup.
 
 ## Troubleshooting: Agents Not Showing Up
 
@@ -37,13 +38,14 @@ If `rocky` or `grace` agents do not appear in `opencode agent list` (common on o
    ```bash
    mkdir -p .opencode/agents
    ```
-2. Copy the agent files from the installed package:
+2. Copy the agent files from the installed package cache:
    ```bash
-   cp node_modules/agent-toolkit/agents/rocky.md .opencode/agents/
-   cp node_modules/agent-toolkit/agents/grace.md .opencode/agents/
+   PLUGIN_DIR=$(ls -d "$HOME"/.cache/opencode/packages/agent-toolkit@* | sort | tail -1)
+   cp "$PLUGIN_DIR/agents/rocky.md" .opencode/agents/
+   cp "$PLUGIN_DIR/agents/grace.md" .opencode/agents/
    ```
 
-*Note: The path inside `node_modules` may vary depending on your git installation method.*
+*Note: For a local checkout plugin, set `PLUGIN_DIR` to that checkout path instead of using the cache lookup.*
 
 ## Environment variables
 
