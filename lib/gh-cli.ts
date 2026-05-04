@@ -509,8 +509,23 @@ const DENY_VERBS: Record<string, ReadonlySet<string>> = {
   gist: new Set(["create", "edit", "delete", "clone"]),
 };
 
-/** `gh api` 의 method flag 위치를 찾아 반환. 없으면 GET. */
+/**
+ * `gh api` 의 method flag 위치를 찾아 반환. 명시적 `--method` / `-X` 가 있으면
+ * 그 값. 없으면 — `gh api` 매뉴얼에 따라 — request parameter flag (`-f`,
+ * `-F`, `--field`, `--raw-field`, `--input`, `-b`, `--body-file`) 가 하나라도
+ * 있으면 default 가 **POST** 가 된다 (Codex P1 수정). 그것도 없으면 GET.
+ */
+const API_BODY_FLAGS = new Set([
+  "-f",
+  "-F",
+  "--field",
+  "--raw-field",
+  "--input",
+  "-b",
+  "--body-file",
+]);
 const apiMethod = (args: readonly string[]): string => {
+  let hasBodyFlag = false;
   for (let i = 1; i < args.length; i++) {
     if (args[i] === "--method" || args[i] === "-X") {
       return (args[i + 1] ?? "GET").toUpperCase();
@@ -519,8 +534,20 @@ const apiMethod = (args: readonly string[]): string => {
     if (a.startsWith("--method=")) {
       return a.slice("--method=".length).toUpperCase();
     }
+    // body-bearing flags imply default POST per `gh api` manual.
+    // `--field=foo=bar` / `--raw-field=foo=bar` / `-fkey=v` 같은 attached
+    // forms 까지 포함하기 위해 prefix 매칭도 함께 본다.
+    if (
+      API_BODY_FLAGS.has(a) ||
+      a.startsWith("--field=") ||
+      a.startsWith("--raw-field=") ||
+      a.startsWith("--input=") ||
+      a.startsWith("--body-file=")
+    ) {
+      hasBodyFlag = true;
+    }
   }
-  return "GET";
+  return hasBodyFlag ? "POST" : "GET";
 };
 
 /**
@@ -604,6 +631,13 @@ export const runGhCommand = async (
     };
   }
   const result = await exec.run(args);
+  // 기존 wrapper (ghIssueCreate / ghIssueEdit / ghIssueListByLabel 등) 와 일관:
+  // 비-zero exitCode 는 throw 로 surface — 호출자 / handler 가 매번 exitCode 를
+  // 검사하지 않아도 된다. `applied` journal entry 가 실패한 호출에 잘못 남는
+  // 문제도 함께 해결 (Codex P2).
+  if (result.exitCode !== 0) {
+    throw new GhCommandError(args, result.exitCode, result.stderr);
+  }
   return {
     args,
     kind,

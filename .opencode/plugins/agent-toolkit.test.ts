@@ -1027,6 +1027,25 @@ describe("handleGhRun", () => {
     expect(entries.length).toBe(0);
   });
 
+  it("write apply failure: throws (no `applied` journal entry — Codex P2)", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status
+      { stdout: "", stderr: "permission denied", exitCode: 1 }, // issue create
+    ]);
+    await expect(
+      handleGhRun(
+        exec,
+        journal,
+        ["issue", "create", "--repo", "x/y", "--title", "t"],
+        false,
+      ),
+    ).rejects.toThrow(/failed with exit/);
+    // journal must NOT contain an `applied` entry
+    const entries = await journal.read({ limit: 5 });
+    expect(entries.find((e) => e.tags?.includes("applied"))).toBeUndefined();
+  });
+
   it("auth status: skips precondition (calls auth status only once)", async () => {
     const { journal } = newJournalDir();
     const exec = new FakeGhExecutor([

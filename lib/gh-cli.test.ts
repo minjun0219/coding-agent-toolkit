@@ -335,6 +335,42 @@ describe("classifyGhCommand", () => {
       "write",
     );
   });
+
+  it("treats `gh api` with body-bearing flags as write (default POST per gh manual — Codex P1)", () => {
+    // -f / -F / --field / --raw-field / --input / -b / --body-file → default POST
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "-f", "title=hi"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "-F", "labels[]=bug"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "--field", "title=hi"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "--field=title=hi"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "--input", "body.json"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "-b", "body.json"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand([
+        "api",
+        "repos/x/y/issues",
+        "--body-file",
+        "body.json",
+      ]),
+    ).toBe("write");
+  });
+
+  it("explicit `--method GET` wins over body flags", () => {
+    expect(
+      classifyGhCommand(["api", "repos/x/y", "--method", "GET", "-f", "key=v"]),
+    ).toBe("read");
+  });
 });
 
 describe("runGhCommand", () => {
@@ -395,5 +431,33 @@ describe("runGhCommand", () => {
       GhDeniedCommandError,
     );
     expect(calls.length).toBe(0);
+  });
+
+  it("read: throws GhCommandError on non-zero exitCode (Codex P2 — consistency with wrappers)", async () => {
+    const { exec } = fakeExec([
+      {
+        result: {
+          stdout: "",
+          stderr: "could not resolve repo",
+          exitCode: 1,
+        },
+      },
+    ]);
+    await expect(runGhCommand(exec, ["repo", "view"])).rejects.toBeInstanceOf(
+      GhCommandError,
+    );
+  });
+
+  it("write apply: throws GhCommandError on non-zero exitCode", async () => {
+    const { exec } = fakeExec([
+      {
+        result: { stdout: "", stderr: "permission denied", exitCode: 1 },
+      },
+    ]);
+    await expect(
+      runGhCommand(exec, ["issue", "create", "--repo", "x/y", "--title", "t"], {
+        dryRun: false,
+      }),
+    ).rejects.toBeInstanceOf(GhCommandError);
   });
 });
