@@ -18,6 +18,33 @@ Or, to use a local checkout directly:
 }
 ```
 
+## Installation Verification
+
+Confirm that the plugin is correctly loaded by checking `package.json` for the `main` and `exports` fields:
+
+```bash
+bun -e 'const p=await Bun.file("package.json").json(); console.log("main:", p.main); console.log("server:", p.exports?.["./server"]?.import)'
+```
+
+- **Expected `main`**: `./.opencode/plugins/agent-toolkit.ts`
+- **Expected `exports["./server"]`**: `./.opencode/plugins/agent-toolkit.ts`
+
+## Troubleshooting: Agents Not Showing Up
+
+If `rocky` or `grace` agents do not appear in `opencode agent list` (common on opencode `1.14.33` + Bun `1.3.11` + macOS), you can manually expose them to your project:
+
+1. Create the project-local agent directory:
+   ```bash
+   mkdir -p .opencode/agents
+   ```
+2. Copy the agent files from the installed package:
+   ```bash
+   cp node_modules/agent-toolkit/agents/rocky.md .opencode/agents/
+   cp node_modules/agent-toolkit/agents/grace.md .opencode/agents/
+   ```
+
+*Note: The path inside `node_modules` may vary depending on your git installation method.*
+
 ## Environment variables
 
 All optional. Set only when the defaults do not fit.
