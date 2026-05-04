@@ -997,8 +997,9 @@ export async function handleGhRun(
       );
     }
   }
-  // 인증은 deny / read / write 모두 일관 — gh_run 의 첫 호출이 `auth status` 가 아니라면 verify 후 진행.
-  // 단 `auth status` 자체는 verify 가 곧 본 호출이므로 skip.
+  // head 가 `auth` 면 인증 verify 를 skip — `auth status` 는 verify 가 곧 본 호출이라 중복
+  // 호출 방지, 그 외 `auth login|logout|...` 은 어차피 `runGhCommand` 안의 deny 분류가 먼저
+  // `GhDeniedCommandError` 로 throw 하므로 verify 가 의미 없음. (Copilot 주석-코드 일치 수정.)
   const head = args[0];
   if (head !== "auth") {
     await assertGhAuthed(exec);
@@ -1481,7 +1482,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
       },
       gh_run: {
         description:
-          '사용자 환경의 `gh` CLI 를 ad-hoc 호출. read 명령 (auth status / repo view / issue list / pr view / api default GET / search / gist list / gist view / ...) 은 즉시 실행. write 명령 (issue create / pr merge / label create / api --method POST / ...) 은 dryRun=true (기본) 면 plan 만, dryRun=false 로 명시해야 실행. 환경 변경 위험 명령 (auth login/logout/refresh/setup-git/token, extension *, alias *, config *, gist create|edit|delete|clone) 은 GhDeniedCommandError 로 거부 — gist 의 list/view 는 read 로 허용. (args: gh subcommand 부터 시작하는 문자열 배열 — 예: ["issue", "list", "--repo", "x/y"], dryRun?: write 호출에서만 의미 있음, 기본 true)',
+          '사용자 환경의 `gh` CLI 를 ad-hoc 호출. read 명령 (auth status / repo view / issue list / pr view / api default GET (body flag 없음) / search / gist list / gist view / ...) 은 즉시 실행. write 명령 (issue create / pr merge / label create / api --method POST / api ... body-bearing flag (-f / -F / --field / --raw-field / --input / -b / --body-file) 가 있으면 default POST → write / ...) 은 dryRun=true (기본) 면 plan 만, dryRun=false 로 명시해야 실행. 환경 변경 위험 명령 (auth login/logout/refresh/setup-git/token, extension *, alias *, config *, gist create|edit|delete|clone) 은 GhDeniedCommandError 로 거부 — gist 의 list/view 는 read 로 허용. (args: gh subcommand 부터 시작하는 문자열 배열 — 예: ["issue", "list", "--repo", "x/y"], dryRun?: write 호출에서만 의미 있음, 기본 true)',
         parameters: {
           args: {
             type: "array",
