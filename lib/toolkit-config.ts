@@ -74,6 +74,24 @@ export interface MysqlConnections {
   };
 }
 
+/**
+ * `spec-to-issues` skill (Phase 2) 가 사용할 GitHub 동기화 설정.
+ *
+ * 인증 / 토큰은 모두 `gh` CLI 가 들고 있으므로 여기에 토큰 키는 없다 — 토큰은
+ * `gh auth login` 으로만. `repo` 는 선택이며 미지정 시 `gh repo view` 로 자동
+ * 감지한다 (precedence: tool param > 이 config > `gh repo view`).
+ *
+ * `defaultLabels[0]` 는 dedupe 검색 (`gh issue list --label`) 의 1차 필터로
+ * 쓰이므로 stable 해야 한다. 패턴은 `^[a-zA-Z0-9_-]+$` 로 강제 — colons 같은
+ * gh 특수문자나 공백을 허용하지 않는다.
+ */
+export interface GithubConfig {
+  /** "owner/name". 미지정 시 `gh repo view --json nameWithOwner` 로 자동 감지. */
+  repo?: string;
+  /** spec-to-issues 가 새 issue 에 부착할 라벨. default `["spec-pact"]`. `[0]` 이 dedupe 필터. */
+  defaultLabels?: string[];
+}
+
 export interface ToolkitConfig {
   $schema?: string;
   openapi?: {
@@ -83,6 +101,7 @@ export interface ToolkitConfig {
   mysql?: {
     connections?: MysqlConnections;
   };
+  github?: GithubConfig;
 }
 
 export interface LoadConfigOptions {
@@ -170,7 +189,57 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
       validateMysqlConnections(my.connections, source);
     }
   }
+  if (config.github !== undefined) {
+    validateGithub(config.github, source);
+  }
   return config as ToolkitConfig;
+}
+
+/**
+ * `github` 객체 모양 검증. 모든 필드 optional + 미지원 key reject (오타 가드).
+ * `repo` 는 `owner/name` 패턴, `defaultLabels` 는 라벨 명명 규칙
+ * (`^[a-zA-Z0-9_-]+$`) — `gh issue list --label` 가 받는 안전한 형태.
+ */
+const ALLOWED_GITHUB_KEYS = new Set(["repo", "defaultLabels"]);
+const REPO_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
+const LABEL_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+function validateGithub(
+  gh: unknown,
+  source: string,
+): asserts gh is GithubConfig {
+  if (gh === null || typeof gh !== "object" || Array.isArray(gh)) {
+    throw new Error(`${source}: github must be an object`);
+  }
+  const g = gh as Record<string, unknown>;
+  for (const key of Object.keys(g)) {
+    if (!ALLOWED_GITHUB_KEYS.has(key)) {
+      throw new Error(
+        `${source}: github has unsupported key "${key}" — allowed: ${[...ALLOWED_GITHUB_KEYS].join(", ")}`,
+      );
+    }
+  }
+  if (g.repo !== undefined) {
+    if (typeof g.repo !== "string" || !REPO_PATTERN.test(g.repo)) {
+      throw new Error(
+        `${source}: github.repo must match "owner/name" — got ${JSON.stringify(g.repo)}`,
+      );
+    }
+  }
+  if (g.defaultLabels !== undefined) {
+    if (!Array.isArray(g.defaultLabels) || g.defaultLabels.length === 0) {
+      throw new Error(
+        `${source}: github.defaultLabels must be a non-empty string array — [0] is the dedupe filter`,
+      );
+    }
+    for (const [i, label] of g.defaultLabels.entries()) {
+      if (typeof label !== "string" || !LABEL_PATTERN.test(label)) {
+        throw new Error(
+          `${source}: github.defaultLabels[${i}] must match ${LABEL_PATTERN} — got ${JSON.stringify(label)}`,
+        );
+      }
+    }
+  }
 }
 
 /**
@@ -469,6 +538,18 @@ export function mergeConfigs(
           // profile 자체가 leaf — project 가 user 의 profile 을 통째로 덮어쓴다.
           out.mysql.connections[host]![env]![db] = profile;
         }
+      }
+    }
+  }
+  if (project.github) {
+    out.github ??= {};
+    for (const [key, value] of Object.entries(project.github) as [
+      keyof GithubConfig,
+      GithubConfig[keyof GithubConfig],
+    ][]) {
+      if (value !== undefined) {
+        // 각 key 는 leaf (repo / defaultLabels 배열 통째로) — project 가 user 를 덮어쓴다.
+        (out.github as Record<string, unknown>)[key] = value;
       }
     }
   }

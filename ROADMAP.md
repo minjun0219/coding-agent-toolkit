@@ -33,7 +33,7 @@
 | 3 | 한글 주석/설명 | ✅ guidance | [#7](https://github.com/minjun0219/agent-toolkit/issues/7) | 설명 prose 는 한국어 우선, identifiers / paths / commands / API paths / library names 는 원문 유지; hard lint 아님 |
 | 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
 | 5 | Notion → 개발 스펙 분해 | ✅ MVP+합의 lifecycle | — | `skills/notion-context/SKILL.md` spec mode (단발성) + `skills/spec-pact/SKILL.md` 4 모드 (`grace` sub-agent 가 conduct, INDEX·SPEC·journal 4 종 kind 로 lock / drift / amend 까지 추적) |
-| 6 | 스펙 → GitHub Issue 추적 | 📋 planned (Phase 5 SPEC 위에 올라감) | [#4](https://github.com/minjun0219/agent-toolkit/issues/4) | issue body source-of-truth 를 노션 본문 대신 grace 가 잠근 SPEC body 로 — drift / 양방향 sync 단순화 |
+| 6 | 스펙 → GitHub Issue 추적 | ✅ MVP+gh-cli | [#4](https://github.com/minjun0219/agent-toolkit/issues/4) | `issue_create_from_spec` / `issue_status` 2 도구 + `lib/gh-cli.ts` (Bun.spawn 위 fakeable executor) + `lib/github-issue-sync.ts` (marker 기반 idempotent plan/apply) + `skills/spec-to-issues/SKILL.md` (Rocky 가 conduct, Grace 책임 외) — 인증 / repo / GHE / scope 는 `gh` CLI 가 처리, 의존성 추가 0 |
 | 7 | OpenAPI 캐시 + client 작성 | ✅ MVP+registry | [#6](https://github.com/minjun0219/agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`, `lib/openapi-context.ts`, `lib/openapi-registry.ts`, `lib/toolkit-config.ts` + `agent-toolkit.schema.json`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet, host:env:spec 핸들 + scope 검색) |
 
 ## 제안 단계
@@ -42,9 +42,20 @@
 
 - **Phase 1 — 완료** *(PR [#3](https://github.com/minjun0219/agent-toolkit/pull/3))*
   - Notion 캐시 + 스펙 추출 + Rocky 업무 파트너 / agent-toolkit 1차 지휘자 (`mode: all`)
-- **Phase 2 — 스펙 → GitHub Issue / Project 동기화** *(memo #6, issue [#4](https://github.com/minjun0219/agent-toolkit/issues/4))*
-  - Rocky 의 spec 모드 출력을 그대로 issue 시리즈로 변환하는 skill / 도구
-  - 매핑 후보: 한 Notion 페이지 = 한 epic, "TODO" 섹션의 bullet 1 개 = 한 issue
+- **Phase 2 — 스펙 → GitHub Issue 동기화 — 완료** *(memo #6, issue [#4](https://github.com/minjun0219/agent-toolkit/issues/4))*
+  - 잠긴 SPEC 의 `# 합의 TODO` flat bullet 1 개 = 한 sub-issue, 한 SPEC = 한 epic. marker (`<!-- spec-pact:slug=…:kind=epic|sub:index=N -->`) 기반 idempotent — 재호출 no-op, bullet 추가만 새 sub.
+  - **GitHub 호출은 사용자 환경의 `gh` CLI 위임** — 인증 (`gh auth status` / `gh auth login`), repo 자동 감지 (`gh repo view --json nameWithOwner`), GHE / scope 모두 `gh` 가 처리. 의존성 추가 0 (mysql2 외 명시적 예외 X). 새 env 변수 0.
+  - `issue_create_from_spec` (apply or dryRun) + `issue_status` (dryRun read-only alias) 2 도구. Rocky 가 conduct (`spec-to-issues` skill), `@grace` 는 책임 외 — finalize/lock 권한이 SPEC 까지이고 GitHub 측 상태는 Rocky 의 surface.
+  - `lib/gh-cli.ts` 가 `GhExecutor` 인터페이스 + `Bun.spawn` 백엔드 + 타입 에러 (`GhNotInstalledError` / `GhAuthError` / `GhCommandError`) 분리 — 테스트는 fake executor 주입.
+  - `agent-toolkit.json` 의 `github` 객체 (`repo` / `defaultLabels`) — schema + `lib/toolkit-config.ts` lockstep. 라벨 패턴 `^[a-zA-Z0-9_-]+$` 강제.
+  - **다음 PR 후보 (별도 결정)**:
+    - octokit / `@octokit/rest` SDK 활용 (gh 없는 환경 fallback 또는 GraphQL 로 Project v2 보드 / sub-issue native linkage). `GhExecutor` 인터페이스 그대로 새 백엔드 구현체 1 개만 추가하면 됨.
+    - 자체 `gh_run` 같은 generic plugin tool 노출 — agent 가 ad-hoc `gh issue search` / `gh label create` / `gh project` 호출 가능. 백엔드는 CLI / SDK / MCP 어느 것이든 같은 `GhExecutor` 위에 얹힘. allow-list 기반 destructive guard 가 주요 결정 포인트.
+    - bullet 재정렬 / 내용 변경 감지 (Copilot 검토 의견) — plan 에 `mismatched: number[]` surface, 사용자가 keep / sub-recreate / sub-patch 결정.
+    - epic body conflict guard (Copilot) — patch 직전 epic body 재fetch + marker / `- [ ]` 외 라인 변경 감지 → abort.
+    - directory-mode SPEC (`**/SPEC.md`) 의 slug 기반 lookup (Copilot) — INDEX 기반 discovery 재사용.
+    - 라벨 제거된 marker 의 dedupe fallback (Copilot) — `--label` 없이 marker-only `--search` 한 번 더.
+    - 양방향 sync (Issue → SPEC), bullet 삭제 시 sub auto-close, GitHub Projects v2 보드 자동 추가, sub-issue native API 마이그레이션.
 - **Phase 3 — 에이전트 자동 기억 / 기록 — 완료** *(memo #1, issue [#5](https://github.com/minjun0219/agent-toolkit/issues/5))*
   - `journal_append` / `journal_read` / `journal_search` / `journal_status` 4 도구 + `lib/agent-journal.ts` append-only JSONL (TTL 없음, 손상 라인 graceful skip)
   - 시간순 + `kind` / `tag` / `pageId` / `since` 필터 + substring 검색
@@ -68,7 +79,7 @@
   - **opencode 단독 능력 한계**: opencode plugin API 의 `tool` 만 동적 등록 가능, agent / skill / command 는 path-based (`.md` 정적). 즉 TS-based loader 는 (a) OmO 같은 외부 harness 가 있는 환경에서만 의미가 있거나 (b) 토킷이 자체 loader 를 만들어 `.ts` AgentConfig → runtime `.md` 로 emit 해야 한다.
   - **방향**: `.md` 가 baseline 으로 남고, `.ts` 정의는 OmO 가 있을 때 옵트인으로 활성화 — 토킷이 OmO 의존을 강제하지 않는다. plugin entrypoint 가 `agents/*.ts` 가 있으면 OmO loader 에 위임, 없으면 `.md` 만 노출.
   - 의존성 0 의 자체 loader (b) 는 별도 PR 로 검토 — 트리거는 "정적 prompt 로는 부족한 첫 use case 가 등장할 때". 지금은 추적만.
-  - **Phase 6.A — Runtime 프롬프트 동적 조립 — 🟡 in-flight (PR1 진행 중)** *(6 의 sub, OmO 없이도 자체 적용 가능)*
+  - **Phase 6.A — Runtime 프롬프트 동적 조립 — ✅ PR1 (토대) merged, 후속 측정 중** *(6 의 sub, OmO 없이도 자체 적용 가능)*
     - 정적 prompt 를 두 부분으로 쪼갠다 — "고정 (persona / scope / 일반 규칙)" + "조건부 fragment (모드별 본문, 최근 journal entry, INDEX row, drift diff)".
     - agent 가 turn 시작 시 caller 입력 → 모드 결정 → 필요한 fragment 만 끼워 넣어 최종 prompt 생성. DRAFT turn 일 때 VERIFY/AMEND 본문이 prompt 에 안 들어가는 식의 token 절감.
     - fragment 카탈로그 (예시): `grace.fragment.{draft,verify,drift-check,amend}.md`, `grace.fragment.journal-recent.md`, `grace.fragment.index-row.md`.
