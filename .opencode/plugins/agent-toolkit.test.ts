@@ -581,6 +581,48 @@ describe("pr-watch handlers", () => {
     expect(status.totals.active).toBe(0);
   });
 
+  it("pr_watch_stop: rejects reason outside merged / closed / manual", async () => {
+    // 자유 문자열을 막아야 `journal_read({ tag: "reason:merged" })` 같은 회수 / 집계가
+    // 안정적으로 동작한다 — handler 단에서 enum 으로 끊는다.
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    await expect(
+      handlePrWatchStop(prJournal, { handle: HANDLE, reason: "wontfix" }),
+    ).rejects.toThrow(/reason must be one of/);
+    // 그래도 stop 이 박히지 않았으니 여전히 active.
+    const status = await handlePrWatchStatus(prJournal);
+    expect(status.totals.active).toBe(1);
+  });
+
+  it("pr_watch_stop: accepts the three valid stop reasons", async () => {
+    for (const reason of ["merged", "closed", "manual"] as const) {
+      await handlePrWatchStart(prJournal, { handle: HANDLE });
+      const stop = await handlePrWatchStop(prJournal, {
+        handle: HANDLE,
+        reason,
+      });
+      expect(stop.entry.tags).toContain(`reason:${reason}`);
+    }
+  });
+
+  it("pr_watch_status: tolerates a journal padded with non-pr-watch entries (tag-filtered read)", async () => {
+    // 이전엔 readAllJournalEntries() 가 모든 종류 entry 를 5000 까지만 읽어 PR 항목이
+    // 다른 도메인 (decision/blocker/spec_anchor 등) 에 밀려 잘려 나갈 수 있었다 — 이제는
+    // tag: "pr-watch" 로 좁혀 읽으므로 다른 도메인 entry 가 아무리 많아도 PR 라이프사이클
+    // 정확성은 유지된다. 100건의 무관한 entry 사이에 watch_start 한 건이 살아있는지 확인.
+    await prJournal.append({ content: "first watch", kind: "decision" });
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    for (let i = 0; i < 100; i += 1) {
+      await prJournal.append({
+        content: `noise ${i}`,
+        kind: "note",
+        tags: ["unrelated"],
+      });
+    }
+    const status = await handlePrWatchStatus(prJournal);
+    expect(status.totals.active).toBe(1);
+    expect(status.active[0]?.handle.canonical).toBe(HANDLE);
+  });
+
   it("pr_event_record: marks alreadySeen=true on duplicate (handle, type, externalId)", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     const first = await handlePrEventRecord(prJournal, {

@@ -3,20 +3,22 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentJournal, type JournalEntry } from "./agent-journal";
+import { isMergeMode, MERGE_MODES } from "./toolkit-config";
 import {
   buildAppend,
   eventTag,
   formatPrHandle,
   handleTag,
   hasInboundFor,
-  isMergeMode,
-  MERGE_MODES,
+  isStopReason,
   normalizeEventRef,
   parsePrHandle,
   PR_EVENT_TYPES,
+  PR_WATCH_TAG,
   reduceActiveWatches,
   reducePendingEvents,
   selectByHandle,
+  STOP_REASONS,
   type PrEventRef,
   type PrHandle,
 } from "./pr-watch";
@@ -470,13 +472,35 @@ describe("hasInboundFor / isMergeMode / MERGE_MODES", () => {
     ).toBe(true);
   });
 
-  it("isMergeMode / MERGE_MODES exhaustiveness", () => {
+  it("isMergeMode / MERGE_MODES exhaustiveness (single source = toolkit-config)", () => {
     expect(MERGE_MODES).toEqual(["merge", "squash", "rebase"]);
     for (const mode of MERGE_MODES) {
       expect(isMergeMode(mode)).toBe(true);
     }
     expect(isMergeMode("fast-forward")).toBe(false);
     expect(isMergeMode("")).toBe(false);
+  });
+
+  it("STOP_REASONS / isStopReason: 3종 enum 만 인식", () => {
+    expect(STOP_REASONS).toEqual(["merged", "closed", "manual"]);
+    for (const r of STOP_REASONS) expect(isStopReason(r)).toBe(true);
+    expect(isStopReason("wontfix")).toBe(false);
+    expect(isStopReason("")).toBe(false);
+  });
+
+  it("PR_WATCH_TAG = 'pr-watch' (메인 태그 단일 소스)", () => {
+    expect(PR_WATCH_TAG).toBe("pr-watch");
+  });
+
+  it("buildAppend(pr_watch_stop): rejects free-form reason at the lib layer", () => {
+    // handler 단의 가드 외에 buildAppend 자체도 enum 만 받는다 (defensive).
+    expect(() =>
+      buildAppend({
+        kind: "pr_watch_stop",
+        // @ts-expect-error: 의도적으로 enum 외 값 — 런타임 가드 검증.
+        data: { handle: HANDLE_A, reason: "wontfix" },
+      }),
+    ).toThrow(/reason must be one of/);
   });
 });
 

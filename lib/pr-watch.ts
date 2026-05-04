@@ -231,14 +231,22 @@ export function eventTag(ref: PrEventRef): string {
 }
 
 /**
- * 머지 모드 권고 enum. `agent-toolkit.json` 의 `github.repositories[*].mergeMode` 와 동일 enum —
- * 한 곳에 두고 schema / config / handler 가 같이 참조한다.
+ * PR review watch 의 메인 태그 — 모든 4 종 reserved kind 가 0번 인덱스로 박는다.
+ * `journal_search "pr-watch"` / `journal_read({ tag: "pr-watch" })` 한 방으로 lifecycle
+ * 전체를 회수할 수 있는 진입점. 한 곳에 두고 plugin handler 가 import 한다.
  */
-export const MERGE_MODES = ["merge", "squash", "rebase"] as const;
-export type MergeMode = (typeof MERGE_MODES)[number];
+export const PR_WATCH_TAG = "pr-watch";
 
-export function isMergeMode(value: string): value is MergeMode {
-  return (MERGE_MODES as readonly string[]).includes(value);
+/**
+ * `pr_watch_stop` 의 `reason` enum. 자유 문자열을 허용하면 journal tag (`reason:<reason>`)
+ * 에 임의 값이 박혀 `journal_read({ tag: "reason:merged" })` 같은 회수 / 집계가 깨진다 —
+ * skill / agent 문서가 이 세 값을 전제로 설명하므로 handler 단에서 enum 으로 강제한다.
+ */
+export const STOP_REASONS = ["merged", "closed", "manual"] as const;
+export type StopReason = (typeof STOP_REASONS)[number];
+
+export function isStopReason(value: string): value is StopReason {
+  return (STOP_REASONS as readonly string[]).includes(value);
 }
 
 /**
@@ -480,8 +488,12 @@ export interface BuildWatchStartInput {
 
 export interface BuildWatchStopInput {
   handle: PrHandle;
-  /** `merged` / `closed` / `manual` 등 자유 문자열. */
-  reason?: string;
+  /**
+   * 종료 사유. `STOP_REASONS` enum (`merged` / `closed` / `manual`) 만 허용 —
+   * `buildAppend` 가 검증하고, 어긋나면 throw 한다 (자유 문자열 금지: tag 회수 / 집계
+   * 안정성 보장).
+   */
+  reason?: StopReason;
 }
 
 export interface BuildEventInboundInput {
@@ -518,7 +530,7 @@ export type BuildAppend =
 export function buildAppend(input: BuildAppend): JournalAppendInput {
   if (input.kind === "pr_watch_start") {
     const { handle, note, labels, mergeMode } = input.data;
-    const tags: string[] = ["pr-watch", "start", handleTag(handle)];
+    const tags: string[] = [PR_WATCH_TAG, "start", handleTag(handle)];
     for (const l of labels ?? []) {
       const trimmed = l.trim();
       if (trimmed.length > 0) tags.push(`label:${trimmed}`);
@@ -534,12 +546,21 @@ export function buildAppend(input: BuildAppend): JournalAppendInput {
   }
   if (input.kind === "pr_watch_stop") {
     const { handle, reason } = input.data;
-    const tags: string[] = ["pr-watch", "stop", handleTag(handle)];
-    const reasonTrim = reason?.trim();
-    if (reasonTrim && reasonTrim.length > 0) tags.push(`reason:${reasonTrim}`);
-    const content = reasonTrim
-      ? `${handle.canonical} watch stopped — ${reasonTrim}`
-      : `${handle.canonical} watch stopped`;
+    const tags: string[] = [PR_WATCH_TAG, "stop", handleTag(handle)];
+    if (reason !== undefined) {
+      // 자유 문자열을 막아 `reason:<value>` 태그가 항상 enum 으로만 박히게 한다 — 그래야
+      // `journal_read({ tag: "reason:merged" })` 같은 회수가 안정적이다.
+      if (!isStopReason(reason)) {
+        throw new Error(
+          `buildAppend: pr_watch_stop reason must be one of ${STOP_REASONS.join(" / ")} — got "${reason}"`,
+        );
+      }
+      tags.push(`reason:${reason}`);
+    }
+    const content =
+      reason !== undefined
+        ? `${handle.canonical} watch stopped — ${reason}`
+        : `${handle.canonical} watch stopped`;
     return { content, kind: "pr_watch_stop", tags };
   }
   if (input.kind === "pr_event_inbound") {
@@ -549,7 +570,7 @@ export function buildAppend(input: BuildAppend): JournalAppendInput {
         ? summary.trim()
         : "(no summary)";
     const tags = [
-      "pr-watch",
+      PR_WATCH_TAG,
       "inbound",
       handleTag(handle),
       eventTag(ref),
@@ -573,7 +594,7 @@ export function buildAppend(input: BuildAppend): JournalAppendInput {
       ? reasoning.trim()
       : "(no reasoning)";
   const tags = [
-    "pr-watch",
+    PR_WATCH_TAG,
     "resolved",
     handleTag(handle),
     eventTag(ref),

@@ -166,7 +166,7 @@ Unsubscribe from the watch.
 ### Steps
 
 1. **Verify state.** `pr_watch_status` — when the handle is not active, return "이미 stop 상태" on a single line.
-2. **Determine the reason.** `merged` (PR merged externally) / `closed` (closed without merge) / `manual` (user explicitly asked to stop). When PULL detected merge / close in the same turn, that turn already auto-stopped — caller would only invoke WATCH-STOP manually for `manual`.
+2. **Determine the reason.** `merged` (PR merged externally) / `closed` (closed without merge) / `manual` (user explicitly asked to stop) — `STOP_REASONS` enum 외 값은 `pr_watch_stop` 도구가 throw 한다 (자유 문자열 금지). When PULL detected merge / close in the same turn, that turn already auto-stopped — caller would only invoke WATCH-STOP manually for `manual`.
 3. **Call `pr_watch_stop`** with `reason`.
 4. **Surface a one-line confirmation** + a final pending count from `pr_event_pending` (so the user knows whether anything was left unresolved).
 

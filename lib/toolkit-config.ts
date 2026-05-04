@@ -170,7 +170,23 @@ const ALLOWED_GITHUB_REPO_KEYS = new Set([
   "mergeMode",
 ]);
 
-const ALLOWED_GITHUB_MERGE_MODES = new Set(["merge", "squash", "rebase"]);
+/**
+ * GitHub merge mode enum. Schema (`agent-toolkit.schema.json`),
+ * runtime config 검증 (`validateGithubRepositoryProfile` 아래),
+ * 그리고 PR review watch handler (`handlePrWatchStart`) 가 *모두 이 한 곳* 을 참조한다 —
+ * pr-watch.ts 가 이 enum 을 import 해서 쓰지, 자체 enum 을 두지 않는다 (drift 방지).
+ *
+ * 미래에 squash 외 새 전략 (예: `rebase-merge`) 이 추가되면 여기만 바꾸면 schema /
+ * runtime / handler 가 같이 따라간다.
+ */
+export const MERGE_MODES = ["merge", "squash", "rebase"] as const;
+export type MergeMode = (typeof MERGE_MODES)[number];
+
+export function isMergeMode(value: string): value is MergeMode {
+  return (MERGE_MODES as readonly string[]).includes(value);
+}
+
+const ALLOWED_GITHUB_MERGE_MODES: ReadonlySet<string> = new Set(MERGE_MODES);
 
 /** 레지스트리 leaf URL 에 허용되는 스킴. spec 다운로드 단이 받는 종류와 동일. */
 const URL_SCHEMES = new Set(["http:", "https:", "file:"]);

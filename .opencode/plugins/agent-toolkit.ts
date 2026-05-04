@@ -34,7 +34,9 @@ import {
   type OpenapiRegistryEntry,
 } from "../../lib/openapi-registry";
 import {
+  isMergeMode,
   loadConfig,
+  MERGE_MODES,
   type OpenapiRegistry,
   type ToolkitConfig,
 } from "../../lib/toolkit-config";
@@ -71,13 +73,14 @@ import {
 import {
   buildAppend as buildPrAppend,
   hasInboundFor,
-  isMergeMode,
-  MERGE_MODES,
+  isStopReason,
   normalizeEventRef,
   parsePrHandle,
+  PR_WATCH_TAG,
   reduceActiveWatches,
   reducePendingEvents,
   RESOLVE_DECISIONS,
+  STOP_REASONS,
   type PendingPrEvent,
   type PrEventType,
   type PrWatchState,
@@ -542,7 +545,7 @@ export async function handlePrWatchStart(
   );
   const state =
     findStateForHandle(
-      await readAllJournalEntries(journal),
+      await readPrWatchJournalEntries(journal),
       handle.canonical,
     ) ??
     ({
@@ -555,6 +558,7 @@ export async function handlePrWatchStart(
 
 export interface PrWatchStopInput {
   handle: string;
+  /** `STOP_REASONS` enum 만 허용 — handler 가 검증한다 (자유 문자열 거부). */
   reason?: string;
 }
 
@@ -569,6 +573,14 @@ export async function handlePrWatchStop(
   input: PrWatchStopInput,
 ): Promise<PrWatchStopResult> {
   const handle = parsePrHandle(input.handle);
+  // reason 은 enum 으로만 받는다 — 자유 문자열을 막아 journal tag (`reason:<value>`) 가
+  // 항상 같은 모양으로 박히게 (= 회수 / 집계 안정성). buildAppend 도 한 번 더 검증하지만,
+  // handler 단에서 먼저 throw 해 메시지 톤 / context 를 일관되게 유지한다.
+  if (input.reason !== undefined && !isStopReason(input.reason)) {
+    throw new Error(
+      `pr_watch_stop: reason must be one of ${STOP_REASONS.join(" / ")} — got "${input.reason}"`,
+    );
+  }
   const entry = await journal.append(
     buildPrAppend({
       kind: "pr_watch_stop",
@@ -597,7 +609,7 @@ export interface PrWatchStatusResult {
 export async function handlePrWatchStatus(
   journal: AgentJournal,
 ): Promise<PrWatchStatusResult> {
-  const all = await readAllJournalEntries(journal);
+  const all = await readPrWatchJournalEntries(journal);
   const active = reduceActiveWatches(all);
   let pending = 0;
   for (const s of active) {
@@ -644,7 +656,7 @@ export async function handlePrEventRecord(
 ): Promise<PrEventRecordResult> {
   const handle = parsePrHandle(input.handle);
   const ref = normalizeEventRef(input.type, input.externalId);
-  const before = await readAllJournalEntries(journal);
+  const before = await readPrWatchJournalEntries(journal);
   const alreadySeen = hasInboundFor(handle, ref.toolkitKey, before);
   const entry = await journal.append(
     buildPrAppend({
@@ -664,7 +676,7 @@ export async function handlePrEventPending(
   handleInput: string,
 ): Promise<PendingPrEvent[]> {
   const handle = parsePrHandle(handleInput);
-  return reducePendingEvents(handle, await readAllJournalEntries(journal));
+  return reducePendingEvents(handle, await readPrWatchJournalEntries(journal));
 }
 
 export interface PrEventResolveInput {
@@ -703,7 +715,7 @@ export async function handlePrEventResolve(
       `pr_event_resolve: decision must be one of ${RESOLVE_DECISIONS.join(", ")} — got "${input.decision}"`,
     );
   }
-  const before = await readAllJournalEntries(journal);
+  const before = await readPrWatchJournalEntries(journal);
   if (!hasInboundFor(handle, ref.toolkitKey, before)) {
     throw new Error(
       `pr_event_resolve: no prior pr_event_inbound for handle "${handle.canonical}" + toolkitKey "${ref.toolkitKey}" (type=${ref.type}, externalId=${ref.externalId}) — call pr_event_pending to confirm the right key, then resolve.`,
@@ -725,15 +737,28 @@ export async function handlePrEventResolve(
 }
 
 /**
- * journal 전체를 시간 오름차순으로 한 번 읽어 reducer 들에 넘긴다.
- * `journal.read({ limit })` 는 최신순 → reducer 의 가정 (시간순) 에 맞게 reverse.
+ * PR review watch 라이프사이클 entry 만 시간 오름차순으로 읽어 reducer 들에 넘긴다.
+ *
+ * 이전엔 모든 종류의 entry 를 (decisions / blockers / SPEC anchor / journal 메모 등 포함)
+ * 한 번에 5000 까지 끌어와 *그 부분집합에서* PR 항목을 reduce 했다 — 다른 도메인 entry 가
+ * 5000 을 채우면 오래된 `pr_watch_start` / `pr_event_inbound` 가 잘려 (1) active watch
+ * 누락 / (2) `alreadySeen: false` 오판 / (3) 정상 inbound 를 orphan 으로 오인해
+ * `pr_event_resolve` 가 실패하는 정확성 저하가 일어났다.
+ *
+ * 메인 태그 `pr-watch` 로 좁혀 PR 항목만 limit 안에 채우게 하면 cap 동일성 (`100_000`) 이
+ * 동일한 PR 라이프사이클 라이브 환경에서는 사실상 무한대로 동작 — 그럼에도 폭주 방지를
+ * 위해 *명시적 cap* 은 유지한다 (limit 도달 시 동작이 silent 변경되지 않도록 cap 자체를
+ * 수치로 박아 추후 모니터링이 가능하게).
  */
-async function readAllJournalEntries(
+const PR_WATCH_READ_LIMIT = 100_000;
+
+async function readPrWatchJournalEntries(
   journal: AgentJournal,
 ): Promise<JournalEntry[]> {
-  // 큰 PR 라이프사이클이라도 entry 수가 폭증하기 전에 caller (sub-agent) 가 stop /
-  // resolve 로 추리는 흐름이라, 단일 read 의 비용이 실용적이다. 한계가 보이면 별도 인덱싱.
-  const recent = await journal.read({ limit: 5000 });
+  const recent = await journal.read({
+    tag: PR_WATCH_TAG,
+    limit: PR_WATCH_READ_LIMIT,
+  });
   return [...recent].reverse();
 }
 
