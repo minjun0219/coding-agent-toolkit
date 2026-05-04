@@ -75,18 +75,48 @@ export interface MysqlConnections {
 }
 
 /**
- * `spec-to-issues` skill (Phase 2) 가 사용할 GitHub 동기화 설정.
+ * 한 GitHub repository 의 메타 (`pr-review-watch` 가 사용). 토킷은 GitHub API 를 직접
+ * 호출하지 않으므로 토큰 / 비밀은 들고 있지 않는다 — 외부 GitHub MCP 서버가 OAuth / PAT
+ * 자체 처리.
  *
- * 인증 / 토큰은 모두 `gh` CLI 가 들고 있으므로 여기에 토큰 키는 없다 — 토큰은
- * `gh auth login` 으로만. `repo` 는 선택이며 미지정 시 `gh repo view` 로 자동
- * 감지한다 (precedence: tool param > 이 config > `gh repo view`).
+ * 모든 필드 optional — 등록만으로도 의미가 있다 (allow-list 역할).
+ */
+export interface GithubRepositoryProfile {
+  /** 짧은 별명. MVP 에서는 surface 만 — `<alias>#<num>` 핸들 파싱은 미지원. */
+  alias?: string;
+  /** mindy 가 답글 작성 시 고려할 레이블 권고 list (strict 가드는 외부 MCP 책임). */
+  labels?: string[];
+  /** repository default branch 표기 (`main` / `master`). 검증은 안 함. */
+  defaultBranch?: string;
+  /**
+   * 머지 권고 모드. 실제 머지는 외부 MCP 가 처리. enum 단일 소스는 같은 파일의
+   * `MergeMode` (`MERGE_MODES` 상수에서 파생) — 타입 / runtime 검증 / schema 가 한 곳을
+   * 참조해 drift 가 재발하지 않게 한다.
+   */
+  mergeMode?: MergeMode;
+}
+
+/** `github.repositories` 트리. `owner/repo` → profile. */
+export interface GithubRepositories {
+  [ownerRepo: string]: GithubRepositoryProfile;
+}
+
+/**
+ * `github` 객체. 두 surface 가 같이 산다:
  *
- * `defaultLabels[0]` 는 dedupe 검색 (`gh issue list --label`) 의 1차 필터로
- * 쓰이므로 stable 해야 한다. 패턴은 `^[a-zA-Z0-9_-]+$` 로 강제 — colons 같은
- * gh 특수문자나 공백을 허용하지 않는다.
+ * - `repositories` — PR review watch (`mindy` + `pr-review-watch`) 가 참조하는 repo
+ *   메타 (`owner/repo` 별 alias / labels / defaultBranch / mergeMode). PR API 호출은
+ *   외부 GitHub MCP 책임이므로 여기 토큰은 두지 않는다.
+ * - `repo` / `defaultLabels` — `spec-to-issues` skill (Phase 2) 의 `gh` CLI 호출 기본값.
+ *   인증 / 토큰은 모두 `gh` CLI 가 들고 있으므로 여기에 토큰 키는 없다 — 토큰은
+ *   `gh auth login` 으로만. `repo` 는 선택이며 미지정 시 `gh repo view` 로 자동 감지한다
+ *   (precedence: tool param > 이 config > `gh repo view`). `defaultLabels[0]` 는 dedupe
+ *   검색 (`gh issue list --label`) 의 1차 필터로 쓰이므로 stable 해야 한다.
  */
 export interface GithubConfig {
-  /** "owner/name". 미지정 시 `gh repo view --json nameWithOwner` 로 자동 감지. */
+  /** PR review watch 가 참조하는 repo 메타. */
+  repositories?: GithubRepositories;
+  /** spec-to-issues 동기화의 default repo. "owner/name". 미지정 시 `gh repo view` 자동 감지. */
   repo?: string;
   /** spec-to-issues 가 새 issue 에 부착할 라벨. default `["spec-pact"]`. `[0]` 이 dedupe 필터. */
   defaultLabels?: string[];
@@ -98,10 +128,10 @@ export interface ToolkitConfig {
     registry?: OpenapiRegistry;
   };
   spec?: SpecConfig;
+  github?: GithubConfig;
   mysql?: {
     connections?: MysqlConnections;
   };
-  github?: GithubConfig;
 }
 
 export interface LoadConfigOptions {
@@ -146,6 +176,41 @@ export const ID_BODY = "[a-zA-Z0-9_-]+";
 
 /** host / env / spec 식별자 정규식 (앵커 포함). 콜론은 handle separator 로 예약. */
 export const ID_PATTERN = new RegExp(`^${ID_BODY}$`);
+
+/**
+ * GitHub `owner/repo` 키 패턴.
+ * 슬래시 정확히 1 개 + 양쪽이 `[a-zA-Z0-9_.-]` 본문. 다른 핸들의 콜론 separator 와
+ * 의도적으로 분리된다 (`ID_BODY` 가 슬래시를 허용하지 않으므로 별도 정규식 신설).
+ */
+const GITHUB_REPO_BODY = "[a-zA-Z0-9_.-]+";
+const GITHUB_REPO_PATTERN = new RegExp(
+  `^${GITHUB_REPO_BODY}\\/${GITHUB_REPO_BODY}$`,
+);
+
+const ALLOWED_GITHUB_REPO_KEYS = new Set([
+  "alias",
+  "labels",
+  "defaultBranch",
+  "mergeMode",
+]);
+
+/**
+ * GitHub merge mode enum. Schema (`agent-toolkit.schema.json`),
+ * runtime config 검증 (`validateGithubRepositoryProfile` 아래),
+ * 그리고 PR review watch handler (`handlePrWatchStart`) 가 *모두 이 한 곳* 을 참조한다 —
+ * pr-watch.ts 가 이 enum 을 import 해서 쓰지, 자체 enum 을 두지 않는다 (drift 방지).
+ *
+ * 미래에 squash 외 새 전략 (예: `rebase-merge`) 이 추가되면 여기만 바꾸면 schema /
+ * runtime / handler 가 같이 따라간다.
+ */
+export const MERGE_MODES = ["merge", "squash", "rebase"] as const;
+export type MergeMode = (typeof MERGE_MODES)[number];
+
+export function isMergeMode(value: string): value is MergeMode {
+  return (MERGE_MODES as readonly string[]).includes(value);
+}
+
+const ALLOWED_GITHUB_MERGE_MODES: ReadonlySet<string> = new Set(MERGE_MODES);
 
 /** 레지스트리 leaf URL 에 허용되는 스킴. spec 다운로드 단이 받는 종류와 동일. */
 const URL_SCHEMES = new Set(["http:", "https:", "file:"]);
@@ -196,12 +261,18 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
 }
 
 /**
- * `github` 객체 모양 검증. 모든 필드 optional + 미지원 key reject (오타 가드).
- * `repo` 는 `owner/name` 패턴, `defaultLabels` 는 라벨 명명 규칙
- * (`^[a-zA-Z0-9_-]+$`) — `gh issue list --label` 가 받는 안전한 형태.
+ * `github` 객체 모양 검증. 두 surface 의 필드를 한 곳에서 같이 검증한다:
+ *   - `repositories` — PR review watch 가 참조하는 `owner/repo` 메타 트리.
+ *   - `repo` / `defaultLabels` — `spec-to-issues` 의 `gh` CLI 기본값.
+ *
+ * 미지원 key 는 reject (오타 가드, 스키마 lockstep). 토큰 / 비밀 키 (`token`,
+ * `passwordEnv`, `apiKey` 등) 가 들어오면 거부 — 외부 GitHub MCP / `gh auth login` 의
+ * 책임 영역과 명확히 분리.
  */
-const ALLOWED_GITHUB_KEYS = new Set(["repo", "defaultLabels"]);
-const REPO_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
+const ALLOWED_GITHUB_KEYS = new Set(["repositories", "repo", "defaultLabels"]);
+
+/** spec-to-issues 의 `repo` 필드 패턴. dot 허용 (Phase 2 기존 정규식 유지). */
+const SPEC_ISSUES_REPO_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
 const LABEL_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function validateGithub(
@@ -219,8 +290,11 @@ function validateGithub(
       );
     }
   }
+  if (g.repositories !== undefined) {
+    validateGithubRepositories(g.repositories, source);
+  }
   if (g.repo !== undefined) {
-    if (typeof g.repo !== "string" || !REPO_PATTERN.test(g.repo)) {
+    if (typeof g.repo !== "string" || !SPEC_ISSUES_REPO_PATTERN.test(g.repo)) {
       throw new Error(
         `${source}: github.repo must match "owner/name" — got ${JSON.stringify(g.repo)}`,
       );
@@ -238,6 +312,88 @@ function validateGithub(
           `${source}: github.defaultLabels[${i}] must match ${LABEL_PATTERN} — got ${JSON.stringify(label)}`,
         );
       }
+    }
+  }
+}
+
+/**
+ * `github.repositories` 트리 검증. owner/repo 패턴 + leaf profile 의 4 종 필드 허용.
+ * 미지원 key 는 reject (오타 가드, 스키마 lockstep).
+ */
+function validateGithubRepositories(
+  repos: unknown,
+  source: string,
+): asserts repos is GithubRepositories {
+  if (repos === null || typeof repos !== "object" || Array.isArray(repos)) {
+    throw new Error(`${source}: github.repositories must be an object`);
+  }
+  for (const [key, profile] of Object.entries(
+    repos as Record<string, unknown>,
+  )) {
+    if (!GITHUB_REPO_PATTERN.test(key)) {
+      throw new Error(
+        `${source}: github repository key "${key}" must match ${GITHUB_REPO_PATTERN} (owner/repo, body characters: alphanumeric, "_", ".", "-")`,
+      );
+    }
+    validateGithubRepositoryProfile(
+      profile,
+      `${source}: github.repositories["${key}"]`,
+    );
+  }
+}
+
+function validateGithubRepositoryProfile(
+  profile: unknown,
+  where: string,
+): void {
+  if (
+    profile === null ||
+    typeof profile !== "object" ||
+    Array.isArray(profile)
+  ) {
+    throw new Error(`${where} must be a repository-profile object`);
+  }
+  const p = profile as Record<string, unknown>;
+  for (const key of Object.keys(p)) {
+    if (!ALLOWED_GITHUB_REPO_KEYS.has(key)) {
+      throw new Error(
+        `${where} has unsupported key "${key}" — allowed: ${[...ALLOWED_GITHUB_REPO_KEYS].join(", ")}`,
+      );
+    }
+  }
+  if (p.alias !== undefined) {
+    if (typeof p.alias !== "string" || !ID_PATTERN.test(p.alias)) {
+      throw new Error(
+        `${where}.alias must match ${ID_PATTERN} (alphanumeric, "_" or "-")`,
+      );
+    }
+  }
+  if (p.labels !== undefined) {
+    if (!Array.isArray(p.labels)) {
+      throw new Error(`${where}.labels must be an array of strings`);
+    }
+    for (const [i, label] of p.labels.entries()) {
+      if (typeof label !== "string" || label.trim().length === 0) {
+        throw new Error(`${where}.labels[${i}] must be a non-empty string`);
+      }
+    }
+  }
+  if (p.defaultBranch !== undefined) {
+    if (
+      typeof p.defaultBranch !== "string" ||
+      p.defaultBranch.trim().length === 0
+    ) {
+      throw new Error(`${where}.defaultBranch must be a non-empty string`);
+    }
+  }
+  if (p.mergeMode !== undefined) {
+    if (
+      typeof p.mergeMode !== "string" ||
+      !ALLOWED_GITHUB_MERGE_MODES.has(p.mergeMode)
+    ) {
+      throw new Error(
+        `${where}.mergeMode must be one of ${[...ALLOWED_GITHUB_MERGE_MODES].join(" / ")}`,
+      );
     }
   }
 }
@@ -543,14 +699,22 @@ export function mergeConfigs(
   }
   if (project.github) {
     out.github ??= {};
-    for (const [key, value] of Object.entries(project.github) as [
-      keyof GithubConfig,
-      GithubConfig[keyof GithubConfig],
-    ][]) {
-      if (value !== undefined) {
-        // 각 key 는 leaf (repo / defaultLabels 배열 통째로) — project 가 user 를 덮어쓴다.
-        (out.github as Record<string, unknown>)[key] = value;
+    // `repositories` 는 entry-by-entry leaf merge (mysql 과 동일 패턴) — project 가 같은
+    // owner/repo entry 를 통째로 덮어쓰되, user 만 등록한 다른 owner/repo 는 살아남는다.
+    if (project.github.repositories) {
+      out.github.repositories ??= {};
+      for (const [repo, profile] of Object.entries(
+        project.github.repositories,
+      )) {
+        out.github.repositories[repo] = profile;
       }
+    }
+    // `repo` / `defaultLabels` 는 자체 leaf — project 가 user 를 통째로 덮어쓴다.
+    if (project.github.repo !== undefined) {
+      out.github.repo = project.github.repo;
+    }
+    if (project.github.defaultLabels !== undefined) {
+      out.github.defaultLabels = project.github.defaultLabels;
     }
   }
   return out;
