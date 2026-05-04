@@ -57,6 +57,7 @@ Then verify the tools are registered:
 > use swagger_envs tool   # flatten the registry from agent-toolkit.json
 > use journal_append tool with content "decided to ship Phase 3" kind "decision"
 > use journal_read tool   # most recent first
+> use spec_pact_fragment tool with mode "draft"   # Phase 6.A — returns the DRAFT mode body from the plugin's absolute path
 ```
 
 Optional PR review watch smoke (works without external GitHub MCP — the toolkit's six `pr_*` tools never call GitHub; mindy reads PR meta / comments through whichever GitHub MCP server you have registered separately):

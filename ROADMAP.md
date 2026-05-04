@@ -79,12 +79,14 @@
   - **opencode 단독 능력 한계**: opencode plugin API 의 `tool` 만 동적 등록 가능, agent / skill / command 는 path-based (`.md` 정적). 즉 TS-based loader 는 (a) OmO 같은 외부 harness 가 있는 환경에서만 의미가 있거나 (b) 토킷이 자체 loader 를 만들어 `.ts` AgentConfig → runtime `.md` 로 emit 해야 한다.
   - **방향**: `.md` 가 baseline 으로 남고, `.ts` 정의는 OmO 가 있을 때 옵트인으로 활성화 — 토킷이 OmO 의존을 강제하지 않는다. plugin entrypoint 가 `agents/*.ts` 가 있으면 OmO loader 에 위임, 없으면 `.md` 만 노출.
   - 의존성 0 의 자체 loader (b) 는 별도 PR 로 검토 — 트리거는 "정적 prompt 로는 부족한 첫 use case 가 등장할 때". 지금은 추적만.
-  - **Phase 6.A — Runtime 프롬프트 동적 조립** *(6 의 sub, OmO 없이도 자체 적용 가능)*
+  - **Phase 6.A — Runtime 프롬프트 동적 조립 — 🟡 in-flight (PR1 진행 중)** *(6 의 sub, OmO 없이도 자체 적용 가능)*
     - 정적 prompt 를 두 부분으로 쪼갠다 — "고정 (persona / scope / 일반 규칙)" + "조건부 fragment (모드별 본문, 최근 journal entry, INDEX row, drift diff)".
     - agent 가 turn 시작 시 caller 입력 → 모드 결정 → 필요한 fragment 만 끼워 넣어 최종 prompt 생성. DRAFT turn 일 때 VERIFY/AMEND 본문이 prompt 에 안 들어가는 식의 token 절감.
     - fragment 카탈로그 (예시): `grace.fragment.{draft,verify,drift-check,amend}.md`, `grace.fragment.journal-recent.md`, `grace.fragment.index-row.md`.
     - **Phase 7 와의 관계**: 각 fragment 도 capability manifest (`tokenClass` / `requires`) 를 갖게 되면 Phase 7 router 가 cheapest fragment 만 활성화 가능. 즉 6.A = primitive **내부** token cost, Phase 7 = primitive **사이** token cost — 두 층이 서로 보완.
-    - **트리거**: 한 agent 의 정적 prompt 가 ~3-4k token 을 넘기 시작할 때 (현재 grace.md ~150 줄, 한참 멀음).
+    - **트리거**: 한 agent 의 정적 prompt 가 ~3-4k token 을 넘기 시작할 때 (현재 grace.md ~150 줄, 한참 멀음). 트리거 미달이지만 토대 선행 결정 — 측정으로 다음 PR 진입 여부를 결정한다.
+    - **PR1 (이 PR)** — `spec-pact` 4 모드 본문을 `skills/spec-pact/fragments/{draft,verify,drift-check,amend}.md` 로 분리. SKILL.md 코어는 router 화 (Role / Mental model / journal kind 표 / Tool / Writing / Do-NOT / Failure 만 보존, 240 줄 → ~100 줄). 모드 본문 인입은 **plugin tool `spec_pact_fragment(mode)`** 로 처리 — `agents/grace.md` Behavior step 3.5 가 workspace-relative `read` 가 아니라 이 tool 을 호출. plugin 의 `import.meta.url` 기반 절대경로로 fragment 를 읽으므로 외부 설치 (`agent-toolkit@git+...`) 환경에서도 사용자 cwd 와 무관 (Codex review 의 P1 지적 해결). `lib/spec-pact-fragments.ts` (`SpecPactMode` / `assertSpecPactMode` / `loadSpecPactFragment`) + 단위 테스트 + plugin handler 테스트 포함. 측정: `scripts/measure-fragment-cost.ts` (의존성 0, Bun + `node:fs`) — Scenario A (host 가 SKILL.md 만 auto-load) / Scenario B (host 가 fragments/ 까지 auto-load) 두 표 동시 출력. granularity 결정 = **mode-only** — agent 단위는 너무 거칠고 journal 항목 단위는 너무 잘게. 측정 결과는 PR body 참조.
+    - **다음 PR 후보** (측정 결과 보고 트리거 결정): rocky 분리 / journal-recent fragment / index-row fragment / Phase 7 manifest. plugin tool 경로로 일원화됐으므로 fragments/ 디렉터리 위치 재배치 (dotfile prefix 등) 는 더 이상 필요 없을 수도 있음 — Scenario B 가 실제로 관찰될 때만 결정.
   - **Phase 6.B — OmO harness leverage** *(6 의 sub, OmO 가 있을 때만; 없으면 6.A 또는 baseline `.md` 로 fallback)*
     - OmO 의 두 layer 가 명확히 분리되어 있다 (context7 source 확인):
       - **`claude-code-plugin-loader`** (`src/features/claude-code-plugin-loader/`) — 순수 ingestion 파이프라인. `.opencode/plugins` / `~/.claude/plugins` 스캔, `plugin.json` 매니페스트 파싱, commands / agents / skills / hooks / MCP / LSP 를 OmO registry 에 등록. WHY: "existing Claude Code plugins can be used unchanged within OmO".
@@ -97,6 +99,13 @@
     - **감지 방법**: opencode plugin API 가 다른 plugin 을 introspect 못 하므로, 환경변수 (`AGENT_TOOLKIT_OMO_HARNESS=1`) 또는 `opencode.json` 의 `plugin` 배열에 `oh-my-openagent` 가 보이는지로 판단. 자동 감지가 어려우면 사용자 명시적 opt-in.
     - **Out-of-scope**: OmO source 변경, OmO 가 없는 환경에서 OmO harness 흉내내기.
     - **트리거**: 첫 사용자 환경에서 OmO 와 함께 굴리면서 "이 부분은 OmO 에 맡기는 게 더 깔끔하다" 가 관찰될 때.
+  - **Phase 6.C — Journal 기반 compaction snapshot** *(6 의 sub, deps 0)*
+    - opencode `experimental.session.compacting` hook 에서 journal 의 최근 항목을 우선순위 정렬 (`spec_anchor` / `spec_amendment` / `decision` / `blocker` 우선, `note` 후순위, 같은 kind 면 최신순) 해 짧은 스냅샷 파일 (`.agent/session-resume.md`) 로 떨궈두고, 다음 turn 시작 시 Rocky 가 자동 read.
+    - 스냅샷 크기는 짧게 유지 (e.g., 파일 ≤2 KB) — 한도 초과 시 낮은 우선순위 항목부터 drop. journal 자체는 손대지 않는다 (스냅샷은 파생 산출물).
+    - opencode SessionStart hook 이 ship 되면 — 새 세션 / `--continue` 진입 시점에서도 같은 스냅샷을 자동 주입해 "직전 작업 재개" 가 한 hop 으로 줄어든다. 현재는 사용자가 명시적으로 `journal_search` 해야 하는 단계.
+    - 의존성 0 — 외부 store (SQLite / FTS5 등) 는 도입하지 않는다. journal 은 이미 디스크에 있고 우선순위 정렬은 in-memory 로 충분.
+    - **6.A 와의 관계**: 스냅샷은 6.A 의 "조건부 fragment" 의 한 종류 (`rocky.fragment.session-resume.md` 류). 6.A 가 정착하면 같은 layer 위에 자연스럽게 올라간다.
+    - **트리거**: 사용자가 compaction 후 "직전 turn 의 결정 / blocker 를 다시 인용" 을 두 번 이상 호소할 때, 또는 opencode SessionStart hook 이 ship 될 때.
 - **Phase 7 — Primitive composition foundation** *(미정 후보, 토대 우선)*
   - 새 tool / skill / agent / command / MCP 가 추가될 때 자동으로 "어느 자리에 슬롯되는지 / 어떤 token cost 를 갖는지" 를 surface 하는 **manifest 층**.
   - 각 primitive 가 frontmatter / config 로 다음을 선언:
@@ -172,3 +181,4 @@
 - **Phase 7 의 composition router 자동 vs 수동** — manifest 기반 라우팅이 description-driven routing 을 자동 대체할지, Rocky 가 명시적으로 manifest 를 lookup 할지. 자동화는 token 절감이 크지만 디버그 가능성 / 사용자 control 이 떨어진다. 첫 도입 시점에 결정.
 - **Phase 8 의 외부 primary 충돌 해소 정책** — agent-toolkit 의 키워드와 외부 primary 의 키워드가 겹칠 때, 어느 쪽이 양보할지의 기본 원칙 (트리거 빈도 vs 해당 surface 책임 vs 사용자 선택권). 첫 충돌 사례가 등장하면 해당 규약을 `COEXISTENCE.md` 에 박는다.
 - **Phase 9 의 license / publish 전략** — npm 공개 vs git+ 내부만, scoped vs unscoped, MIT 유지 vs 회사 정책 대응. Phase 9 진입 시 결정.
+- **표면별 출력 cap 정책의 공통화 여부** — `mysql_query` 의 자동 LIMIT, `swagger_search` 의 endpoint 단위 매칭 등 표면별로 큰 응답을 자르는 정책이 박혀 있다. 새 surface 가 늘 때마다 임의 결정하기보다 공통 규칙 (응답 size threshold 넘으면 호출자 intent 로 substring 필터 + 후속 검색용 vocab 노출 같은 패턴) 을 `lib/` 한 곳에 모을지의 결정. 트리거: 새 surface (e.g., GitHub Issue 조회) 가 추가되며 표면별 임의 정책이 두 종 이상 더 늘 때.
