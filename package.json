@@ -5,6 +5,12 @@
   "license": "MIT",
   "author": "Minjun Kim",
   "private": true,
+  "main": "./.opencode/plugins/agent-toolkit.ts",
+  "exports": {
+    "./server": {
+      "import": "./.opencode/plugins/agent-toolkit.ts"
+    }
+  },
   "type": "module",
   "engines": {
     "bun": ">=1.0.0"
