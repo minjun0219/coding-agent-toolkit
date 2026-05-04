@@ -57,9 +57,11 @@ import {
 } from "../../lib/spec-pact-fragments";
 import {
   type GhExecutor,
+  type RunGhResult,
   assertGhAuthed,
   createBunGhExecutor,
   detectRepo,
+  runGhCommand,
 } from "../../lib/gh-cli";
 import {
   parseSpecFile,
@@ -637,6 +639,46 @@ export async function handleIssueStatus(
   });
 }
 
+// ── gh-passthrough (Phase 2 후속 — generic gh runner) ────────────────────────
+
+/**
+ * `gh_run` plugin tool 의 백엔드. classify → 정책 적용 (read 즉시 / write +
+ * dryRun=true 면 plan / write + dryRun=false 면 실행 / deny throw) → journal
+ * append 한 줄.
+ *
+ * journal tag scheme: `["gh-passthrough", "read"|"dry-run"|"applied"]`. content
+ * 는 `gh <head> <verb>` (인자 값은 길어서 생략 — 호출 자체의 흐름만 회수 가능
+ * 하게).
+ */
+export async function handleGhRun(
+  exec: GhExecutor,
+  journal: AgentJournal,
+  args: string[],
+  dryRun?: boolean,
+): Promise<RunGhResult> {
+  if (!Array.isArray(args)) {
+    throw new Error(
+      `gh_run: args must be an array of strings, got ${typeof args}`,
+    );
+  }
+  // 인증은 deny / read / write 모두 일관 — gh_run 의 첫 호출이 `auth status` 가 아니라면 verify 후 진행.
+  // 단 `auth status` 자체는 verify 가 곧 본 호출이므로 skip.
+  const head = args[0];
+  if (head !== "auth") {
+    await assertGhAuthed(exec);
+  }
+  const result = await runGhCommand(exec, args, { dryRun });
+
+  const stage =
+    result.kind === "read" ? "read" : result.dryRun ? "dry-run" : "applied";
+  await journal.append({
+    kind: "note",
+    content: `gh ${head ?? ""}${args[1] ? ` ${args[1]}` : ""} ${stage}`,
+    tags: ["gh-passthrough", stage],
+  });
+  return result;
+}
+
 /**
  * opencode plugin default export.
  * `directory` 는 opencode 가 plugin 을 로드한 cwd. 우리는 import.meta 기반으로
@@ -976,6 +1018,21 @@ export default async function agentToolkitPlugin(_input: unknown) {
         },
         async handler(args: { slug?: string; path?: string; repo?: string }) {
           return handleIssueStatus(ghExecutor, journal, toolkitConfig, args);
+        },
+      },
+      gh_run: {
+        description:
+          '사용자 환경의 `gh` CLI 를 ad-hoc 호출. read 명령 (auth status / repo view / issue list / pr view / api / search / ...) 은 즉시 실행. write 명령 (issue create / pr merge / label create / api --method POST / ...) 은 dryRun=true (기본) 면 plan 만, dryRun=false 로 명시해야 실행. 환경 변경 위험 명령 (auth login/logout, extension, alias, config, gist) 은 GhDeniedCommandError 로 거부. (args: gh subcommand 부터 시작하는 문자열 배열 — 예: ["issue", "list", "--repo", "x/y"], dryRun?: write 호출에서만 의미 있음, 기본 true)',
+        parameters: {
+          args: {
+            type: "array",
+            items: { type: "string" },
+            required: true,
+          },
+          dryRun: { type: "boolean", required: false },
+        },
+        async handler({ args, dryRun }: { args: string[]; dryRun?: boolean }) {
+          return handleGhRun(ghExecutor, journal, args, dryRun);
         },
       },
       spec_pact_fragment: {

@@ -58,6 +58,8 @@ Then verify the tools are registered:
 > use journal_append tool with content "decided to ship Phase 3" kind "decision"
 > use journal_read tool   # most recent first
 > use spec_pact_fragment tool with mode "draft"   # Phase 6.A — returns the DRAFT mode body from the plugin's absolute path
+> use gh_run tool with args ["auth", "status"]    # Phase 2 후속 — read 명령은 즉시 실행
+> use gh_run tool with args ["issue", "list", "--repo", "<owner/repo>"]  # read
 ```
 
 Optional spec-to-issues smoke (Phase 2 — only after `gh` is installed and authenticated; see "GitHub Issue sync" below):
@@ -254,6 +256,21 @@ $ gh auth login --scopes "repo"   # if not authenticated; for GHE add --hostname
                                                                 # → 사용자 확인 후 dryRun=false 로 apply
 @rocky user-auth 에 새 bullet 추가했어, 이슈 추가 동기화해줘     # → 같은 호출, 새 sub 만 생성 + epic body patch
 ```
+
+### gh-passthrough (Phase 2 후속 — `gh_run`)
+
+`spec-to-issues` 와 무관한 ad-hoc gh 호출 — read 즉시 실행, write 는 `dryRun: true` (기본) 로 plan 먼저, 환경 변경 위험 명령은 거부.
+
+```
+@rocky `gh issue list --label bug` 검색해줘             # → gh_run({args:["issue","list","--label","bug"]}) — read, 즉시 실행
+@rocky `bug` 라벨 새로 만들어줘                           # → gh_run({args:["label","create","bug",...], dryRun:true}) plan 먼저
+                                                          # → 사용자 승인 후 dryRun:false 로 재호출
+@rocky #42 PR 머지해줘                                    # → gh_run({args:["pr","merge","42",...], dryRun:true}) plan 먼저
+@rocky `gh extension install owner/repo`                  # → GhDeniedCommandError, stop
+@rocky `gh auth login`                                    # → GhDeniedCommandError, stop (사용자가 직접 셸에서 실행)
+```
+
+분류 정책 전체는 [`skills/gh-passthrough/SKILL.md`](../skills/gh-passthrough/SKILL.md) 참고. 알 수 없는 subcommand 는 보수적으로 deny — gh 새 버전 추가 시 follow-up PR.
 
 ### 멱등 보증
 
