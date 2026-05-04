@@ -138,12 +138,47 @@
     },
     "github": {
       "type": "object",
-      "description": "spec-to-issues (Phase 2) GitHub sync settings. Auth and tokens are NOT here — `gh` CLI handles them via `gh auth login`. `repo` is optional (defaults to `gh repo view --json nameWithOwner`); `defaultLabels[0]` is the dedupe-search label and must be stable across runs.",
+      "description": "GitHub configuration shared by the PR review watch flow (`pr-review-watch` skill / `mindy` sub-agent — uses `repositories`) and the SPEC → GitHub Issue sync flow (`spec-to-issues` skill / `rocky` — uses `repo` / `defaultLabels`). No tokens are stored here: PR-watch auth lives with the external GitHub MCP server, and spec-to-issues auth lives with `gh auth login`.",
       "properties": {
+        "repositories": {
+          "type": "object",
+          "description": "owner/repo → metadata, used by `pr-review-watch`. The key matches GitHub's repo-name shape (`^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$`).",
+          "patternProperties": {
+            "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$": {
+              "type": "object",
+              "description": "Per-repo metadata. All fields optional. No tokens — auth is owned by the external GitHub MCP server.",
+              "properties": {
+                "alias": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_-]+$",
+                  "minLength": 1,
+                  "description": "Short alias for the repo. Future-only — alias-prefixed handles like `<alias>#<num>` are not parsed in MVP."
+                },
+                "labels": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 },
+                  "description": "Advisory list of labels mindy should consider when drafting replies. Strict label gating happens server-side at the external MCP layer, not here."
+                },
+                "defaultBranch": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Repository's default branch (`main` / `master` / etc.). Surfaced for prompts; not validated against the live repo."
+                },
+                "mergeMode": {
+                  "type": "string",
+                  "enum": ["merge", "squash", "rebase"],
+                  "description": "Recommended merge mode. The actual merge is performed by the external GitHub MCP — this is a hint passed through to mindy's reply / merge advice."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
         "repo": {
           "type": "string",
           "pattern": "^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$",
-          "description": "owner/name. Optional — when omitted the plugin runs `gh repo view --json nameWithOwner` from the current directory. The tool's `repo` parameter overrides this."
+          "description": "owner/name. spec-to-issues default. Optional — when omitted the plugin runs `gh repo view --json nameWithOwner` from the current directory. The tool's `repo` parameter overrides this."
         },
         "defaultLabels": {
           "type": "array",

@@ -35,6 +35,7 @@
 | 5 | Notion → 개발 스펙 분해 | ✅ MVP+합의 lifecycle | — | `skills/notion-context/SKILL.md` spec mode (단발성) + `skills/spec-pact/SKILL.md` 4 모드 (`grace` sub-agent 가 conduct, INDEX·SPEC·journal 4 종 kind 로 lock / drift / amend 까지 추적) |
 | 6 | 스펙 → GitHub Issue 추적 | ✅ MVP+gh-cli | [#4](https://github.com/minjun0219/agent-toolkit/issues/4) | `issue_create_from_spec` / `issue_status` 2 도구 + `lib/gh-cli.ts` (Bun.spawn 위 fakeable executor) + `lib/github-issue-sync.ts` (marker 기반 idempotent plan/apply) + `skills/spec-to-issues/SKILL.md` (Rocky 가 conduct, Grace 책임 외) — 인증 / repo / GHE / scope 는 `gh` CLI 가 처리, 의존성 추가 0 |
 | 7 | OpenAPI 캐시 + client 작성 | ✅ MVP+registry | [#6](https://github.com/minjun0219/agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`, `lib/openapi-context.ts`, `lib/openapi-registry.ts`, `lib/toolkit-config.ts` + `agent-toolkit.schema.json`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet, host:env:spec 핸들 + scope 검색) |
+| 8 | PR review watch | 🛠 Phase 5.5 진입 | — | `pr_watch_start` / `pr_watch_stop` / `pr_watch_status` / `pr_event_record` / `pr_event_pending` / `pr_event_resolve`, `lib/pr-watch.ts` (reducer + handle/event 정규화 — agent-journal 위에 얹는다, GitHub fetch 없음), `skills/pr-review-watch/SKILL.md` 4 모드, `agents/mindy.md` (`mode: subagent`, `permission.edit: deny`, `permission.bash: deny`), `agent-toolkit.json` `github.repositories` (토큰 / 비밀 미저장 — 외부 GitHub MCP 위임). Phase 2 (SPEC → GitHub Issue) 와는 분리된 1차 wedge — *기존* PR 의 코멘트 watch / 답글까지만 |
 
 ## 제안 단계
 
@@ -78,6 +79,16 @@
   - Journal 4 종 신규 reserved kind (`spec_anchor` / `spec_drift` / `spec_amendment` / `spec_verify_result`) + DRIFT-CHECK clean 케이스는 기존 `note` kind 를 `spec-pact` / `drift-clear` 태그로 재사용 — `journal_search "spec-pact"` 같은 tag 기반 조회 한 방으로 lifecycle history 회수
   - `agent-toolkit.json` `spec` 객체 (`dir` / `scanDirectorySpec` / `indexFile`) — IDE 자동완성 (`agent-toolkit.schema.json`) + 런타임 검증 (`lib/toolkit-config.ts`) lockstep
   - **Phase 2 (스펙 → GitHub Issue 동기화) 가 이 SPEC layer 위에 올라간다** — issue body source-of-truth 가 노션 본문이 아니라 grace 가 잠근 SPEC body 가 되면 drift 추적 / 양방향 sync 가 단순해진다
+- **Phase 5.5 — PR review watch (`mindy` + `pr-review-watch`)** *(memo #6 의 1차 wedge — `mindy` 가 *기존* PR 의 코멘트만 watch / 답글, PR 생성 / 머지는 외부 — Phase 2 의 SPEC ↔ Issue 동기화 전 단계)*
+  - `skills/pr-review-watch/SKILL.md` 4 모드 — WATCH-START (`pr_watch_start` + 안내) / PULL (외부 GitHub MCP 결과를 `pr_event_record` 로 흡수 → `pr_event_pending` list, 머지 / 닫힘 자동 stop) / VALIDATE (코드 비교 → accepted/rejected/deferred → 외부 MCP 로 reply post → `pr_event_resolve`) / WATCH-STOP (`pr_watch_stop` + 잔여 pending 안내)
+  - `agents/mindy.md` (`mode: subagent`, `permission.edit: deny`, `permission.bash: deny`) — *The Martian* 의 Mindy Park (관측자 / signal reader). Rocky 가 PR URL + lifecycle 키워드 감지 시 `@mindy` 로 즉시 위임 (passthrough). PR 생성 / 머지 / 코드 수정 / typecheck-test 실행은 mindy 가 하지 않음 — caller 책임
+  - 외부 GitHub MCP 위임 — 토킷은 GitHub API 를 직접 호출하지 않는다 (memo #6 의 결정 사항을 *외부 MCP* 로 굳힌다). `lib/github-context.ts` 같은 fetch wrapper 도 두지 않음
+  - `lib/pr-watch.ts` — `agent-journal.ts` 위에 reducer + handle/event 정규화. `parsePrHandle` (`owner/repo#NUMBER` / GitHub PR URL) / `normalizeEventRef` (7 종 type — `issue_comment` / `pr_review` / `pr_review_comment` / `check_run` / `status` / `merge` / `close`) / `reduceActiveWatches` / `reducePendingEvents` / `selectByHandle` / `buildAppend`. agent-journal 자체는 수정 안 함 (free-form `kind` slot 만 사용)
+  - 6 신규 도구 (`pr_watch_start` / `pr_watch_stop` / `pr_watch_status` / `pr_event_record` / `pr_event_pending` / `pr_event_resolve`) — 모두 GitHub 네트워크 호출 없음, journal 위에 얇은 layer
+  - 4 종 신규 reserved journal kind (`pr_watch_start` / `pr_watch_stop` / `pr_event_inbound` / `pr_event_resolved`) — 메인 태그 `"pr-watch"` 0번 인덱스 + 핸들 태그 `"pr:owner/repo#NUMBER"` 으로 lifecycle 회수. `pageId` 슬롯은 사용하지 않는다 (Notion id 패턴이 아니므로 항상 tag 로 표현)
+  - `agent-toolkit.json` `github.repositories` 객체 (`owner/repo` 키 → `alias` / `labels` / `defaultBranch` / `mergeMode`) — 토큰 / 비밀은 두지 않는다 (외부 GitHub MCP 가 자체 OAuth/PAT 처리). schema 와 runtime 검증 lockstep
+  - **검증 기준 — A 채택 (LLM 판단만, `bash: deny`)**: typecheck/test/lint 결과 연동 (= B 끝점) 은 `verifyCommands` 같은 신규 필드와 함께 future PR 로. MVP 의 권장 흐름은 "사용자가 먼저 `bun test` / `tsc` 굴려 결과 한 줄을 mindy 에게 알려준다" — `spec-pact` 의 VERIFY 모드가 grep 을 caller 에 맡기는 분리 패턴과 동일
+  - **Phase 2 (SPEC → GitHub Issue 동기화) 와의 관계** — Phase 2 는 SPEC body 를 issue body source-of-truth 로 잡고 양방향 sync 를, Phase 5.5 는 *이미 만들어진* PR 의 코멘트 watch 만. 두 phase 가 합쳐지면 SPEC ↔ Issue ↔ PR 의 3-tier 가 정렬되지만 그 합본은 별도 PR
 - **Phase 6 — TS-based dynamic agent / skill / command loader** *(후보)*
   - 현재 `agents/*.md` / `skills/*/SKILL.md` 는 정적 파일이라 컨텍스트별로 prompt / 위임 규칙을 분기하기 어렵다. OmO 의 [`AgentConfig` TypeScript 정의](https://github.com/code-yeongyu/oh-my-openagent/blob/dev/CONTRIBUTING.md) 처럼 `.ts` 파일에서 prompt / model / temperature / 위임 규칙을 동적으로 산출하는 layer 가 있으면 — 같은 grace 라도 "처음 DRAFT 인지 / drift 검증 turn 인지" 에 따라 다른 prompt 를 줄 수 있다.
   - **opencode 단독 능력 한계**: opencode plugin API 의 `tool` 만 동적 등록 가능, agent / skill / command 는 path-based (`.md` 정적). 즉 TS-based loader 는 (a) OmO 같은 외부 harness 가 있는 환경에서만 의미가 있거나 (b) 토킷이 자체 loader 를 만들어 `.ts` AgentConfig → runtime `.md` 로 emit 해야 한다.
@@ -172,13 +183,13 @@
 | `watney` | *The Martian* — Mark Watney | 식물학자/엔지니어, log-keeper, "science the shit out of this" 식 step-by-step | code authoring / refactor sub-agent — Rocky/Grace 가 직접 안 굴리는 multi-step 구현의 위임 대상 |
 | `stratt` | *Project Hail Mary* — Eva Stratt | 무자비한 결정권자, prioritization | Phase 2 (SPEC → GitHub Issue sync) 의 triage / 우선순위 / open vs close 결정 |
 | `johanssen` | *The Martian* — Beth Johanssen | Hermes 의 sysadmin / programmer | CI / build runner agent — `bun run typecheck` / `bun test` 자동화 + 회귀 가드 |
-| `mindy` | *The Martian* — Mindy Park | 위성 이미지 분석가, pattern detection | Observability / drift detector — repo-wide 상태 점검 (SPEC drift / 캐시 stale / journal 회수 한 방) |
+| `mindy` | *The Martian* — Mindy Park | 위성 이미지 분석가, pattern detection | **Phase 5.5 진입 — PR review watch sub-agent (`agents/mindy.md`)**. 이미 존재하는 PR 의 코멘트 watch / 답글 / 머지 시 stop. Repo-wide observability / SPEC drift detector / 캐시 stale 점검 같은 다른 후보는 별도 reservation 으로 분리 검토 |
 | `vogel` | *The Martian* — Alex Vogel | 화학자 / 항법사, 외부 자료 탐색 | Research agent — context7 / docs MCP / 외부 문서 탐색을 라우팅 |
 
 ## 미정 / 결정 필요
 
 - memo #1 의 "기억" 영속 층은 디스크로 결정 (Phase 3 MVP). cross-machine 동기화 / 자연어 검색 / 자동 요약 / 압축은 후속 phase.
-- memo #6 의 GitHub 연동을 외부 MCP 로 위임할지 자체 도구로 만들지.
+- memo #6 의 GitHub 연동 — **외부 MCP 위임으로 결정** (Phase 5.5 진입 시점). 토킷은 PR review watch 의 *결정 / 큐 / 라이프사이클* 만 들고, GitHub API / OAuth / PAT 는 외부 GitHub MCP 가 처리. Phase 2 의 SPEC → Issue 동기화도 같은 외부 MCP 위임 라인 위에서 진행.
 - Rocky 의 책임이 어느 단계에서 분할되어야 하는지 — Phase 5 에서 SPEC 합의 lifecycle 이 `@grace` sub-agent 로 분리됨 (`spec-pact` 스킬 + INDEX 자동 갱신). 추가 분리(`linear`, `swagger` 등 sub-partner) 트리거의 임계는 그만큼 높아졌고, 분리는 "특정 surface 가 충분히 두꺼워져 별도 persona / 별도 contract 가 필요해질 때" 로 제한한다 — 이번 Grace 분리도 같은 기준 (lifecycle 의 finalize/lock 권한이 Rocky 의 라우팅 책임과 충돌) 으로 결정됨.
 - **Phase 6.A 의 fragment 분리 단위** — agent 단위 / 모드 단위 / journal 항목 단위 중 어디까지 쪼갤지. 너무 잘게 쪼개면 조립 비용이 fragment 절감을 상쇄하고, 너무 거칠게 쪼개면 token 절감 효과가 미미. 첫 도입 시점에 측정으로 결정.
 - **Phase 6.B 의 OmO 감지 방식** — 환경변수 명시 opt-in (`AGENT_TOOLKIT_OMO_HARNESS=1`) vs `opencode.json` 의 `plugin` 배열 자동 감지. 자동 감지는 매끄럽지만 잘못된 위임 위험 (OmO 와 호환 안 되는 변경이 들어왔을 때 silent fail).
