@@ -795,6 +795,51 @@ describe("pr-watch handlers", () => {
     }
   });
 
+  it("pr_watch_start: trims mergeMode before enum check (LLM-input robustness)", async () => {
+    // 공백이 섞인 정상 값은 trim 후 통과. buildAppend 의 .trim() 동작과 일관.
+    const r = await handlePrWatchStart(prJournal, {
+      handle: HANDLE,
+      mergeMode: "  squash  ",
+    });
+    expect(r.entry.tags).toContain("mergeMode:squash");
+  });
+
+  it("pr_watch_start: empty / whitespace-only mergeMode normalizes to no tag", async () => {
+    // 빈 문자열은 undefined 로 정규화 — mergeMode 권고 미설정 의도.
+    const r = await handlePrWatchStart(prJournal, {
+      handle: HANDLE,
+      mergeMode: "   ",
+    });
+    expect(r.entry.tags.some((t) => t.startsWith("mergeMode:"))).toBe(false);
+  });
+
+  it("pr_watch_stop: trims reason before enum check", async () => {
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    const stop = await handlePrWatchStop(prJournal, {
+      handle: HANDLE,
+      reason: " merged ",
+    });
+    expect(stop.entry.tags).toContain("reason:merged");
+  });
+
+  it("pr_event_resolve: trims decision before enum check", async () => {
+    await handlePrWatchStart(prJournal, { handle: HANDLE });
+    await handlePrEventRecord(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      summary: "x",
+    });
+    const r = await handlePrEventResolve(prJournal, {
+      handle: HANDLE,
+      type: "issue_comment",
+      externalId: "1",
+      decision: " accepted " as never,
+      reasoning: "fixed",
+    });
+    expect(r.entry.tags).toContain("decision:accepted");
+  });
+
   it("end-to-end one-PR turn: start → record × 2 → resolve × 2 → stop → status 0/0", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     for (const id of ["1", "2"]) {

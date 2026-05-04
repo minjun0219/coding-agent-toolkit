@@ -537,9 +537,11 @@ export async function handlePrWatchStart(
   const handle = parsePrHandle(input.handle);
   // mergeMode 는 도구 description 과 agent-toolkit.json 의 schema / runtime 검증이 모두
   // `merge` / `squash` / `rebase` enum 으로 박아두므로, handler 진입 시점에서 동일 enum 으로
-  // 거른다. 이렇게 해야 잘못된 값이 journal 에 silent 로 박혀 mindy 의 후속 권고 / merge
-  // mode 표기가 흔들리는 일이 없다.
-  if (input.mergeMode !== undefined && !isMergeMode(input.mergeMode)) {
+  // 거른다. 입력은 LLM / 사용자 손을 거치며 공백이 섞일 수 있어 *먼저 trim* 한 뒤 enum 검증
+  // — 그래야 buildAppend 가 .trim() 하는 동작과 일관되고 "squash " 같은 정상 값이 반려되지
+  // 않는다. 빈 문자열은 undefined 로 정규화 (mergeMode 권고 미지정 = 미설정 의도).
+  const mergeMode = normalizeOptionalEnum(input.mergeMode);
+  if (mergeMode !== undefined && !isMergeMode(mergeMode)) {
     throw new Error(
       `pr_watch_start: mergeMode must be one of ${MERGE_MODES.join(" / ")} — got "${input.mergeMode}"`,
     );
@@ -551,7 +553,7 @@ export async function handlePrWatchStart(
         handle,
         note: input.note,
         labels: input.labels,
-        mergeMode: input.mergeMode,
+        mergeMode,
       },
     }),
   );
@@ -586,9 +588,11 @@ export async function handlePrWatchStop(
 ): Promise<PrWatchStopResult> {
   const handle = parsePrHandle(input.handle);
   // reason 은 enum 으로만 받는다 — 자유 문자열을 막아 journal tag (`reason:<value>`) 가
-  // 항상 같은 모양으로 박히게 (= 회수 / 집계 안정성). buildAppend 도 한 번 더 검증하지만,
-  // handler 단에서 먼저 throw 해 메시지 톤 / context 를 일관되게 유지한다.
-  if (input.reason !== undefined && !isStopReason(input.reason)) {
+  // 항상 같은 모양으로 박히게 (= 회수 / 집계 안정성). 입력은 trim 후 빈 문자열을
+  // undefined 로 정규화하고 그 결과로 enum 검증 / buildAppend 호출 — 그래야 "merged "
+  // 같은 정상 값이 공백 때문에 stop 실패로 이어지지 않는다.
+  const reason = normalizeOptionalEnum(input.reason);
+  if (reason !== undefined && !isStopReason(reason)) {
     throw new Error(
       `pr_watch_stop: reason must be one of ${STOP_REASONS.join(" / ")} — got "${input.reason}"`,
     );
@@ -596,7 +600,7 @@ export async function handlePrWatchStop(
   const entry = await journal.append(
     buildPrAppend({
       kind: "pr_watch_stop",
-      data: { handle, reason: input.reason },
+      data: { handle, reason },
     }),
   );
   return {
@@ -722,7 +726,13 @@ export async function handlePrEventResolve(
 ): Promise<PrEventResolveResult> {
   const handle = parsePrHandle(input.handle);
   const ref = normalizeEventRef(input.type, input.externalId);
-  if (!RESOLVE_DECISIONS.includes(input.decision)) {
+  // 입력은 trim 후 enum 검증 — "accepted " 같은 공백 포함 정상 값이 VALIDATE 단계에서
+  // resolve 실패로 이어지지 않게. 정규화된 값을 buildAppend 와 journal 양쪽에 동일하게
+  // 흘려보낸다 (저장 일관성).
+  const decisionRaw =
+    typeof input.decision === "string" ? input.decision.trim() : input.decision;
+  const decision = decisionRaw as ResolveDecision;
+  if (!RESOLVE_DECISIONS.includes(decision)) {
     throw new Error(
       `pr_event_resolve: decision must be one of ${RESOLVE_DECISIONS.join(", ")} — got "${input.decision}"`,
     );
@@ -739,7 +749,7 @@ export async function handlePrEventResolve(
       data: {
         handle,
         ref,
-        decision: input.decision,
+        decision,
         reasoning: input.reasoning,
         replyExternalId: input.replyExternalId,
       },
@@ -772,6 +782,20 @@ async function readPrWatchJournalEntries(
     limit: PR_WATCH_READ_LIMIT,
   });
   return [...recent].reverse();
+}
+
+/**
+ * 도구 입력에서 enum 후보 값을 정규화한다 — string 이 아니거나 trim 후 비어 있으면
+ * undefined, 아니면 trim 결과를 그대로 돌려준다. enum 검증은 caller 가 한다.
+ *
+ * 같은 패턴이 `pr_watch_start.mergeMode` / `pr_watch_stop.reason` 두 곳에서 쓰이고,
+ * 의도는 동일: LLM / 사용자 입력에서 끼는 공백을 enum 검증 *전에* 흡수해 정상 값이
+ * 무의미한 형식 차이로 거부되는 것을 막는다.
+ */
+function normalizeOptionalEnum(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
 }
 
 function findStateForHandle(

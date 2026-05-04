@@ -88,8 +88,12 @@ export interface GithubRepositoryProfile {
   labels?: string[];
   /** repository default branch 표기 (`main` / `master`). 검증은 안 함. */
   defaultBranch?: string;
-  /** 머지 권고 모드. 실제 머지는 외부 MCP 가 처리. */
-  mergeMode?: "merge" | "squash" | "rebase";
+  /**
+   * 머지 권고 모드. 실제 머지는 외부 MCP 가 처리. enum 단일 소스는 같은 파일의
+   * `MergeMode` (`MERGE_MODES` 상수에서 파생) — 타입 / runtime 검증 / schema 가 한 곳을
+   * 참조해 drift 가 재발하지 않게 한다.
+   */
+  mergeMode?: MergeMode;
 }
 
 /** `github.repositories` 트리. `owner/repo` → profile. */
