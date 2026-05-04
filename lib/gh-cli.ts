@@ -406,3 +406,245 @@ const normalizeIssueListItem = (raw: unknown): GhIssueListItem => {
     .filter((value): value is string => value !== null);
   return { number, title, body, url, labels };
 };
+
+// ── Generic gh runner (Phase 2 후속 — `gh_run` plugin tool 의 백엔드) ────────
+
+/**
+ * `gh <args...>` 호출의 분류. plugin tool `gh_run` 이 dryRun gate 를 적용할
+ * 지 결정하는 1차 기준. 알 수 없는 subcommand 는 보수적으로 `deny` 로 떨어진다
+ * (allow-list 정신).
+ */
+export type GhCommandKind = "read" | "write" | "deny";
+
+/** `gh_run` 이 deny 분류 명령을 받았을 때. */
+export class GhDeniedCommandError extends Error {
+  constructor(
+    public readonly args: readonly string[],
+    public readonly reason: string,
+  ) {
+    super(
+      `gh ${args.join(" ")} is denied — ${reason}. Allowed: read commands (auth status / repo view / issue list / pr view / api / search / ...) and write commands behind dryRun guard.`,
+    );
+    this.name = "GhDeniedCommandError";
+  }
+}
+
+/** read 명령 set — 즉시 실행, dryRun 무시. */
+const READ_VERBS: Record<string, ReadonlySet<string>> = {
+  auth: new Set(["status"]),
+  repo: new Set(["view", "list"]),
+  issue: new Set(["view", "list", "status"]),
+  pr: new Set(["view", "list", "status", "diff", "checks"]),
+  label: new Set(["list"]),
+  release: new Set(["list", "view"]),
+  workflow: new Set(["list", "view"]),
+  run: new Set(["list", "view", "watch"]),
+  org: new Set(["list"]),
+  gist: new Set(["list", "view"]),
+};
+/** verb 가 없는 read 명령 (top-level). */
+const READ_TOPLEVEL = new Set(["search"]);
+
+/** write 명령 set — dryRun guard 적용. */
+const WRITE_VERBS: Record<string, ReadonlySet<string>> = {
+  issue: new Set([
+    "create",
+    "edit",
+    "close",
+    "reopen",
+    "delete",
+    "lock",
+    "unlock",
+    "pin",
+    "unpin",
+    "comment",
+    "develop",
+    "transfer",
+  ]),
+  pr: new Set([
+    "create",
+    "edit",
+    "close",
+    "reopen",
+    "merge",
+    "ready",
+    "review",
+    "comment",
+    "checkout",
+  ]),
+  repo: new Set([
+    "create",
+    "edit",
+    "delete",
+    "clone",
+    "fork",
+    "sync",
+    "archive",
+    "rename",
+  ]),
+  label: new Set(["create", "edit", "delete", "clone"]),
+  release: new Set(["create", "edit", "delete", "upload", "download"]),
+  workflow: new Set(["run", "enable", "disable"]),
+  run: new Set(["cancel", "rerun", "delete"]),
+  secret: new Set(["set", "delete"]),
+  variable: new Set(["set", "delete"]),
+  cache: new Set(["delete"]),
+};
+
+/** deny 명령 set — 사용자 환경 변경 위험. */
+const DENY_VERBS: Record<string, ReadonlySet<string>> = {
+  auth: new Set(["login", "logout", "refresh", "setup-git", "token"]),
+  extension: new Set([
+    "install",
+    "upgrade",
+    "remove",
+    "browse",
+    "create",
+    "exec",
+    "list",
+    "search",
+  ]),
+  alias: new Set(["set", "delete", "list", "import"]),
+  config: new Set(["set", "get", "list", "clear-cache"]),
+  gist: new Set(["create", "edit", "delete", "clone"]),
+};
+
+/**
+ * `gh api` 의 method flag 위치를 찾아 반환. 명시적 `--method` / `-X` 가 있으면
+ * 그 값. 없으면 — `gh api` 매뉴얼에 따라 — request parameter flag (`-f`,
+ * `-F`, `--field`, `--raw-field`, `--input`, `-b`, `--body-file`) 가 하나라도
+ * 있으면 default 가 **POST** 가 된다 (Codex P1 수정). 그것도 없으면 GET.
+ */
+const API_BODY_FLAGS = new Set([
+  "-f",
+  "-F",
+  "--field",
+  "--raw-field",
+  "--input",
+  "-b",
+  "--body-file",
+]);
+const apiMethod = (args: readonly string[]): string => {
+  let hasBodyFlag = false;
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "--method" || args[i] === "-X") {
+      return (args[i + 1] ?? "GET").toUpperCase();
+    }
+    const a = args[i] ?? "";
+    if (a.startsWith("--method=")) {
+      return a.slice("--method=".length).toUpperCase();
+    }
+    // body-bearing flags imply default POST per `gh api` manual.
+    // `--field=foo=bar` / `--raw-field=foo=bar` / `-fkey=v` 같은 attached
+    // forms 까지 포함하기 위해 prefix 매칭도 함께 본다.
+    if (
+      API_BODY_FLAGS.has(a) ||
+      a.startsWith("--field=") ||
+      a.startsWith("--raw-field=") ||
+      a.startsWith("--input=") ||
+      a.startsWith("--body-file=")
+    ) {
+      hasBodyFlag = true;
+    }
+  }
+  return hasBodyFlag ? "POST" : "GET";
+};
+
+/**
+ * `gh <args...>` 의 read / write / deny 분류. 알 수 없는 subcommand 는 deny.
+ * `gh api` 는 `--method` flag 로 분기 — GET 은 read, 그 외 (POST/PUT/PATCH/DELETE)
+ * 는 write.
+ */
+export const classifyGhCommand = (args: readonly string[]): GhCommandKind => {
+  if (args.length === 0) return "deny";
+  const head = args[0] ?? "";
+
+  // top-level read commands (verb 없음)
+  if (READ_TOPLEVEL.has(head)) return "read";
+
+  // gh api — method 로 분기
+  if (head === "api") {
+    const method = apiMethod(args);
+    return method === "GET" || method === "HEAD" ? "read" : "write";
+  }
+
+  const verb = args[1];
+  if (!verb) return "deny"; // `gh <noun>` 만으로는 의도 불명확
+
+  if (DENY_VERBS[head]?.has(verb)) return "deny";
+  if (READ_VERBS[head]?.has(verb)) return "read";
+  if (WRITE_VERBS[head]?.has(verb)) return "write";
+
+  // 알 수 없는 조합 — 보수적으로 deny
+  return "deny";
+};
+
+export interface RunGhOptions {
+  /** write 호출일 때만 의미 있음. 기본 true. read 호출은 dryRun 무시 (항상 실행). */
+  dryRun?: boolean;
+}
+
+export interface RunGhResult {
+  args: readonly string[];
+  kind: GhCommandKind;
+  /** 이번 호출에서 실제로 실행됐는지. write + dryRun=true 면 false. */
+  executed: boolean;
+  /** plan 만 보여줄 때의 dryRun 플래그 — write 호출에서만 의미 있음. */
+  dryRun: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+/**
+ * `gh_run` plugin tool 의 백엔드. classify → 정책 적용 → 실행.
+ *
+ * - read: dryRun 무관 즉시 실행.
+ * - write + dryRun=true (기본): 실행하지 않고 plan 형태로 surface.
+ * - write + dryRun=false: 실행.
+ * - deny: `GhDeniedCommandError` 로 throw.
+ */
+export const runGhCommand = async (
+  exec: GhExecutor,
+  args: readonly string[],
+  options: RunGhOptions = {},
+): Promise<RunGhResult> => {
+  const kind = classifyGhCommand(args);
+  if (kind === "deny") {
+    const reason =
+      args.length === 0
+        ? "empty args"
+        : `\`gh ${args[0] ?? ""}${args[1] ? ` ${args[1]}` : ""}\` is not in the read / write allow-list`;
+    throw new GhDeniedCommandError(args, reason);
+  }
+  // read 는 dryRun 무관 — gate 가 의미 없음.
+  const dryRun = kind === "write" ? (options.dryRun ?? true) : false;
+  if (kind === "write" && dryRun) {
+    return {
+      args,
+      kind,
+      executed: false,
+      dryRun: true,
+      stdout: `(dry-run, not executed) gh ${args.join(" ")}`,
+      stderr: "",
+      exitCode: 0,
+    };
+  }
+  const result = await exec.run(args);
+  // 기존 wrapper (ghIssueCreate / ghIssueEdit / ghIssueListByLabel 등) 와 일관:
+  // 비-zero exitCode 는 throw 로 surface — 호출자 / handler 가 매번 exitCode 를
+  // 검사하지 않아도 된다. `applied` journal entry 가 실패한 호출에 잘못 남는
+  // 문제도 함께 해결 (Codex P2).
+  if (result.exitCode !== 0) {
+    throw new GhCommandError(args, result.exitCode, result.stderr);
+  }
+  return {
+    args,
+    kind,
+    executed: true,
+    dryRun,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    exitCode: result.exitCode,
+  };
+};

@@ -9,6 +9,7 @@ import { AgentJournal } from "../../lib/agent-journal";
 import type { FieldPacket, RowDataPacket } from "mysql2/promise";
 import type { GhExecResult, GhExecutor } from "../../lib/gh-cli";
 import agentToolkitPlugin, {
+  handleGhRun,
   handleIssueCreateFromSpec,
   handleIssueStatus,
   handleJournalAppend,
@@ -1317,6 +1318,118 @@ describe("handleIssueCreateFromSpec", () => {
     } finally {
       process.chdir(cwdBefore);
     }
+  });
+});
+
+describe("handleGhRun", () => {
+  it("read: executes immediately, journal tagged `read`", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status (precondition)
+      { stdout: "x/y\n", stderr: "", exitCode: 0 }, // repo view
+    ]);
+    const result = await handleGhRun(exec, journal, ["repo", "view"], true);
+    expect(result.kind).toBe("read");
+    expect(result.executed).toBe(true);
+    expect(result.dryRun).toBe(false);
+    const entries = await journal.read({ limit: 1 });
+    expect(entries[0]?.tags).toContain("read");
+  });
+
+  it("write + dryRun=true: plans only, journal tagged `dry-run`", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status
+    ]);
+    const result = await handleGhRun(
+      exec,
+      journal,
+      ["issue", "create", "--repo", "x/y", "--title", "t"],
+      true,
+    );
+    expect(result.kind).toBe("write");
+    expect(result.executed).toBe(false);
+    expect(result.stdout).toContain("(dry-run, not executed)");
+    const entries = await journal.read({ limit: 1 });
+    expect(entries[0]?.tags).toContain("dry-run");
+  });
+
+  it("write + dryRun=false: executes, journal tagged `applied`", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status
+      {
+        stdout: "https://github.com/x/y/issues/9\n",
+        stderr: "",
+        exitCode: 0,
+      },
+    ]);
+    const result = await handleGhRun(
+      exec,
+      journal,
+      ["issue", "create", "--repo", "x/y", "--title", "t"],
+      false,
+    );
+    expect(result.executed).toBe(true);
+    const entries = await journal.read({ limit: 1 });
+    expect(entries[0]?.tags).toContain("applied");
+  });
+
+  it("deny: throws GhDeniedCommandError, no journal entry", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([]);
+    await expect(handleGhRun(exec, journal, ["auth", "login"])).rejects.toThrow(
+      /is denied/,
+    );
+    const entries = await journal.read({ limit: 1 });
+    expect(entries.length).toBe(0);
+  });
+
+  it("write apply failure: throws (no `applied` journal entry — Codex P2)", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // auth status
+      { stdout: "", stderr: "permission denied", exitCode: 1 }, // issue create
+    ]);
+    await expect(
+      handleGhRun(
+        exec,
+        journal,
+        ["issue", "create", "--repo", "x/y", "--title", "t"],
+        false,
+      ),
+    ).rejects.toThrow(/failed with exit/);
+    // journal must NOT contain an `applied` entry
+    const entries = await journal.read({ limit: 5 });
+    expect(entries.find((e) => e.tags?.includes("applied"))).toBeUndefined();
+  });
+
+  it("rejects empty args before any gh call (Copilot input validation)", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([]);
+    await expect(handleGhRun(exec, journal, [])).rejects.toThrow(
+      /args must be a non-empty array/,
+    );
+    expect(exec.seen.length).toBe(0);
+  });
+
+  it("rejects non-string elements in args before any gh call", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([]);
+    await expect(
+      handleGhRun(exec, journal, ["issue", 42 as unknown as string]),
+    ).rejects.toThrow(/args\[1\] must be a string/);
+    expect(exec.seen.length).toBe(0);
+  });
+
+  it("auth status: skips precondition (calls auth status only once)", async () => {
+    const { journal } = newJournalDir();
+    const exec = new FakeGhExecutor([
+      { stdout: "ok", stderr: "", exitCode: 0 }, // single auth status
+    ]);
+    const result = await handleGhRun(exec, journal, ["auth", "status"]);
+    expect(result.executed).toBe(true);
+    expect(exec.seen.length).toBe(1);
   });
 });
 

@@ -3,15 +3,18 @@ import { describe, expect, it } from "bun:test";
 import {
   GhAuthError,
   GhCommandError,
+  GhDeniedCommandError,
   type GhExecResult,
   type GhExecutor,
   type GhIssueListItem,
   assertGhAuthed,
+  classifyGhCommand,
   detectRepo,
   ghApiGet,
   ghIssueCreate,
   ghIssueEdit,
   ghIssueListByLabel,
+  runGhCommand,
 } from "./gh-cli";
 
 interface QueuedResponse {
@@ -273,5 +276,188 @@ describe("ghApiGet", () => {
     ]);
     const result = await ghApiGet(exec, "repos/x/y");
     expect(result).toBeUndefined();
+  });
+});
+
+describe("classifyGhCommand", () => {
+  it("classifies read commands as read", () => {
+    expect(classifyGhCommand(["auth", "status"])).toBe("read");
+    expect(classifyGhCommand(["repo", "view", "x/y"])).toBe("read");
+    expect(classifyGhCommand(["issue", "list", "--repo", "x/y"])).toBe("read");
+    expect(classifyGhCommand(["pr", "view", "42"])).toBe("read");
+    expect(classifyGhCommand(["search", "issues", "marker"])).toBe("read");
+  });
+
+  it("classifies write commands as write", () => {
+    expect(classifyGhCommand(["issue", "create", "--title", "x"])).toBe(
+      "write",
+    );
+    expect(classifyGhCommand(["pr", "merge", "42"])).toBe("write");
+    expect(classifyGhCommand(["label", "create", "spec-pact"])).toBe("write");
+    expect(classifyGhCommand(["repo", "delete", "x/y"])).toBe("write");
+  });
+
+  it("classifies environment-affecting commands as deny", () => {
+    expect(classifyGhCommand(["auth", "login"])).toBe("deny");
+    expect(classifyGhCommand(["auth", "logout"])).toBe("deny");
+    expect(classifyGhCommand(["extension", "install", "owner/repo"])).toBe(
+      "deny",
+    );
+    expect(classifyGhCommand(["alias", "set", "co", "pr checkout"])).toBe(
+      "deny",
+    );
+    expect(classifyGhCommand(["config", "set", "git_protocol", "ssh"])).toBe(
+      "deny",
+    );
+    expect(classifyGhCommand(["gist", "create", "file.txt"])).toBe("deny");
+  });
+
+  it("classifies unknown / empty commands as deny (allow-list policy)", () => {
+    expect(classifyGhCommand([])).toBe("deny");
+    expect(classifyGhCommand(["unknown-noun", "verb"])).toBe("deny");
+    expect(classifyGhCommand(["issue"])).toBe("deny"); // no verb
+    expect(classifyGhCommand(["issue", "frobnicate"])).toBe("deny");
+  });
+
+  it("splits `gh api` by --method (GET/HEAD = read, POST/PUT/PATCH/DELETE = write)", () => {
+    expect(classifyGhCommand(["api", "repos/x/y"])).toBe("read"); // default GET
+    expect(classifyGhCommand(["api", "repos/x/y", "--method", "GET"])).toBe(
+      "read",
+    );
+    expect(classifyGhCommand(["api", "repos/x/y", "-X", "HEAD"])).toBe("read");
+    expect(classifyGhCommand(["api", "repos/x/y", "--method", "POST"])).toBe(
+      "write",
+    );
+    expect(classifyGhCommand(["api", "repos/x/y", "--method=DELETE"])).toBe(
+      "write",
+    );
+    expect(classifyGhCommand(["api", "repos/x/y", "--method", "PATCH"])).toBe(
+      "write",
+    );
+  });
+
+  it("treats `gh api` with body-bearing flags as write (default POST per gh manual — Codex P1)", () => {
+    // -f / -F / --field / --raw-field / --input / -b / --body-file → default POST
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "-f", "title=hi"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "-F", "labels[]=bug"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "--field", "title=hi"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "--field=title=hi"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "--input", "body.json"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand(["api", "repos/x/y/issues", "-b", "body.json"]),
+    ).toBe("write");
+    expect(
+      classifyGhCommand([
+        "api",
+        "repos/x/y/issues",
+        "--body-file",
+        "body.json",
+      ]),
+    ).toBe("write");
+  });
+
+  it("explicit `--method GET` wins over body flags", () => {
+    expect(
+      classifyGhCommand(["api", "repos/x/y", "--method", "GET", "-f", "key=v"]),
+    ).toBe("read");
+  });
+});
+
+describe("runGhCommand", () => {
+  it("read: executes immediately, ignores dryRun", async () => {
+    const { exec, calls } = fakeExec([
+      { result: { stdout: "x/y\n", stderr: "", exitCode: 0 } },
+    ]);
+    const result = await runGhCommand(exec, ["repo", "view"], {
+      dryRun: true,
+    });
+    expect(result.kind).toBe("read");
+    expect(result.executed).toBe(true);
+    expect(result.dryRun).toBe(false);
+    expect(result.stdout).toBe("x/y\n");
+    expect(calls.length).toBe(1);
+  });
+
+  it("write + dryRun=true (default): plans only, no exec call", async () => {
+    const { exec, calls } = fakeExec([]);
+    const result = await runGhCommand(exec, [
+      "issue",
+      "create",
+      "--repo",
+      "x/y",
+      "--title",
+      "t",
+    ]);
+    expect(result.kind).toBe("write");
+    expect(result.executed).toBe(false);
+    expect(result.dryRun).toBe(true);
+    expect(result.stdout).toContain("(dry-run, not executed)");
+    expect(calls.length).toBe(0);
+  });
+
+  it("write + dryRun=false: executes", async () => {
+    const { exec, calls } = fakeExec([
+      {
+        result: {
+          stdout: "https://github.com/x/y/issues/9\n",
+          stderr: "",
+          exitCode: 0,
+        },
+      },
+    ]);
+    const result = await runGhCommand(
+      exec,
+      ["issue", "create", "--repo", "x/y", "--title", "t"],
+      { dryRun: false },
+    );
+    expect(result.executed).toBe(true);
+    expect(result.dryRun).toBe(false);
+    expect(calls.length).toBe(1);
+  });
+
+  it("deny: throws GhDeniedCommandError without calling exec", async () => {
+    const { exec, calls } = fakeExec([]);
+    await expect(runGhCommand(exec, ["auth", "login"])).rejects.toBeInstanceOf(
+      GhDeniedCommandError,
+    );
+    expect(calls.length).toBe(0);
+  });
+
+  it("read: throws GhCommandError on non-zero exitCode (Codex P2 — consistency with wrappers)", async () => {
+    const { exec } = fakeExec([
+      {
+        result: {
+          stdout: "",
+          stderr: "could not resolve repo",
+          exitCode: 1,
+        },
+      },
+    ]);
+    await expect(runGhCommand(exec, ["repo", "view"])).rejects.toBeInstanceOf(
+      GhCommandError,
+    );
+  });
+
+  it("write apply: throws GhCommandError on non-zero exitCode", async () => {
+    const { exec } = fakeExec([
+      {
+        result: { stdout: "", stderr: "permission denied", exitCode: 1 },
+      },
+    ]);
+    await expect(
+      runGhCommand(exec, ["issue", "create", "--repo", "x/y", "--title", "t"], {
+        dryRun: false,
+      }),
+    ).rejects.toBeInstanceOf(GhCommandError);
   });
 });
