@@ -68,48 +68,6 @@
       },
       "additionalProperties": false
     },
-    "github": {
-      "type": "object",
-      "description": "GitHub repository registry for the PR review watch flow (`mindy` sub-agent + `pr-review-watch` skill). The toolkit never calls the GitHub API itself — credentials live with the external GitHub MCP server. This block is metadata only (allow-list of repos, advisory labels, default merge mode).",
-      "properties": {
-        "repositories": {
-          "type": "object",
-          "description": "owner/repo → metadata. The key matches GitHub's repo-name shape (`^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$`).",
-          "patternProperties": {
-            "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$": {
-              "type": "object",
-              "description": "Per-repo metadata. All fields optional. No tokens — auth is owned by the external GitHub MCP server.",
-              "properties": {
-                "alias": {
-                  "type": "string",
-                  "pattern": "^[a-zA-Z0-9_-]+$",
-                  "minLength": 1,
-                  "description": "Short alias for the repo. Future-only — alias-prefixed handles like `<alias>#<num>` are not parsed in MVP."
-                },
-                "labels": {
-                  "type": "array",
-                  "items": { "type": "string", "minLength": 1 },
-                  "description": "Advisory list of labels mindy should consider when drafting replies. Strict label gating happens server-side at the external MCP layer, not here."
-                },
-                "defaultBranch": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Repository's default branch (`main` / `master` / etc.). Surfaced for prompts; not validated against the live repo."
-                },
-                "mergeMode": {
-                  "type": "string",
-                  "enum": ["merge", "squash", "rebase"],
-                  "description": "Recommended merge mode. The actual merge is performed by the external GitHub MCP — this is a hint passed through to mindy's reply / merge advice."
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
     "mysql": {
       "type": "object",
       "description": "MySQL read-only inspection registry. Maps `host:env:db` handles to connection profiles. Plaintext passwords are forbidden — each profile must declare exactly one of `passwordEnv` or `dsnEnv`.",
@@ -174,6 +132,63 @@
             }
           },
           "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "github": {
+      "type": "object",
+      "description": "GitHub configuration shared by the PR review watch flow (`pr-review-watch` skill / `mindy` sub-agent — uses `repositories`) and the SPEC → GitHub Issue sync flow (`spec-to-issues` skill / `rocky` — uses `repo` / `defaultLabels`). No tokens are stored here: PR-watch auth lives with the external GitHub MCP server, and spec-to-issues auth lives with `gh auth login`.",
+      "properties": {
+        "repositories": {
+          "type": "object",
+          "description": "owner/repo → metadata, used by `pr-review-watch`. The key matches GitHub's repo-name shape (`^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$`).",
+          "patternProperties": {
+            "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$": {
+              "type": "object",
+              "description": "Per-repo metadata. All fields optional. No tokens — auth is owned by the external GitHub MCP server.",
+              "properties": {
+                "alias": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_-]+$",
+                  "minLength": 1,
+                  "description": "Short alias for the repo. Future-only — alias-prefixed handles like `<alias>#<num>` are not parsed in MVP."
+                },
+                "labels": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 },
+                  "description": "Advisory list of labels mindy should consider when drafting replies. Strict label gating happens server-side at the external MCP layer, not here."
+                },
+                "defaultBranch": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Repository's default branch (`main` / `master` / etc.). Surfaced for prompts; not validated against the live repo."
+                },
+                "mergeMode": {
+                  "type": "string",
+                  "enum": ["merge", "squash", "rebase"],
+                  "description": "Recommended merge mode. The actual merge is performed by the external GitHub MCP — this is a hint passed through to mindy's reply / merge advice."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$",
+          "description": "owner/name. spec-to-issues default. Optional — when omitted the plugin runs `gh repo view --json nameWithOwner` from the current directory. The tool's `repo` parameter overrides this."
+        },
+        "defaultLabels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "default": ["spec-pact"],
+          "description": "Labels attached to every issue created by spec-to-issues. The first entry is the dedupe-search filter — must be unique to spec-pact across the org/repo or dedupe will misfire."
         }
       },
       "additionalProperties": false

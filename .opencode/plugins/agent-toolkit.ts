@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -56,6 +57,17 @@ import {
   type SpecPactMode,
   assertSpecPactMode,
 } from "../../lib/spec-pact-fragments";
+import {
+  type GhExecutor,
+  assertGhAuthed,
+  createBunGhExecutor,
+  detectRepo,
+} from "../../lib/gh-cli";
+import {
+  parseSpecFile,
+  syncSpecToIssues,
+  type SyncSpecToIssuesOutput,
+} from "../../lib/github-issue-sync";
 import {
   MysqlExecutorRegistry,
   describeHandle as mysqlDescribeHandle,
@@ -829,6 +841,100 @@ export async function handleMysqlQuery(
   return mysqlRunReadonlyQuery(executor, sql, options);
 }
 
+// ── spec-to-issues (Phase 2 — gh CLI delegated) ──────────────────────────────
+
+/** SPEC 경로 결정 — `slug` 가 있으면 `<spec.dir>/<slug>.md`, `path` 가 있으면 그 자체. */
+const resolveSpecPath = (
+  config: ToolkitConfig,
+  slug: string | undefined,
+  path: string | undefined,
+): string => {
+  if (path && slug) {
+    throw new Error(
+      "spec-to-issues: provide exactly one of `slug` or `path`, not both",
+    );
+  }
+  if (path) {
+    return resolve(process.cwd(), path);
+  }
+  if (slug) {
+    const dir = config.spec?.dir ?? ".agent/specs";
+    return resolve(process.cwd(), dir, `${slug}.md`);
+  }
+  throw new Error(
+    'spec-to-issues: one of `slug` or `path` is required (e.g. slug="user-auth" or path=".agent/specs/user-auth.md")',
+  );
+};
+
+/**
+ * `issue_create_from_spec` / `issue_status` 의 공통 백엔드. dryRun 만 다름.
+ * journal append 는 호출자가 결과를 보고 결정하지 않고 여기서 한 줄로 끝낸다 —
+ * lifecycle history 회수가 `journal_search "spec-to-issues"` 한 방으로 되도록.
+ */
+export async function handleIssueCreateFromSpec(
+  exec: GhExecutor,
+  journal: AgentJournal,
+  config: ToolkitConfig,
+  args: {
+    slug?: string;
+    path?: string;
+    repo?: string;
+    dryRun?: boolean;
+  },
+): Promise<SyncSpecToIssuesOutput> {
+  const dryRun = args.dryRun !== false; // default true — apply requires explicit dryRun=false
+
+  // input validation 이 auth check 보다 먼저 — 사용자 입력 에러가 더 빨리 surface 되어 디버깅 쉽다.
+  const specPath = resolveSpecPath(config, args.slug, args.path);
+  const raw = await readFile(specPath, "utf8");
+  const spec = parseSpecFile(specPath, raw);
+
+  await assertGhAuthed(exec);
+
+  const repoOverride = args.repo ?? config.github?.repo;
+  const repo = await detectRepo(exec, repoOverride);
+
+  const labels = config.github?.defaultLabels ?? ["spec-pact"];
+  const dedupeLabel = labels[0] ?? "spec-pact";
+
+  const result = await syncSpecToIssues(exec, {
+    spec,
+    repo,
+    dedupeLabel,
+    labels,
+    dryRun,
+  });
+
+  // journal — note kind reuse, tag-shaped recall via "spec-to-issues"
+  const stage = dryRun ? "dry-run" : "applied";
+  const subsCreated = result.applied?.created.subs.length ?? 0;
+  const epicCreated = result.applied?.created.epic ? 1 : 0;
+  const summary = dryRun
+    ? `${spec.frontmatter.slug} dry-run: epic=${result.plan.toCreate.epic ? "create" : "reuse"} subs=${result.plan.toCreate.subs.length}/${result.plan.subs.length} new`
+    : `${spec.frontmatter.slug} applied: epic+${epicCreated} subs+${subsCreated} patched=${result.applied?.patchedEpic ? 1 : 0}`;
+  await journal.append({
+    kind: "note",
+    content: summary,
+    tags: ["spec-pact", "spec-to-issues", stage],
+    pageId: spec.frontmatter.source_page_id,
+  });
+
+  return result;
+}
+
+/** `issue_status` — `dryRun=true` alias, plan 만 반환. */
+export async function handleIssueStatus(
+  exec: GhExecutor,
+  journal: AgentJournal,
+  config: ToolkitConfig,
+  args: { slug?: string; path?: string; repo?: string },
+): Promise<SyncSpecToIssuesOutput> {
+  return handleIssueCreateFromSpec(exec, journal, config, {
+    ...args,
+    dryRun: true,
+  });
+}
+
 /**
  * opencode plugin default export.
  * `directory` 는 opencode 가 plugin 을 로드한 cwd. 우리는 import.meta 기반으로
@@ -853,6 +959,10 @@ export default async function agentToolkitPlugin(_input: unknown) {
   // MySQL pool 들은 핸들마다 lazy 로 만들어 캐시한다 — 한 turn 안에서 같은 핸들로
   // 여러 도구가 호출돼도 connection 을 재사용한다.
   const mysqlRegistry = new MysqlExecutorRegistry(process.env);
+
+  // gh CLI 위임용 executor — Bun.spawn 백엔드 한 개만 plugin lifetime 동안
+  // 재사용한다. fake 주입은 테스트의 책임.
+  const ghExecutor = createBunGhExecutor();
 
   // 정상 종료 (process 가 자연 exit 시) 에 한해 lazy 로 만든 mysql2 pool 들을 비동기로
   // 닫는다. 실패는 한 줄 로깅 후 무시 (best-effort) — opencode 의 plugin lifecycle 에
@@ -1252,6 +1362,41 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleMysqlQuery(mysqlRegistry, toolkitConfig, handle, sql, {
             limit,
           });
+        },
+      },
+      issue_create_from_spec: {
+        description:
+          "잠긴 SPEC (slug 또는 path) 의 `# 합의 TODO` 를 GitHub epic + sub-issue 시리즈로 idempotent 하게 동기화한다. 마커 (<!-- spec-pact:slug=…:kind=epic|sub -->) 기반 — 같은 SPEC 재호출은 no-op, bullet 추가만 새 sub. dryRun=true (기본) 면 plan 만 반환하고 gh 호출은 list 한 번뿐. apply 는 dryRun=false. 인증 / repo 자동 감지는 gh CLI 가 처리 — gh 미설치 / 미인증 시 한 줄 가이드로 throw. (slug?: SPEC slug, path?: SPEC 경로 — 둘 중 하나, repo?: owner/name override (없으면 gh repo view), dryRun?: 기본 true)",
+        parameters: {
+          slug: { type: "string", required: false },
+          path: { type: "string", required: false },
+          repo: { type: "string", required: false },
+          dryRun: { type: "boolean", required: false },
+        },
+        async handler(args: {
+          slug?: string;
+          path?: string;
+          repo?: string;
+          dryRun?: boolean;
+        }) {
+          return handleIssueCreateFromSpec(
+            ghExecutor,
+            journal,
+            toolkitConfig,
+            args,
+          );
+        },
+      },
+      issue_status: {
+        description:
+          "SPEC 의 GitHub 동기화 plan 만 반환한다 (issue_create_from_spec 의 dryRun=true read-only alias). gh 호출은 issue list 한 번뿐. 어떤 epic/sub 가 이미 존재하는지, 새로 만들어질 항목이 무엇인지, orphan (사라진 bullet) 이 있는지 한눈에 본다. (slug?: SPEC slug, path?: SPEC 경로 — 둘 중 하나, repo?: owner/name override)",
+        parameters: {
+          slug: { type: "string", required: false },
+          path: { type: "string", required: false },
+          repo: { type: "string", required: false },
+        },
+        async handler(args: { slug?: string; path?: string; repo?: string }) {
+          return handleIssueStatus(ghExecutor, journal, toolkitConfig, args);
         },
       },
       spec_pact_fragment: {
