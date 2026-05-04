@@ -188,6 +188,33 @@ describe("ghIssueListByLabel", () => {
     expect(items).toEqual(payload);
     expect(calls[0]?.args).toContain("number,title,body,url,labels");
     expect(calls[0]?.args).toContain("--state");
+    // default limit 1000 (Codex P2 — 500 hard cap removed)
+    expect(calls[0]?.args).toContain("1000");
+    // search not passed → no --search flag in args
+    expect(calls[0]?.args).not.toContain("--search");
+  });
+
+  it("appends --search when options.search is given (marker-prefix dedupe)", async () => {
+    const { exec, calls } = fakeExec([
+      {
+        expectArgsPrefix: ["issue", "list", "--repo", "x/y"],
+        result: { stdout: "[]", stderr: "", exitCode: 0 },
+      },
+    ]);
+    await ghIssueListByLabel(exec, "x/y", "spec-pact", {
+      search: "<!-- spec-pact:slug=foo:",
+    });
+    const args = calls[0]?.args ?? [];
+    expect(args).toContain("--search");
+    expect(args).toContain("<!-- spec-pact:slug=foo:");
+  });
+
+  it("honors caller-provided limit", async () => {
+    const { exec, calls } = fakeExec([
+      { result: { stdout: "[]", stderr: "", exitCode: 0 } },
+    ]);
+    await ghIssueListByLabel(exec, "x/y", "spec-pact", { limit: 50 });
+    expect(calls[0]?.args).toContain("50");
   });
 
   it("normalizes object-shaped labels (older/newer gh)", async () => {

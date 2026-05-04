@@ -158,6 +158,15 @@ describe("extractAgreedTodoBullets", () => {
     expect(extractAgreedTodoBullets(body)).toEqual(["a", "b", "c"]);
   });
 
+  it("stops at any heading level — H2 / H3 do not bleed into TODO bullets (Codex P1)", () => {
+    const h2 = `# 합의 TODO\n- a\n- b\n\n## 변경 이력\n- v1 anchored\n- v2 amended\n`;
+    expect(extractAgreedTodoBullets(h2)).toEqual(["a", "b"]);
+    const h3 = `# 합의 TODO\n- a\n\n### 메모\n- 잡담\n`;
+    expect(extractAgreedTodoBullets(h3)).toEqual(["a"]);
+    const h6 = `# 합의 TODO\n- a\n\n###### tiny heading\n- not a todo\n`;
+    expect(extractAgreedTodoBullets(h6)).toEqual(["a"]);
+  });
+
   it("returns [] when no `# 합의 TODO` section is present", () => {
     expect(extractAgreedTodoBullets("# 요약\nparagraph\n")).toEqual([]);
   });
@@ -445,6 +454,9 @@ describe("syncSpecToIssues", () => {
     expect(calls.length).toBe(1);
     expect(calls[0]?.args[0]).toBe("issue");
     expect(calls[0]?.args[1]).toBe("list");
+    // dedupe list narrows by marker-prefix search (Codex P2)
+    expect(calls[0]?.args).toContain("--search");
+    expect(calls[0]?.args).toContain("<!-- spec-pact:slug=user-auth:");
     expect(out.applied).toBeUndefined();
     expect(out.plan.toCreate.epic).toBe(true);
   });

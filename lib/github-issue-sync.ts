@@ -137,6 +137,10 @@ const AGREED_TODO_HEADING_RE = /^#\s+합의\s+TODO\s*$/m;
  * `# 합의 TODO` 섹션의 top-level bullet 만 추출. nested bullet 은 무시.
  * spec-pact/draft.md 의 contract 가 "1 bullet = 1 작업 단위" 라 nested 는 의미상
  * sub-issue 가 아니다.
+ *
+ * 종료 조건은 **모든 레벨의 Markdown heading (H1~H6)** — `# 변경 이력` (H1)
+ * 뿐 아니라 `## 변경 이력` / `### 메모` 같은 H2/H3 직후 bullet 까지 sub-issue
+ * 로 오인 수집하지 않게 한다 (Codex P1 수정).
  */
 export const extractAgreedTodoBullets = (body: string): string[] => {
   const lines = body.split("\n");
@@ -147,7 +151,7 @@ export const extractAgreedTodoBullets = (body: string): string[] => {
   const bullets: string[] = [];
   for (let i = headingIdx + 1; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    if (/^#\s/.test(line)) break; // next H1 ends the section
+    if (/^#{1,6}\s/.test(line)) break; // any heading level ends the section
     const m = line.match(/^- (.+?)\s*$/);
     if (m?.[1]) {
       bullets.push(m[1]);
@@ -477,11 +481,20 @@ export const syncSpecToIssues = async (
   exec: GhExecutor,
   input: SyncSpecToIssuesInput,
 ): Promise<SyncSpecToIssuesOutput> => {
+  // dedupe 대상 조회 — `--label dedupeLabel --search "<marker-prefix>"` 로 한
+  // SPEC 의 epic + sub 만 가져온다. label 만으로는 1000+ 이슈 시 누락 위험이 있고
+  // (Codex P2), marker substring 으로 좁히면 결과 set 이 한 SPEC 범위 (대략
+  // bullets + 1) 로 떨어져 dedupe 누락이 사실상 사라진다. 사람이 라벨을 바꾼
+  // 케이스 (Copilot @484) 의 fallback 은 다음 PR 후보 (ROADMAP).
+  const markerPrefix = `<!-- spec-pact:slug=${input.spec.frontmatter.slug}:`;
   const existing = await ghIssueListByLabel(
     exec,
     input.repo,
     input.dedupeLabel,
-    "all",
+    {
+      state: "all",
+      search: markerPrefix,
+    },
   );
   const plan = buildSyncPlan(
     input.spec,

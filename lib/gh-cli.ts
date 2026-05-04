@@ -265,17 +265,39 @@ export interface GhIssueListItem {
   labels: string[];
 }
 
+export interface GhIssueListByLabelOptions {
+  state?: "open" | "closed" | "all";
+  /**
+   * `gh issue list --search "<text>"` substring 필터. dedupe 검색에서 marker
+   * prefix (예: `<!-- spec-pact:slug=foo:`) 를 넘기면 해당 slug 의 epic + sub
+   * 만 가져온다 — 같은 라벨에 수천 건의 issue 가 있어도 결과 set 이 한 SPEC
+   * 범위로 좁혀져 dedupe 누락이 사실상 발생하지 않는다 (Codex P2 수정).
+   */
+  search?: string;
+  /**
+   * 결과 하드 캡. caller 가 명시할 때만 사용; 미지정 시 1000 (gh 의 max)
+   * 으로 잡고 그 위에 search 로 좁히는 식으로 dedupe 누락을 막는다.
+   */
+  limit?: number;
+}
+
 /**
  * 라벨로 좁혀서 issue 목록을 가져온다 — dedupe 검색의 1차 필터. `gh` 의 `labels`
  * 필드가 버전별로 `string[]` 또는 `{name:string}[]` 이라 여기서 정규화한다.
+ *
+ * dedupe 신뢰성을 위해 호출자는 `options.search` 로 marker prefix 를 함께
+ * 넘기는 것을 권장한다 — `--limit` 만으로는 한 라벨에 1000+ 이슈가 쌓이면
+ * 기존 marker 가 결과에서 탈락한다.
  */
 export const ghIssueListByLabel = async (
   exec: GhExecutor,
   repo: string,
   label: string,
-  state: "open" | "closed" | "all" = "all",
+  options: GhIssueListByLabelOptions = {},
 ): Promise<GhIssueListItem[]> => {
-  const result = await exec.run([
+  const state = options.state ?? "all";
+  const limit = String(options.limit ?? 1000);
+  const args: string[] = [
     "issue",
     "list",
     "--repo",
@@ -285,10 +307,14 @@ export const ghIssueListByLabel = async (
     "--state",
     state,
     "--limit",
-    "500",
+    limit,
     "--json",
     "number,title,body,url,labels",
-  ]);
+  ];
+  if (options.search) {
+    args.push("--search", options.search);
+  }
+  const result = await exec.run(args);
   if (result.exitCode !== 0) {
     throw new GhCommandError(
       ["issue", "list", "--repo", repo, "--label", label],

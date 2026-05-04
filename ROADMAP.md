@@ -48,7 +48,14 @@
   - `issue_create_from_spec` (apply or dryRun) + `issue_status` (dryRun read-only alias) 2 도구. Rocky 가 conduct (`spec-to-issues` skill), `@grace` 는 책임 외 — finalize/lock 권한이 SPEC 까지이고 GitHub 측 상태는 Rocky 의 surface.
   - `lib/gh-cli.ts` 가 `GhExecutor` 인터페이스 + `Bun.spawn` 백엔드 + 타입 에러 (`GhNotInstalledError` / `GhAuthError` / `GhCommandError`) 분리 — 테스트는 fake executor 주입.
   - `agent-toolkit.json` 의 `github` 객체 (`repo` / `defaultLabels`) — schema + `lib/toolkit-config.ts` lockstep. 라벨 패턴 `^[a-zA-Z0-9_-]+$` 강제.
-  - **다음 PR 후보 (별도 결정)**: octokit / `@octokit/rest` SDK 활용 (gh 없는 환경 fallback 또는 GraphQL 로 Project v2 보드 / sub-issue native linkage), 양방향 sync (Issue → SPEC), bullet 삭제 시 sub auto-close.
+  - **다음 PR 후보 (별도 결정)**:
+    - octokit / `@octokit/rest` SDK 활용 (gh 없는 환경 fallback 또는 GraphQL 로 Project v2 보드 / sub-issue native linkage). `GhExecutor` 인터페이스 그대로 새 백엔드 구현체 1 개만 추가하면 됨.
+    - 자체 `gh_run` 같은 generic plugin tool 노출 — agent 가 ad-hoc `gh issue search` / `gh label create` / `gh project` 호출 가능. 백엔드는 CLI / SDK / MCP 어느 것이든 같은 `GhExecutor` 위에 얹힘. allow-list 기반 destructive guard 가 주요 결정 포인트.
+    - bullet 재정렬 / 내용 변경 감지 (Copilot 검토 의견) — plan 에 `mismatched: number[]` surface, 사용자가 keep / sub-recreate / sub-patch 결정.
+    - epic body conflict guard (Copilot) — patch 직전 epic body 재fetch + marker / `- [ ]` 외 라인 변경 감지 → abort.
+    - directory-mode SPEC (`**/SPEC.md`) 의 slug 기반 lookup (Copilot) — INDEX 기반 discovery 재사용.
+    - 라벨 제거된 marker 의 dedupe fallback (Copilot) — `--label` 없이 marker-only `--search` 한 번 더.
+    - 양방향 sync (Issue → SPEC), bullet 삭제 시 sub auto-close, GitHub Projects v2 보드 자동 추가, sub-issue native API 마이그레이션.
 - **Phase 3 — 에이전트 자동 기억 / 기록 — 완료** *(memo #1, issue [#5](https://github.com/minjun0219/agent-toolkit/issues/5))*
   - `journal_append` / `journal_read` / `journal_search` / `journal_status` 4 도구 + `lib/agent-journal.ts` append-only JSONL (TTL 없음, 손상 라인 graceful skip)
   - 시간순 + `kind` / `tag` / `pageId` / `since` 필터 + substring 검색

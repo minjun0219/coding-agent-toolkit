@@ -106,11 +106,13 @@ journal_append: 1 entry (tags: spec-pact, spec-to-issues, applied)
 
 - **gh not installed** → `GhNotInstalledError`: surface install URL (`https://cli.github.com`), stop.
 - **gh not authenticated** → `GhAuthError`: surface `gh auth login --scopes "repo"`, stop.
-- **SPEC not found** → `ENOENT` on `<spec.dir>/<slug>.md` — surface the resolved path verbatim and ask user to confirm slug/path.
+- **SPEC not found** → `ENOENT` on `<spec.dir>/<slug>.md` — surface the resolved path verbatim and ask user to confirm slug/path. **Directory-mode SPEC (`**/SPEC.md`) is not slug-resolvable in this PR** — caller must pass the full `path` instead. INDEX-based slug → directory-mode lookup is a follow-up PR.
 - **SPEC status !== locked** → throw with current status + recommend running the SPEC-pact lifecycle first (DRAFT or AMEND).
 - **`# 합의 TODO` empty** → throw — there is nothing to sync. SPEC may still be in DRAFT negotiation; re-anchor with grace.
 - **Same dedupe label used by other tooling** → epic / subs may misfire. Recommend a unique label (config `github.defaultLabels[0]`).
-- **`gh issue edit` overwrite race** → patches the epic body fully each time. If a human added prose to the epic body between our list and edit, that prose is lost. Mitigation in this PR: epic body always rerendered from current bullets — DO NOT add prose to epic body manually; use sub issues for discussion.
+- **Human removed the dedupe label from an existing epic / sub** → marker is still in the body, but `gh issue list --label` filter excludes it. This PR's `--search "<marker-prefix>"` narrows the result set to one SPEC, but the list is still gated by the dedupe label, so a label-removed issue is missed → re-sync would create duplicates. Mitigation: keep the dedupe label stable. Marker-only fallback (search without label) is a follow-up PR.
+- **`# 합의 TODO` bullet 재정렬 또는 내용 변경** → marker 가 같은 index 를 가리키고 있으면 sub 는 reuse 되며 body 는 patch 되지 않는다 (즉 GitHub 측 sub body 와 SPEC bullet 이 어긋난 상태로 남는다). bullet 이동 / 내용 mutation 감지는 surface 만 — orphan 처럼 plan 의 `mismatched: number[]` 로 후속 PR 에서 surface 예정. 이번 PR 의 contract 는 **marker = ground truth** 이고, bullet 변경은 별도 AMEND 흐름.
+- **`gh issue edit` overwrite race** → patches the epic body fully each time. If a human added prose to the epic body between our list and edit, that prose is lost. Mitigation in this PR: epic body always rerendered from current bullets — DO NOT add prose to epic body manually; use sub issues for discussion. Pre-patch conflict guard (re-fetch + diff non-marker / non-task-list lines → abort) is a follow-up PR.
 
 ## Do NOT
 
