@@ -1,5 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -36,5 +45,30 @@ describe("agent-toolkit install metadata", () => {
     expect("build" in scripts).toBe(false);
     expect("prepare" in scripts).toBe(false);
     expect("prepublishOnly" in scripts).toBe(false);
+  });
+
+  it("loads the server plugin through the package subpath export", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "agent-toolkit-install-"));
+
+    try {
+      const packageDir = join(tempDir, "node_modules", "agent-toolkit");
+      mkdirSync(join(tempDir, "node_modules"), { recursive: true });
+      symlinkSync(ROOT, packageDir, "dir");
+      writeFileSync(
+        join(tempDir, "import-server.ts"),
+        'import plugin from "agent-toolkit/server";\nconsole.log(typeof plugin);\n',
+      );
+
+      const result = Bun.spawnSync(["bun", "import-server.ts"], {
+        cwd: tempDir,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.toString().trim()).toBe("function");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
