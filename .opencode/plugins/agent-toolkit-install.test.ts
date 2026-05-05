@@ -31,13 +31,18 @@ describe("agent-toolkit install metadata", () => {
   it("keeps the published entrypoint and fallback files aligned", () => {
     const pkg = readPackageJson();
     const main = pkg.main ?? "";
+    const rootImport = pkg.exports?.["."]?.import ?? "";
     const serverImport = pkg.exports?.["./server"]?.import ?? "";
 
-    expect(main).toBe("./.opencode/plugins/agent-toolkit.ts");
+    expect(main).toBe("./.opencode/plugins/agent-toolkit-server.ts");
+    expect(rootImport).toBe(main);
     expect(serverImport).toBe(main);
     expect(main.startsWith("./")).toBe(true);
     expect(main.includes("dist")).toBe(false);
     expect(existsSync(resolve(ROOT, main))).toBe(true);
+    expect(
+      existsSync(resolve(ROOT, "./.opencode/plugins/agent-toolkit.ts")),
+    ).toBe(true);
     expect(existsSync(join(AGENTS_DIR, "rocky.md"))).toBe(true);
     expect(existsSync(join(AGENTS_DIR, "grace.md"))).toBe(true);
 
@@ -47,7 +52,10 @@ describe("agent-toolkit install metadata", () => {
     expect("prepublishOnly" in scripts).toBe(false);
   });
 
-  it("loads the server plugin through the package subpath export", () => {
+  it.each([
+    ["root", "agent-toolkit", "import-root.ts"],
+    ["server", "agent-toolkit/server", "import-server.ts"],
+  ])("loads the plugin through the package %s export", (_name, specifier, fileName) => {
     const tempDir = mkdtempSync(join(tmpdir(), "agent-toolkit-install-"));
 
     try {
@@ -55,11 +63,11 @@ describe("agent-toolkit install metadata", () => {
       mkdirSync(join(tempDir, "node_modules"), { recursive: true });
       symlinkSync(ROOT, packageDir, "dir");
       writeFileSync(
-        join(tempDir, "import-server.ts"),
-        'import plugin from "agent-toolkit/server";\nconsole.log(typeof plugin);\n',
+        join(tempDir, fileName),
+        `import plugin from "${specifier}";\nconsole.log(typeof plugin);\n`,
       );
 
-      const result = Bun.spawnSync(["bun", "import-server.ts"], {
+      const result = Bun.spawnSync(["bun", fileName], {
         cwd: tempDir,
         stdout: "pipe",
         stderr: "pipe",

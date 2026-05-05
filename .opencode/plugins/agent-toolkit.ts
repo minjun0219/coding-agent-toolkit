@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { tool as defineTool } from "@opencode-ai/plugin";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -100,6 +102,135 @@ import {
   type PrWatchState,
   type ResolveDecision,
 } from "../../lib/pr-watch";
+
+type LegacyToolParam = {
+  type?: string;
+  required?: boolean;
+  items?: LegacyToolParam;
+};
+
+type LegacyToolDefinition = {
+  description: string;
+  parameters?: Record<string, LegacyToolParam>;
+  handler(args: any): Promise<unknown> | unknown;
+};
+
+function schemaFromParam(param: LegacyToolParam = {}): any {
+  const z = defineTool.schema;
+  let schema: any;
+  switch (param.type) {
+    case "string":
+      schema = z.string();
+      break;
+    case "number":
+      schema = z.number();
+      break;
+    case "boolean":
+      schema = z.boolean();
+      break;
+    case "array":
+      schema = z.array(schemaFromParam(param.items ?? {}));
+      break;
+    default:
+      schema = z.any();
+      break;
+  }
+  return param.required ? schema : schema.optional();
+}
+
+function serializeToolResult(result: unknown): string {
+  if (typeof result === "string") return result;
+  return JSON.stringify(result, null, 2);
+}
+
+function createOpencodeTools<T extends Record<string, LegacyToolDefinition>>(
+  tools: T,
+) {
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, legacy]) => {
+      const args = Object.fromEntries(
+        Object.entries(legacy.parameters ?? {}).map(([key, param]) => [
+          key,
+          schemaFromParam(param),
+        ]),
+      );
+      const opencodeTool = defineTool({
+        description: legacy.description,
+        args,
+        async execute(args) {
+          return serializeToolResult(await legacy.handler(args));
+        },
+      });
+
+      // Kept for direct unit tests of handler-level behavior; opencode uses execute().
+      return [name, { ...opencodeTool, handler: legacy.handler }];
+    }),
+  ) as unknown as {
+    [K in keyof T]: ReturnType<typeof defineTool> & {
+      handler: T[K]["handler"];
+    };
+  };
+}
+
+function parseAgentMarkdown(fileName: string) {
+  const filePath = resolve(AGENTS_DIR, fileName);
+  const markdown = readFileSync(filePath, "utf8");
+  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match)
+    throw new Error(`agent markdown is missing frontmatter: ${filePath}`);
+
+  const frontmatter = match[1] ?? "";
+  const prompt = (match[2] ?? "").trim();
+  const description =
+    frontmatter
+      .match(/description:\s*'((?:''|[^'])*)'/)?.[1]
+      ?.replaceAll("''", "'") ??
+    frontmatter.match(/description:\s*(.+)/)?.[1]?.trim();
+  if (!description)
+    throw new Error(`agent markdown is missing description: ${filePath}`);
+
+  const mode = frontmatter.match(/mode:\s*(\S+)/)?.[1] ?? "subagent";
+  return {
+    description,
+    mode,
+    temperature: Number(
+      frontmatter.match(/temperature:\s*([0-9.]+)/)?.[1] ?? 0.2,
+    ),
+    permission: {
+      edit: frontmatter.match(/edit:\s*(\S+)/)?.[1] ?? "deny",
+      bash: frontmatter.match(/bash:\s*(\S+)/)?.[1] ?? "deny",
+    },
+    prompt,
+  };
+}
+
+function mergeAgentConfig(existing: any, packaged: any) {
+  if (!existing) return packaged;
+  return {
+    ...packaged,
+    ...existing,
+    permission: {
+      ...packaged.permission,
+      ...existing.permission,
+    },
+  };
+}
+
+function registerAgents(config: any) {
+  config.agent ??= {};
+  config.agent.rocky = mergeAgentConfig(
+    config.agent.rocky,
+    parseAgentMarkdown("rocky.md"),
+  );
+  config.agent.grace = mergeAgentConfig(
+    config.agent.grace,
+    parseAgentMarkdown("grace.md"),
+  );
+  config.agent.mindy = mergeAgentConfig(
+    config.agent.mindy,
+    parseAgentMarkdown("mindy.md"),
+  );
+}
 
 /**
  * opencode plugin entrypoint (Superpowers 형식).
@@ -1071,13 +1202,11 @@ export default async function agentToolkitPlugin(_input: unknown) {
         if (!host[key].paths.includes(value)) host[key].paths.push(value);
       };
       ensurePath(config, "skills", SKILLS_DIR);
-      ensurePath(config, "agents", AGENTS_DIR);
-      // 일부 버전이 singular `agent` 를 쓰는 경우의 호환 셔틀.
-      ensurePath(config, "agent", AGENTS_DIR);
+      registerAgents(config);
     },
 
     /** opencode tool 등록. */
-    tool: {
+    tool: createOpencodeTools({
       notion_get: {
         description:
           "Notion 페이지를 캐시 우선 정책으로 읽는다. 캐시 hit 이면 remote 호출 없음. miss 면 remote MCP fetch 후 캐시에 저장. (input: pageId 또는 URL)",
@@ -1503,6 +1632,6 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return loadSpecPactFragment(SKILLS_DIR, validated);
         },
       },
-    },
+    }),
   };
 }

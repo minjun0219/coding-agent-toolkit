@@ -24,15 +24,15 @@ opencode installs package plugins under its cache, not the consumer project's `n
 
 ```bash
 PLUGIN_DIR=$(ls -d "$HOME"/.cache/opencode/packages/agent-toolkit@* | sort | tail -1)
-PLUGIN_DIR="$PLUGIN_DIR" bun -e 'const dir=process.env.PLUGIN_DIR; if (!dir) throw new Error("PLUGIN_DIR is required"); const p=await Bun.file(`${dir}/package.json`).json(); const server=p.exports?.["./server"]?.import; if (p.main!=="./.opencode/plugins/agent-toolkit.ts" || server!==p.main) throw new Error("bad agent-toolkit entrypoint"); const mod=await import(`${dir}/${server.slice(2)}`); console.log("agent-toolkit server:", typeof mod.default)'
+PLUGIN_DIR="$PLUGIN_DIR" bun -e 'const dir=process.env.PLUGIN_DIR; if (!dir) throw new Error("PLUGIN_DIR is required"); const p=await Bun.file(`${dir}/package.json`).json(); const root=p.exports?.["."]?.import; const server=p.exports?.["./server"]?.import; if (p.main!=="./.opencode/plugins/agent-toolkit-server.ts" || root!==p.main || server!==p.main) throw new Error("bad agent-toolkit entrypoint"); const mod=await import(`${dir}/${root.slice(2)}`); console.log("agent-toolkit root:", typeof mod.default)'
 ```
 
-- **Expected output**: `agent-toolkit server: function`
+- **Expected output**: `agent-toolkit root: function`
 - For a local checkout plugin, set `PLUGIN_DIR` to that checkout path instead of using the cache lookup.
 
 ## Troubleshooting: Agents Not Showing Up
 
-If `rocky` or `grace` agents do not appear in `opencode agent list` (common on opencode `1.14.33` + Bun `1.3.11` + macOS), you can manually expose them to your project:
+If `rocky`, `grace`, or `mindy` agents do not appear in `opencode agent list` (common on opencode `1.14.33` + Bun `1.3.11` + macOS), you can manually expose them to your project:
 
 1. Create the project-local agent directory:
    ```bash
@@ -43,6 +43,7 @@ If `rocky` or `grace` agents do not appear in `opencode agent list` (common on o
    PLUGIN_DIR=$(ls -d "$HOME"/.cache/opencode/packages/agent-toolkit@* | sort | tail -1)
    cp "$PLUGIN_DIR/agents/rocky.md" .opencode/agents/
    cp "$PLUGIN_DIR/agents/grace.md" .opencode/agents/
+   cp "$PLUGIN_DIR/agents/mindy.md" .opencode/agents/
    ```
 
 *Note: For a local checkout plugin, set `PLUGIN_DIR` to that checkout path instead of using the cache lookup.*
@@ -243,7 +244,7 @@ The repo key matches `^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$` (= GitHub's owner/repo 
 
 ## Agents (`rocky` + `grace` + `mindy`)
 
-`agents/rocky.md`, `agents/grace.md`, and `agents/mindy.md` are registered into opencode's agent path via the plugin's `config` hook. Rocky's `mode: all` shows up both in the primary cycle (Tab) and as a delegation target from another primary agent; Grace's and Mindy's `mode: subagent` only show up as delegation targets (called by Rocky, by an external primary that happens to share the environment, or by the user via an explicit `@grace` / `@mindy`). None of the three pin a `model:` in their frontmatter — all inherit whatever model the user has selected in the opencode session, so prompts can be swapped between models without editing the agent files.
+`agents/rocky.md`, `agents/grace.md`, and `agents/mindy.md` are parsed by the plugin's `config` hook and registered as concrete `config.agent.rocky` / `config.agent.grace` / `config.agent.mindy` entries. Rocky's `mode: all` shows up both in the primary cycle (Tab) and as a delegation target from another primary agent; Grace's and Mindy's `mode: subagent` only show up as delegation targets (called by Rocky, by an external primary that happens to share the environment, or by the user via an explicit `@grace` / `@mindy`). None of the three pin a `model:` in their frontmatter — all inherit whatever model the user has selected in the opencode session, so prompts can be swapped between models without editing the agent files.
 
 Rocky is a work partner with frontend specialty and fullstack range — it conducts the toolkit's three cache-first skills (`notion-context`, `openapi-client`, `mysql-query`) and the journal as its primary contract, routes the SPEC 합의 lifecycle to `@grace`, routes the PR review watch lifecycle to `@mindy`, and may delegate to external sub-agents / skills when the work exceeds the toolkit.
 
@@ -306,7 +307,7 @@ None of Rocky / Grace / Mindy directly run multi-step implementation work (writi
 
 The SPEC layer lives at `<spec.dir>/<spec.indexFile>` (entry point — default `.agent/specs/INDEX.md`) + `<spec.dir>/<slug>.md` (slug 모드 — default `.agent/specs/<slug>.md`) by convention. To park a SPEC inside a directory subtree (AGENTS.md style), drop `<dir>/SPEC.md` instead — `grace` discovers both via the `**/SPEC.md` glob (toggle `spec.scanDirectorySpec` in `agent-toolkit.json` to disable). All three keys (`spec.dir`, `spec.indexFile`, `spec.scanDirectorySpec`) are overridable via `agent-toolkit.json`.
 
-If the plugin is not registered, or the opencode version does not recognize `agents.paths`, drop a symlink or copy of `agents/rocky.md`, `agents/grace.md`, and `agents/mindy.md` into the project's `.opencode/agents/` instead.
+If the plugin is not registered, or the opencode version does not recognize plugin-provided `config.agent.*` entries, drop a symlink or copy of `agents/rocky.md`, `agents/grace.md`, and `agents/mindy.md` into the project's `.opencode/agents/` instead.
 
 ## GitHub Issue sync (Phase 2 — `spec-to-issues` skill / `issue_*` tools)
 
