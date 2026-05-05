@@ -343,7 +343,7 @@ export async function runReadonlyQuery(
   options: RunReadonlyQueryOptions = {},
 ): Promise<MysqlQueryResult> {
   assertReadOnlySql(sql);
-  const { sql: rewritten, effectiveLimit, capped } = enforceLimit(sql, options);
+  const { sql: rewritten, effectiveLimit } = enforceLimit(sql, options);
   const { rows, fields } = await executor.query(rewritten);
   const columns: MysqlColumnMeta[] = (fields ?? []).map((f) => ({
     name: String((f as { name: string }).name ?? ""),
@@ -357,8 +357,7 @@ export async function runReadonlyQuery(
         : null,
   }));
   const rowCount = rows.length;
-  const truncated =
-    capped || (effectiveLimit !== null && rowCount === effectiveLimit);
+  const truncated = effectiveLimit !== null && rowCount === effectiveLimit;
   return {
     sql: rewritten,
     rows: rows as MysqlRow[],

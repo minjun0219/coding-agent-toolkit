@@ -329,6 +329,20 @@ describe("runReadonlyQuery", () => {
     expect(r.columns).toEqual([{ name: "id", type: 3, table: "users" }]);
   });
 
+  it("does not report truncated when an attached LIMIT returns fewer rows than the cap", async () => {
+    const fake = new FakeExecutor([
+      {
+        rows: [{ id: 1 } as unknown as RowDataPacket],
+        fields: [],
+      },
+    ]);
+    const r = await runReadonlyQuery(fake, "SELECT * FROM users");
+    expect(fake.seen[0]).toContain("LIMIT 100");
+    expect(r.rowCount).toBe(1);
+    expect(r.effectiveLimit).toBe(100);
+    expect(r.truncated).toBe(false);
+  });
+
   it("does not modify SHOW TABLES", async () => {
     const fake = new FakeExecutor([
       {
