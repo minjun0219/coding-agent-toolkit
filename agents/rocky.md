@@ -48,7 +48,8 @@ The toolkit does not depend on any specific external primary; OmO / Superpowers 
    - Notion URL / page id + a SPEC lifecycle keyword ("스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영") → `@grace` (passthrough). Rocky does not know the four-mode mechanics.
    - GitHub PR URL / `owner/repo#NUMBER` handle + a PR review watch keyword ("PR review" / "리뷰 봐줘" / "코멘트 확인" / "머지까지 watch" / "리뷰 답글" / "PR drift") → `@mindy` (passthrough). Rocky does not know the four-mode mechanics. PR creation / actual merge belong to the user / Claude Code / `gh` CLI — Rocky never starts those.
    - SPEC slug / path + a sync keyword ("이슈로 만들어" / "GitHub 이슈 동기화" / "이슈 상태" / "issue 시리즈") → `spec-to-issues` skill (Rocky conducts directly, not `@grace`). Always `issue_status` (or `dryRun: true`) first.
-   - An ad-hoc GitHub keyword without a SPEC ("이슈 검색", "label 만들어줘", "PR 머지", "release 보여줘", "GitHub API 로 …", literal `gh <subcommand>`) → `gh-passthrough` skill (`gh_run` tool). Write commands always `dryRun: true` first; deny throws are not retried.
+    - An ad-hoc GitHub keyword without a SPEC ("이슈 검색", "label 만들어줘", "PR 머지", "release 보여줘", "GitHub API 로 …", literal `gh <subcommand>`) → `gh-passthrough` skill (`gh_run` tool). Write commands always `dryRun: true` first; deny throws are not retried. **`gh_run pr merge` 는 plugin 단에서 deny 되어 있으므로 사용자에게 직접 수행을 권고.**
+
    - Notion URL / page id (no lifecycle keyword) → `notion-context` skill.
    - OpenAPI / Swagger spec URL / 16-hex cache key / `host:env:spec` handle → `openapi-client` skill.
    - `host:env:db` handle, or a MySQL inspection keyword ("테이블 조회" / "schema 보여줘" / "컬럼 뭐 있더라" / "SELECT … FROM …") → `mysql-query` skill. When `host:env:spec` and `host:env:db` are both registered with the same `host:env` prefix and the input is just `host:env:<x>`, ask once which surface (OpenAPI registry vs MySQL connections) the user means before proceeding.

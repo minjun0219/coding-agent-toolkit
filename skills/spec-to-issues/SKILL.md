@@ -1,6 +1,6 @@
 ---
 name: spec-to-issues
-description: Sync a locked SPEC (under `<spec.dir>/<slug>.md` or `**/SPEC.md`) into a GitHub epic + sub-issue series via the user's `gh` CLI. Idempotent — re-runs are no-ops, additive bullets create only the new sub. Two-step flow — `dryRun: true` first to inspect the plan, then `dryRun: false` to apply. Conducted by `rocky` (NOT `grace` — grace's finalize/lock authority stops at the SPEC; GitHub-side state is rocky's surface). Auto-trigger when a SPEC slug or path appears together with phrases like "이슈로 만들어줘" / "GitHub 이슈 동기화" / "issue 시리즈로 쪼개줘" / "이슈 상태 보여줘".
+description: Sync a locked SPEC (under `<spec.dir>/<slug>.md` or `**/SPEC.md`) into a GitHub epic + sub-issue series via the user's `gh` CLI. Idempotent — re-runs are no-ops, additive bullets create only the new sub. Two-step flow — `issue_status` (or `dryRun: true`) first to inspect the plan, then `dryRun: false` to apply. `issue_status` 는 journal 을 남기지 않는 read-only 관측용. Conducted by `rocky` (NOT `grace` — grace's finalize/lock authority stops at the SPEC; GitHub-side state is rocky's surface). Auto-trigger when a SPEC slug or path appears together with phrases like "이슈로 만들어줘" / "GitHub 이슈 동기화" / "issue 시리즈로 쪼개줘" / "이슈 상태 보여줘".
 allowed-tools: [issue_create_from_spec, issue_status, journal_append, journal_read, journal_search, read]
 license: MIT
 version: 0.1.0
@@ -23,7 +23,7 @@ caller  ──► rocky  ──► spec-to-issues
                           ├── 1. issue_status       ← dryRun=true, plan only (1 gh call: issue list --label spec-pact)
                           ├── 2. surface plan       ← user reviews; explicit "apply" required
                           ├── 3. issue_create_from_spec ← dryRun=false; creates missing subs first, then patches/creates epic with sub numbers
-                          └── 4. journal_append     ← single entry, tags ["spec-pact","spec-to-issues","dry-run"|"applied"]
+                          └── 4. journal_append     ← single entry on apply only, tags ["spec-pact","spec-to-issues","applied"]
 ```
 
 ## Precondition
@@ -51,7 +51,7 @@ GHE / Enterprise: use `gh auth login --hostname <host>` once. The plugin does no
 3. **Do not retry on `GhAuthError` or `GhNotInstalledError`.** Surface the one-line guide and stop. The user must run `gh auth login` or install `gh`.
 4. **Use `read` only to peek SPEC files** when a path was given but you want to preview frontmatter. Plugin tool is the only path that calls `gh`.
 5. **Never modify the SPEC file.** SPEC is `grace`'s surface — if drift / re-anchoring is needed, route to `@grace SPEC drift <slug>` instead.
-6. **Always `journal_append` once** at the end (the plugin tool does this automatically — do not double-append).
+6. **`journal_append` is automatic on apply only** (the plugin tool handles this — do not double-append). `issue_status` and `dryRun: true` calls do NOT produce journal entries.
 
 ## Output format
 
@@ -102,6 +102,8 @@ GHE / Enterprise: use `gh auth login --hostname <host>` once. The plugin does no
 journal_append: 1 entry (tags: spec-pact, spec-to-issues, applied)
 ```
 
+> **Note**: `issue_status` and `dryRun: true` calls do **not** produce journal entries — they are read-only operations.
+
 ## Failure modes
 
 - **gh not installed** → `GhNotInstalledError`: surface install URL (`https://cli.github.com`), stop.
@@ -129,8 +131,9 @@ The plugin tool appends one entry per call. Tag scheme:
 
 | Stage | tags | content shape |
 |---|---|---|
-| dryRun | `["spec-pact","spec-to-issues","dry-run"]` | `<slug> dry-run: epic=create\|reuse subs=N/M new` |
 | applied | `["spec-pact","spec-to-issues","applied"]` | `<slug> applied: epic+E subs+S patched=B` |
+
+> `issue_status` 와 `dryRun: true` 경로는 journal entry 를 남기지 않습니다. apply (`dryRun: false`) 완료 후에만 위 entry 가 append 됩니다.
 
 Recovery — to see the full sync history of any SPEC, use the tag-shaped query:
 `journal_search "spec-to-issues"`.

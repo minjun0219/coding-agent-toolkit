@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentJournal, type JournalEntry } from "./agent-journal";
@@ -595,6 +595,91 @@ describe("integration with AgentJournal", () => {
     expect(input.tags).toContain("pr:minjun0219/agent-toolkit#42");
     // tagsForHandle helper 도 같은 0..2 prefix 를 쓴다.
     expect(input.tags?.slice(0, 3)).toEqual(tagsForHandle(HANDLE_A));
+  });
+});
+
+describe("golden contract: PR watch lifecycle", () => {
+  it("covers start → record → pending → resolve → stop with duplicate record guard", async () => {
+    const ref = normalizeEventRef("issue_comment", "101");
+
+    const start = await journal.append(
+      buildAppend({
+        kind: "pr_watch_start",
+        data: { handle: HANDLE_A, note: "review me" },
+      }),
+    );
+    expect(start.kind).toBe("pr_watch_start");
+
+    await journal.append(
+      buildAppend({
+        kind: "pr_event_inbound",
+        data: { handle: HANDLE_A, ref, summary: "typo in docs" },
+      }),
+    );
+    await journal.append(
+      buildAppend({
+        kind: "pr_event_inbound",
+        data: { handle: HANDLE_A, ref, summary: "duplicate poll" },
+      }),
+    );
+
+    const afterRecord = await readEverything(journal);
+    expect(hasInboundFor(HANDLE_A, ref.toolkitKey, afterRecord)).toBe(true);
+    expect(reducePendingEvents(HANDLE_A, afterRecord)).toHaveLength(1);
+    expect(reducePendingEvents(HANDLE_A, afterRecord)[0]?.summary).toBe(
+      "typo in docs",
+    );
+
+    await journal.append(
+      buildAppend({
+        kind: "pr_event_resolved",
+        data: {
+          handle: HANDLE_A,
+          ref,
+          decision: "accepted",
+          reasoning: "fixed in source",
+          replyExternalId: "r-77",
+        },
+      }),
+    );
+
+    const afterResolve = await readEverything(journal);
+    expect(reducePendingEvents(HANDLE_A, afterResolve)).toEqual([]);
+    expect(selectByHandle(HANDLE_A, afterResolve).map((e) => e.kind)).toEqual([
+      "pr_watch_start",
+      "pr_event_inbound",
+      "pr_event_inbound",
+      "pr_event_resolved",
+    ]);
+
+    await journal.append(
+      buildAppend({
+        kind: "pr_watch_stop",
+        data: { handle: HANDLE_A, reason: "merged" },
+      }),
+    );
+
+    expect(reduceActiveWatches(await readEverything(journal))).toEqual([]);
+    expect(await journal.search("pr-watch")).toHaveLength(5);
+  });
+});
+
+describe("contract checks", () => {
+  it("pr-watch stays reducer-only and does not call GitHub APIs directly", () => {
+    const source = readFileSync(join(import.meta.dir, "pr-watch.ts"), "utf8");
+    expect(source).not.toMatch(/\bfetch\s*\(/);
+    expect(source).not.toMatch(/\bgh\b/);
+    expect(source).not.toMatch(/mcp__github__/);
+  });
+
+  it("mindy.md explicitly denies edit and bash permissions", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "..", "agents", "mindy.md"),
+      "utf8",
+    );
+    expect(source).toContain("permission.edit: deny");
+    expect(source).toContain("permission.bash: deny");
+    expect(source).toContain("never merges the PR");
   });
 });
 

@@ -288,28 +288,49 @@ describe("classifyGhCommand", () => {
     expect(classifyGhCommand(["search", "issues", "marker"])).toBe("read");
   });
 
-  it("classifies write commands as write", () => {
+  it("classifies guarded write commands as write", () => {
     expect(classifyGhCommand(["issue", "create", "--title", "x"])).toBe(
       "write",
     );
-    expect(classifyGhCommand(["pr", "merge", "42"])).toBe("write");
     expect(classifyGhCommand(["label", "create", "spec-pact"])).toBe("write");
-    expect(classifyGhCommand(["repo", "delete", "x/y"])).toBe("write");
   });
 
-  it("classifies environment-affecting commands as deny", () => {
+  it("classifies high-risk and environment-affecting commands as deny", () => {
+    expect(classifyGhCommand(["pr", "merge", "42"])).toBe("deny");
+    expect(classifyGhCommand(["repo", "delete", "x/y"])).toBe("deny");
+    expect(classifyGhCommand(["repo", "edit", "x/y"])).toBe("deny");
+    expect(classifyGhCommand(["release", "delete", "v1.0.0"])).toBe("deny");
+    expect(classifyGhCommand(["workflow", "run", "ci.yml"])).toBe("deny");
+    expect(classifyGhCommand(["run", "rerun", "123"])).toBe("deny");
+    expect(classifyGhCommand(["run", "cancel", "123"])).toBe("deny");
     expect(classifyGhCommand(["auth", "login"])).toBe("deny");
     expect(classifyGhCommand(["auth", "logout"])).toBe("deny");
+    expect(classifyGhCommand(["auth", "refresh"])).toBe("deny");
+    expect(classifyGhCommand(["auth", "setup-git"])).toBe("deny");
+    expect(classifyGhCommand(["auth", "token"])).toBe("deny");
     expect(classifyGhCommand(["extension", "install", "owner/repo"])).toBe(
       "deny",
     );
+    expect(classifyGhCommand(["extension", "list"])).toBe("deny");
     expect(classifyGhCommand(["alias", "set", "co", "pr checkout"])).toBe(
       "deny",
     );
+    expect(classifyGhCommand(["alias", "list"])).toBe("deny");
     expect(classifyGhCommand(["config", "set", "git_protocol", "ssh"])).toBe(
       "deny",
     );
+    expect(classifyGhCommand(["config", "get", "git_protocol"])).toBe("deny");
     expect(classifyGhCommand(["gist", "create", "file.txt"])).toBe("deny");
+    expect(classifyGhCommand(["gist", "edit", "abc123"])).toBe("deny");
+    expect(classifyGhCommand(["gist", "delete", "abc123"])).toBe("deny");
+    expect(classifyGhCommand(["gist", "clone", "abc123"])).toBe("deny");
+  });
+
+  it("keeps safe read commands allowed", () => {
+    expect(classifyGhCommand(["issue", "list", "--repo", "x/y"])).toBe("read");
+    expect(classifyGhCommand(["repo", "view", "x/y"])).toBe("read");
+    expect(classifyGhCommand(["gist", "list"])).toBe("read");
+    expect(classifyGhCommand(["gist", "view", "abc123"])).toBe("read");
   });
 
   it("classifies unknown / empty commands as deny (allow-list policy)", () => {

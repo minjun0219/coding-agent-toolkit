@@ -47,6 +47,16 @@ If `rocky` or `grace` agents do not appear in `opencode agent list` (common on o
 
 *Note: For a local checkout plugin, set `PLUGIN_DIR` to that checkout path instead of using the cache lookup.*
 
+### GitHub Transport Policy
+
+GitHub 관련 도구는 보안을 위해 세 가지 Transport로 분리되어 동작합니다:
+
+- **gh-cli**: `issue_*` 및 `gh_run` 도구가 사용합니다. 사용자 셸의 `gh auth login` 상태를 그대로 이용하며, toolkit 설정에 토큰을 저장하지 않습니다.
+- **external-mcp**: PR 코멘트 읽기/쓰기는 사용자가 opencode에 등록한 외부 GitHub MCP를 통해서만 이루어집니다.
+- **journal-only**: `pr_*` 도구들은 로컬 저널에만 기록하며 GitHub API를 직접 호출하지 않습니다.
+
+**보안 주의**: `gh_run pr merge`, `repo edit|delete`, `release delete`, `workflow run|enable|disable`, `run rerun|cancel` 및 `auth`, `config` 등 고위험 명령은 차단되어 있습니다. 모든 쓰기 작업은 `dryRun: true`가 기본입니다. `issue_status`와 `issue_create_from_spec(dryRun: true)`는 저널 기록을 남기지 않는 순수 읽기 작업입니다. `gh_run`은 read/dry-run/applied 모든 호출에 journal entry를 남깁니다.
+
 ## Environment variables
 
 All optional. Set only when the defaults do not fit.
@@ -353,7 +363,7 @@ $ gh auth login --scopes "repo"   # if not authenticated; for GHE add --hostname
 @rocky `gh issue list --label bug` 검색해줘             # → gh_run({args:["issue","list","--label","bug"]}) — read, 즉시 실행
 @rocky `bug` 라벨 새로 만들어줘                           # → gh_run({args:["label","create","bug",...], dryRun:true}) plan 먼저
                                                           # → 사용자 승인 후 dryRun:false 로 재호출
-@rocky #42 PR 머지해줘                                    # → gh_run({args:["pr","merge","42",...], dryRun:true}) plan 먼저
+@rocky #42 PR 머지해줘                                    # → GhDeniedCommandError, stop (pr merge 는 deny — toolkit 책임 밖)
 @rocky `gh extension install owner/repo`                  # → GhDeniedCommandError, stop
 @rocky `gh auth login`                                    # → GhDeniedCommandError, stop (사용자가 직접 셸에서 실행)
 ```

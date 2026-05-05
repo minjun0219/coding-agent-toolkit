@@ -1,0 +1,1 @@
+Added `.opencode/plugins/skill-agent-contract.test.ts` to verify skill markdown tool references against the registered plugin tool inventory and to keep the contract checks text-based.
