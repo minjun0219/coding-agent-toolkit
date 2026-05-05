@@ -6,7 +6,7 @@
 
 ## At a glance
 
-- **28 tools** across 8 categories
+- **33 registered tool names** (28 primary tools + 5 compatibility aliases) across 8 categories
 - **7 skills** (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`)
 - **3 agents** (`rocky`, `grace`, `mindy`)
 - **One config file** — `agent-toolkit.json` (project `./.opencode/agent-toolkit.json` overrides user `~/.config/opencode/agent-toolkit/agent-toolkit.json`)
@@ -66,11 +66,11 @@ Single-page, cache-first reads against the user's Notion via the Notion remote M
 - **Side effects**: same cache write as `notion_get` on miss; otherwise none.
 - **Related config**: same as `notion_get`.
 
-### OpenAPI cache (`swagger_*`)
+### OpenAPI cache (`openapi_*`, legacy `swagger_*` aliases)
 
 Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint search and the `host:env:spec` registry. YAML specs are out of scope.
 
-#### `swagger_get`
+#### `openapi_get`
 
 - **What**: Cache-first read of an OpenAPI / Swagger JSON spec. Hit returns immediately; miss downloads the spec by URL, validates JSON shape, and writes the cache.
 - **Input**: `input` — spec URL (`https://…` / `file://…`), a 16-hex disk key, or a `host:env:spec` handle declared in `agent-toolkit.json`.
@@ -79,25 +79,25 @@ Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint se
 - **Side effects**: writes `<AGENT_TOOLKIT_OPENAPI_CACHE_DIR>/<key>.{json,spec.json}` on miss (`key = sha256(specUrl)[:16]`).
 - **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `AGENT_TOOLKIT_OPENAPI_CACHE_TTL`, `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS`, `openapi.registry` in `agent-toolkit.json`.
 
-#### `swagger_refresh`
+#### `openapi_refresh`
 
 - **What**: Force-download an OpenAPI / Swagger JSON spec (ignore cache), validate, and rewrite the cache.
-- **Input**: `input` — same accepted shapes as `swagger_get`.
+- **Input**: `input` — same accepted shapes as `openapi_get`.
 - **Output**: same `OpenapiSpecResult` shape, always with `fromCache: false`.
 - **Owner**: `openapi-client` skill.
 - **Side effects**: rewrites the two cache files.
-- **Related config**: same as `swagger_get`.
+- **Related config**: same as `openapi_get`.
 
-#### `swagger_status`
+#### `openapi_status`
 
 - **What**: Inspect cache metadata for one spec. No network call.
-- **Input**: `input` — same accepted shapes as `swagger_get`.
+- **Input**: `input` — same accepted shapes as `openapi_get`.
 - **Output**: `OpenapiCacheStatus` — `{ key, exists, expired, cachedAt?, ttlSeconds?, ageSeconds?, title?, specUrl?, endpointCount? }`. The optional fields are populated only on cache hit.
 - **Owner**: `openapi-client` skill.
 - **Side effects**: none.
 - **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `openapi.registry`.
 
-#### `swagger_search`
+#### `openapi_search`
 
 - **What**: Substring search across cached specs over `path` / `method` / `tag` / `operationId` / `summary`. Optional `scope` narrows to host / `host:env` / `host:env:spec`. No network call.
 - **Input**: `query: string`, `limit?: number` (default 20), `scope?: string`.
@@ -106,7 +106,7 @@ Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint se
 - **Side effects**: none (reads cache only).
 - **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `openapi.registry`.
 
-#### `swagger_envs`
+#### `openapi_envs`
 
 - **What**: Flatten the `openapi.registry` tree from `agent-toolkit.json` into a list of registry entries. No network call.
 - **Input**: none.
@@ -114,6 +114,8 @@ Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint se
 - **Owner**: `openapi-client` skill.
 - **Side effects**: none.
 - **Related config**: `openapi.registry` in `agent-toolkit.json`.
+Compatibility aliases: `swagger_get`, `swagger_refresh`, `swagger_status`, `swagger_search`, and `swagger_envs` are still registered for existing workflows, but new docs/skills should use `openapi_*`.
+
 
 ### Journal (`journal_*`)
 
@@ -326,7 +328,7 @@ Each skill bundles a small surface of tools into a step-by-step prompt. Skills l
 ### `openapi-client`
 
 - **Conducted by**: `rocky`.
-- **Tools used**: `swagger_get`, `swagger_status`, `swagger_refresh`, `swagger_search`, `swagger_envs`.
+- **Tools used**: `openapi_get`, `openapi_status`, `openapi_refresh`, `openapi_search`, `openapi_envs`. Legacy `swagger_*` names remain as compatibility aliases.
 - **Purpose**: Locate one endpoint inside a cached OpenAPI / Swagger JSON spec and emit a `fetch` (default) or `axios` TypeScript call snippet.
 
 ### `mysql-query`

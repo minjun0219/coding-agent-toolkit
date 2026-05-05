@@ -672,7 +672,7 @@ export async function downloadOpenapiSpec(
  * 다운로드 → 검증 → 캐시에 기록.
  * Notion 의 `fetchAndCache` 와 같은 모양이지만 id 검증 단은 없다 (URL 자체가 키).
  *
- * 16-hex 키 입력 (`swagger_status` / search 결과로 얻은 디스크 key) 으로 들어왔을 때는
+ * 16-hex 키 입력 (`openapi_status` / search 결과로 얻은 디스크 key) 으로 들어왔을 때는
  * 캐시 메타에서 원본 URL 을 복구한다 — 메타까지 사라진 경우엔 키를 fetch URL 로 쓰면
  * `ERR_INVALID_URL` 이 나므로 명확한 에러로 거부한다.
  */
@@ -686,7 +686,7 @@ async function fetchAndCacheSpec(
     const recovered = await cache.peekSpecUrl(input);
     if (!recovered) {
       throw new Error(
-        `Cached key "${input}" has no recoverable spec URL — pass the original spec URL or use swagger_search to find one.`,
+        `Cached key "${input}" has no recoverable spec URL — pass the original spec URL or use openapi_search to find one.`,
       );
     }
     specUrl = recovered;
@@ -715,7 +715,7 @@ function resolveSwaggerInput(
   return input;
 }
 
-/** swagger_search 옵션 — `scope` 는 host / host:env / host:env:spec 중 하나. */
+/** openapi_search 옵션 — `scope` 는 host / host:env / host:env:spec 중 하나. */
 export interface SwaggerSearchOptions {
   limit?: number;
   scope?: string;
@@ -774,7 +774,7 @@ export async function handleSwaggerSearch(
     const allowed = new Set(resolveScopeToUrls(scope, registry));
     if (allowed.size === 0) {
       throw new Error(
-        `swagger_search: scope "${scope}" matched no entries in openapi.registry — check ./.opencode/agent-toolkit.json or ~/.config/opencode/agent-toolkit/agent-toolkit.json`,
+        `openapi_search: scope "${scope}" matched no entries in openapi.registry — check ./.opencode/agent-toolkit.json or ~/.config/opencode/agent-toolkit/agent-toolkit.json`,
       );
     }
     pool = all.filter((r) => allowed.has(r.entry.specUrl));
@@ -1457,7 +1457,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleNotionExtract(cache, input, { maxCharsPerChunk });
         },
       },
-      swagger_get: {
+      openapi_get: {
         description:
           "OpenAPI / Swagger JSON spec 을 캐시 우선 정책으로 가져온다. 캐시 hit 이면 remote 호출 없음. miss 면 spec URL 을 GET 으로 받아 형식 검증 후 캐시에 저장. (input: spec URL, agent-toolkit.json 의 host:env:spec handle, 또는 이미 캐시된 16-hex key)",
         parameters: { input: { type: "string", required: true } },
@@ -1465,7 +1465,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleSwaggerGet(openapi, input, registry);
         },
       },
-      swagger_refresh: {
+      openapi_refresh: {
         description:
           "캐시를 무시하고 OpenAPI spec URL 에서 강제로 다시 가져와 캐시를 갱신한다. (input: spec URL 또는 host:env:spec handle)",
         parameters: { input: { type: "string", required: true } },
@@ -1473,7 +1473,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleSwaggerRefresh(openapi, input, registry);
         },
       },
-      swagger_status: {
+      openapi_status: {
         description:
           "캐시된 OpenAPI spec 의 메타(저장 시각, TTL, 만료 여부, title, endpointCount)만 조회. remote 호출 없음. (input: spec URL, host:env:spec handle, 또는 16-hex key)",
         parameters: { input: { type: "string", required: true } },
@@ -1481,7 +1481,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleSwaggerStatus(openapi, input, registry);
         },
       },
-      swagger_search: {
+      openapi_search: {
         description:
           "캐시된 OpenAPI spec 들을 가로질러 path / method / tag / operationId / summary 를 substring 으로 검색한다. remote 호출 없음. (query: 검색어, limit?: 결과 최대 개수 기본 20, scope?: agent-toolkit.json 에 등록된 host / host:env / host:env:spec — 주면 그 안에서만 검색)",
         parameters: {
@@ -1506,9 +1506,66 @@ export default async function agentToolkitPlugin(_input: unknown) {
           );
         },
       },
-      swagger_envs: {
+      openapi_envs: {
         description:
           "agent-toolkit.json 의 openapi.registry 를 host:env:spec 평면 리스트로 반환한다. remote 호출 없음. config 가 없거나 비어 있으면 빈 배열.",
+        parameters: {},
+        async handler() {
+          return handleSwaggerEnvs(toolkitConfig);
+        },
+      },
+      swagger_get: {
+        description:
+          "Compatibility alias for openapi_get. OpenAPI / Swagger JSON spec 을 캐시 우선 정책으로 가져온다.",
+        parameters: { input: { type: "string", required: true } },
+        async handler({ input }: { input: string }) {
+          return handleSwaggerGet(openapi, input, registry);
+        },
+      },
+      swagger_refresh: {
+        description:
+          "Compatibility alias for openapi_refresh. 캐시를 무시하고 OpenAPI spec URL 에서 강제로 다시 가져와 캐시를 갱신한다.",
+        parameters: { input: { type: "string", required: true } },
+        async handler({ input }: { input: string }) {
+          return handleSwaggerRefresh(openapi, input, registry);
+        },
+      },
+      swagger_status: {
+        description:
+          "Compatibility alias for openapi_status. 캐시된 OpenAPI spec 의 메타만 조회한다. remote 호출 없음.",
+        parameters: { input: { type: "string", required: true } },
+        async handler({ input }: { input: string }) {
+          return handleSwaggerStatus(openapi, input, registry);
+        },
+      },
+      swagger_search: {
+        description:
+          "Compatibility alias for openapi_search. 캐시된 OpenAPI spec 들을 검색한다. remote 호출 없음.",
+        parameters: {
+          query: { type: "string", required: true },
+          limit: { type: "number", required: false },
+          scope: { type: "string", required: false },
+        },
+        async handler({
+          query,
+          limit,
+          scope,
+        }: {
+          query: string;
+          limit?: number;
+          scope?: string;
+        }) {
+          return handleSwaggerSearch(
+            openapi,
+            query,
+            { limit, scope },
+            registry,
+          );
+        },
+      },
+      swagger_envs: {
+        description:
+          "Compatibility alias for openapi_envs. agent-toolkit.json 의 openapi.registry 를 host:env:spec 평면 리스트로 반환한다.",
         parameters: {},
         async handler() {
           return handleSwaggerEnvs(toolkitConfig);

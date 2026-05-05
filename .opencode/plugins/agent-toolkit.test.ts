@@ -983,6 +983,11 @@ describe("plugin config hook", () => {
     "notion_refresh",
     "notion_status",
     "notion_extract",
+    "openapi_get",
+    "openapi_refresh",
+    "openapi_status",
+    "openapi_search",
+    "openapi_envs",
     "swagger_get",
     "swagger_refresh",
     "swagger_status",
@@ -1031,11 +1036,22 @@ describe("plugin config hook", () => {
     expect(cfg.agent.mindy.prompt).toContain("# mindy");
   });
 
-  it("registers exactly the 28 expected tools", async () => {
+  it("registers exactly the 33 expected tools", async () => {
     const plugin = await agentToolkitPlugin({});
     const actualToolNames = Object.keys(plugin.tool).sort();
-    expect(actualToolNames).toHaveLength(28);
+    expect(actualToolNames).toHaveLength(33);
     expect(actualToolNames).toEqual([...expectedToolNames].sort());
+  });
+
+  it("registers openapi_* as the primary names while keeping swagger_* aliases", async () => {
+    const plugin = await agentToolkitPlugin({});
+    expect(plugin.tool.openapi_get.description).toContain("OpenAPI");
+    expect(plugin.tool.swagger_get.description).toContain(
+      "Compatibility alias",
+    );
+    expect(Object.keys(plugin.tool.openapi_search.args)).toEqual(
+      Object.keys(plugin.tool.swagger_search.args),
+    );
   });
 
   it("preserves existing paths in config", async () => {
