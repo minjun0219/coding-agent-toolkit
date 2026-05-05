@@ -894,8 +894,8 @@ const resolveSpecPath = (
 
 /**
  * `issue_create_from_spec` / `issue_status` 의 공통 백엔드. dryRun 만 다름.
- * journal append 는 호출자가 결과를 보고 결정하지 않고 여기서 한 줄로 끝낸다 —
- * lifecycle history 회수가 `journal_search "spec-to-issues"` 한 방으로 되도록.
+ * journal append 는 실제 GitHub issue 변경이 발생한 apply 에서만 남긴다 — status / dry-run 은
+ * read-only planning surface 이므로 journal 파일까지 부작용 없이 유지한다.
  */
 export async function handleIssueCreateFromSpec(
   exec: GhExecutor,
@@ -931,19 +931,17 @@ export async function handleIssueCreateFromSpec(
     dryRun,
   });
 
-  // journal — note kind reuse, tag-shaped recall via "spec-to-issues"
-  const stage = dryRun ? "dry-run" : "applied";
-  const subsCreated = result.applied?.created.subs.length ?? 0;
-  const epicCreated = result.applied?.created.epic ? 1 : 0;
-  const summary = dryRun
-    ? `${spec.frontmatter.slug} dry-run: epic=${result.plan.toCreate.epic ? "create" : "reuse"} subs=${result.plan.toCreate.subs.length}/${result.plan.subs.length} new`
-    : `${spec.frontmatter.slug} applied: epic+${epicCreated} subs+${subsCreated} patched=${result.applied?.patchedEpic ? 1 : 0}`;
-  await journal.append({
-    kind: "note",
-    content: summary,
-    tags: ["spec-pact", "spec-to-issues", stage],
-    pageId: spec.frontmatter.source_page_id,
-  });
+  if (!dryRun) {
+    // journal — note kind reuse, tag-shaped recall via "spec-to-issues"
+    const subsCreated = result.applied?.created.subs.length ?? 0;
+    const epicCreated = result.applied?.created.epic ? 1 : 0;
+    await journal.append({
+      kind: "note",
+      content: `${spec.frontmatter.slug} applied: epic+${epicCreated} subs+${subsCreated} patched=${result.applied?.patchedEpic ? 1 : 0}`,
+      tags: ["spec-pact", "spec-to-issues", "applied"],
+      pageId: spec.frontmatter.source_page_id,
+    });
+  }
 
   return result;
 }

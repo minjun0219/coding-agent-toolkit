@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { NotionCache } from "../../lib/notion-context";
@@ -1217,6 +1223,11 @@ const newJournalDir = (): { dir: string; journal: AgentJournal } => {
   return { dir, journal: new AgentJournal({ baseDir: dir }) };
 };
 
+const journalSnapshot = (journal: AgentJournal): string => {
+  const path = journal.getPath();
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
+};
+
 const writeSpecFile = (contents: string): { specPath: string; cwd: string } => {
   const cwd = mkdtempSync(join(tmpdir(), "issues-spec-"));
   mkdirSync(join(cwd, ".agent", "specs"), { recursive: true });
@@ -1226,7 +1237,7 @@ const writeSpecFile = (contents: string): { specPath: string; cwd: string } => {
 };
 
 describe("handleIssueCreateFromSpec", () => {
-  it("dryRun=true: only `gh auth status` + `gh repo view` + `gh issue list`, plan returned", async () => {
+  it("dryRun=true: only `gh auth status` + `gh repo view` + `gh issue list`, plan returned, no journal mutation", async () => {
     const { specPath, cwd } = writeSpecFile(validSpec);
     const { journal } = newJournalDir();
     const exec = new FakeGhExecutor([
@@ -1237,6 +1248,7 @@ describe("handleIssueCreateFromSpec", () => {
     const cwdBefore = process.cwd();
     process.chdir(cwd);
     try {
+      const before = journalSnapshot(journal);
       const result = await handleIssueCreateFromSpec(
         exec,
         journal,
@@ -1248,18 +1260,15 @@ describe("handleIssueCreateFromSpec", () => {
       expect(result.plan.toCreate.subs).toEqual([1, 2]);
       expect(exec.seen.length).toBe(3);
       expect(exec.seen[0]?.args).toEqual(["auth", "status"]);
-      // journal 1 entry, tagged dry-run
-      const entries = await journal.read({ limit: 1 });
-      expect(entries[0]?.tags).toContain("dry-run");
-      // pageId is normalized by journal — leading char check is enough
-      expect(entries[0]?.pageId?.replace(/-/g, "")).toBe(SPEC_PAGE_ID);
+      expect(journalSnapshot(journal)).toBe(before);
+      expect(await journal.read({ limit: 1 })).toEqual([]);
       expect(specPath).toMatch(/user-auth\.md$/);
     } finally {
       process.chdir(cwdBefore);
     }
   });
 
-  it("dryRun=false: applies and tags journal `applied`", async () => {
+  it("dryRun=false: applies and appends exactly one journal entry tagged `applied`", async () => {
     const { cwd } = writeSpecFile(validSpec);
     const { journal } = newJournalDir();
     const exec = new FakeGhExecutor([
@@ -1273,6 +1282,7 @@ describe("handleIssueCreateFromSpec", () => {
     const cwdBefore = process.cwd();
     process.chdir(cwd);
     try {
+      const before = journalSnapshot(journal);
       const result = await handleIssueCreateFromSpec(
         exec,
         journal,
@@ -1283,8 +1293,11 @@ describe("handleIssueCreateFromSpec", () => {
         11, 12,
       ]);
       expect(result.applied?.created.epic?.number).toBe(10);
-      const entries = await journal.read({ limit: 1 });
+      expect(journalSnapshot(journal)).not.toBe(before);
+      const entries = await journal.read({ limit: 5 });
+      expect(entries).toHaveLength(1);
       expect(entries[0]?.tags).toContain("applied");
+      expect(entries[0]?.pageId?.replace(/-/g, "")).toBe(SPEC_PAGE_ID);
     } finally {
       process.chdir(cwdBefore);
     }
@@ -1472,7 +1485,7 @@ describe("handleGhRun", () => {
 });
 
 describe("handleIssueStatus", () => {
-  it("forces dryRun=true (read-only alias)", async () => {
+  it("forces dryRun=true (read-only alias) and does not mutate journal", async () => {
     const { cwd } = writeSpecFile(validSpec);
     const { journal } = newJournalDir();
     const exec = new FakeGhExecutor([
@@ -1483,6 +1496,7 @@ describe("handleIssueStatus", () => {
     const cwdBefore = process.cwd();
     process.chdir(cwd);
     try {
+      const before = journalSnapshot(journal);
       const result = await handleIssueStatus(
         exec,
         journal,
@@ -1491,8 +1505,8 @@ describe("handleIssueStatus", () => {
       );
       expect(result.applied).toBeUndefined();
       expect(exec.seen.length).toBe(3); // never called create / edit
-      const entries = await journal.read({ limit: 1 });
-      expect(entries[0]?.tags).toContain("dry-run");
+      expect(journalSnapshot(journal)).toBe(before);
+      expect(await journal.read({ limit: 1 })).toEqual([]);
     } finally {
       process.chdir(cwdBefore);
     }

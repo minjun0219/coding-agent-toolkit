@@ -51,3 +51,16 @@
 - Live QA evidence belongs under `.sisyphus/evidence/tool-skill-github-stabilization/` and should be single-purpose text files.
 - Redaction checks should explicitly cover `token`, `PAT`, `Authorization`, and `redact`, while only emitting `***` for redacted values.
 - Temp dirs in tests should continue using `mkdtempSync(join(tmpdir(), 'agent-toolkit-test-'))`.
+
+## [2026-05-05] T7 issue_status / dryRun journal-free
+
+- For issue sync handlers, journal assertions should compare `AgentJournal.getPath()` file contents before/after; non-existent journal files snapshot as `""`.
+- `issue_status` is a read-only alias over dry-run planning and should not append journal entries.
+- `issue_create_from_spec dryRun:true` should remain journal-free; only `dryRun:false` apply writes exactly one `spec-to-issues` / `applied` note.
+- `bun run typecheck` surfaced an existing strict indexed access issue in `skill-agent-contract.test.ts`; non-null assertion after the regex match guard keeps the contract test type-safe.
+
+## [2026-05-05] T6 gh_run high-risk deny
+
+- `classifyGhCommand` checks `DENY_VERBS` before read/write allow-lists, but keeping destructive verbs out of `WRITE_VERBS` avoids policy ambiguity.
+- High-risk `gh_run` commands now deny PR merge, destructive repo/release actions, workflow/run mutations, environment-affecting auth/config/alias/extension commands, and mutating gist commands.
+- Safe read commands (`issue list`, `repo view`, `gist list`, `gist view`) stay explicitly covered so deny expansion does not regress read-only passthrough.

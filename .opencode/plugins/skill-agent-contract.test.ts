@@ -24,7 +24,7 @@ function readRepoFile(relPath: string) {
 function parseAllowedTools(md: string) {
   const match = md.match(/allowed-tools:\s*\[([^\]]+)\]/);
   if (!match) return [];
-  return match[1]
+  return match[1]!
     .split(",")
     .map((part) => part.trim().replace(/^"|"$/g, ""))
     .filter(Boolean);
@@ -53,7 +53,9 @@ describe("skill/agent contract inventory", () => {
     const prSkill = readRepoFile("skills/pr-review-watch/SKILL.md");
 
     expect(rocky).toContain("Rocky never accepts a write / DDL");
-    expect(rocky).toContain("does not directly run multi-step implementation work");
+    expect(rocky).toContain(
+      "does not directly run multi-step implementation work",
+    );
 
     expect(mindy).toContain("The toolkit never calls the GitHub API itself");
     expect(mindy).toContain("permission.edit: deny");
