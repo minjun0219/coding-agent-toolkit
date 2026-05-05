@@ -5,10 +5,13 @@
   "license": "MIT",
   "author": "Minjun Kim",
   "private": true,
-  "main": "./.opencode/plugins/agent-toolkit.ts",
+  "main": "./.opencode/plugins/agent-toolkit-server.ts",
   "exports": {
+    ".": {
+      "import": "./.opencode/plugins/agent-toolkit-server.ts"
+    },
     "./server": {
-      "import": "./.opencode/plugins/agent-toolkit.ts"
+      "import": "./.opencode/plugins/agent-toolkit-server.ts"
     }
   },
   "type": "module",
@@ -25,6 +28,7 @@
     "typecheck": "bun x tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@opencode-ai/plugin": "1.14.35",
     "mysql2": "^3.11.0"
   },
   "devDependencies": {

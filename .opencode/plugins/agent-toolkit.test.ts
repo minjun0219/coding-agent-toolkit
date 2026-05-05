@@ -904,25 +904,26 @@ describe("plugin config hook", () => {
     "gh_run",
   ];
 
-  it("registers skills/, agents/, and agent/ paths and is idempotent", async () => {
+  it("registers skills path and concrete agents idempotently", async () => {
     const plugin = await agentToolkitPlugin({});
     const cfg: any = {};
     plugin.config(cfg);
     plugin.config(cfg);
 
     // basename 비교로 cross-platform (Windows `\\` 도 안전).
-    const expectPath = (key: string, leaf: string) => {
-      expect(cfg[key]).toBeDefined();
-      expect(Array.isArray(cfg[key].paths)).toBe(true);
-      const matches = cfg[key].paths.filter(
-        (p: string) => basename(p) === leaf,
-      );
-      expect(matches.length).toBe(1);
-    };
+    expect(cfg.skills).toBeDefined();
+    expect(Array.isArray(cfg.skills.paths)).toBe(true);
+    const skillMatches = cfg.skills.paths.filter(
+      (p: string) => basename(p) === "skills",
+    );
+    expect(skillMatches.length).toBe(1);
 
-    expectPath("skills", "skills");
-    expectPath("agents", "agents");
-    expectPath("agent", "agents");
+    expect(cfg.agent.rocky.mode).toBe("primary");
+    expect(cfg.agent.grace.mode).toBe("subagent");
+    expect(cfg.agent.mindy.mode).toBe("subagent");
+    expect(cfg.agent.rocky.description).toContain("Primary conductor");
+    expect(cfg.agent.grace.prompt).toContain("# grace");
+    expect(cfg.agent.mindy.prompt).toContain("# mindy");
   });
 
   it("registers exactly the 28 expected tools", async () => {
@@ -936,11 +937,13 @@ describe("plugin config hook", () => {
     const plugin = await agentToolkitPlugin({});
     const cfg: any = {
       skills: { paths: ["/pre-existing/skills"] },
-      agents: { paths: ["/pre-existing/agents"] },
+      agent: {
+        build: { mode: "primary", description: "existing build" },
+      },
     };
     plugin.config(cfg);
     expect(cfg.skills.paths).toContain("/pre-existing/skills");
-    expect(cfg.agents.paths).toContain("/pre-existing/agents");
+    expect(cfg.agent.build.description).toBe("existing build");
   });
 });
 

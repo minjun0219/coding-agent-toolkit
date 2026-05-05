@@ -33,11 +33,14 @@ describe("agent-toolkit install metadata", () => {
     const main = pkg.main ?? "";
     const serverImport = pkg.exports?.["./server"]?.import ?? "";
 
-    expect(main).toBe("./.opencode/plugins/agent-toolkit.ts");
+    expect(main).toBe("./.opencode/plugins/agent-toolkit-server.ts");
     expect(serverImport).toBe(main);
     expect(main.startsWith("./")).toBe(true);
     expect(main.includes("dist")).toBe(false);
     expect(existsSync(resolve(ROOT, main))).toBe(true);
+    expect(
+      existsSync(resolve(ROOT, "./.opencode/plugins/agent-toolkit.ts")),
+    ).toBe(true);
     expect(existsSync(join(AGENTS_DIR, "rocky.md"))).toBe(true);
     expect(existsSync(join(AGENTS_DIR, "grace.md"))).toBe(true);
 
