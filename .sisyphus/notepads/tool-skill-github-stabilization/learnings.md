@@ -43,3 +43,11 @@
 - Skill contract tests can stay text-based by reading `allowed-tools` from markdown and comparing only against the plugin's registered tool keys plus native OpenCode primitives.
 - Forbidden-policy checks are stable when asserted as exact substrings on `rocky.md`, `grace.md`, `mindy.md`, and `skills/pr-review-watch/SKILL.md`.
 - When a wording check is too specific, prefer stable substrings already present in the file (`finalize/lock authority`, `SPEC 까지`) instead of a quoted paraphrase.
+
+## [2026-05-05] T5 fixture/evidence conventions
+
+- Reuse `lib/gh-cli.test.ts` fake executor shape for GitHub CLI coverage: queue responses, prefix assertion, explicit stdout/stderr/exitCode.
+- Keep fake GitHub payloads minimal but stable: PR/issue events only with the fields the test actually consumes, plus fixed ISO timestamps.
+- Live QA evidence belongs under `.sisyphus/evidence/tool-skill-github-stabilization/` and should be single-purpose text files.
+- Redaction checks should explicitly cover `token`, `PAT`, `Authorization`, and `redact`, while only emitting `***` for redacted values.
+- Temp dirs in tests should continue using `mkdtempSync(join(tmpdir(), 'agent-toolkit-test-'))`.
