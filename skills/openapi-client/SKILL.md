@@ -26,7 +26,6 @@ agent (you)
 
 The cache is a thin TTL layer in front of the spec URL. `openapi_get` already handles cache miss by downloading the spec, validating its shape (`openapi` 3.x or `swagger` 2.x), and persisting it — no separate write step is needed. JSON-only in this version: YAML specs throw, document the limitation when the user hits it.
 
-Compatibility aliases: legacy `swagger_get` / `swagger_status` / `swagger_refresh` / `swagger_search` / `swagger_envs` still exist, but this skill should use the `openapi_*` names first.
 
 ## Inputs
 

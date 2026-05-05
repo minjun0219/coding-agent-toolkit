@@ -6,7 +6,7 @@
 
 ## At a glance
 
-- **33 registered tool names** (28 primary tools + 5 compatibility aliases) across 8 categories
+- **28 tools** across 8 categories
 - **7 skills** (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`)
 - **3 agents** (`rocky`, `grace`, `mindy`)
 - **One config file** — `agent-toolkit.json` (project `./.opencode/agent-toolkit.json` overrides user `~/.config/opencode/agent-toolkit/agent-toolkit.json`)
@@ -66,7 +66,7 @@ Single-page, cache-first reads against the user's Notion via the Notion remote M
 - **Side effects**: same cache write as `notion_get` on miss; otherwise none.
 - **Related config**: same as `notion_get`.
 
-### OpenAPI cache (`openapi_*`, legacy `swagger_*` aliases)
+### OpenAPI cache (`openapi_*`)
 
 Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint search and the `host:env:spec` registry. YAML specs are out of scope.
 
@@ -114,7 +114,6 @@ Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint se
 - **Owner**: `openapi-client` skill.
 - **Side effects**: none.
 - **Related config**: `openapi.registry` in `agent-toolkit.json`.
-Compatibility aliases: `swagger_get`, `swagger_refresh`, `swagger_status`, `swagger_search`, and `swagger_envs` are still registered for existing workflows, but new docs/skills should use `openapi_*`.
 
 
 ### Journal (`journal_*`)
@@ -328,7 +327,7 @@ Each skill bundles a small surface of tools into a step-by-step prompt. Skills l
 ### `openapi-client`
 
 - **Conducted by**: `rocky`.
-- **Tools used**: `openapi_get`, `openapi_status`, `openapi_refresh`, `openapi_search`, `openapi_envs`. Legacy `swagger_*` names remain as compatibility aliases.
+- **Tools used**: `openapi_get`, `openapi_status`, `openapi_refresh`, `openapi_search`, `openapi_envs`.
 - **Purpose**: Locate one endpoint inside a cached OpenAPI / Swagger JSON spec and emit a `fetch` (default) or `axios` TypeScript call snippet.
 
 ### `mysql-query`

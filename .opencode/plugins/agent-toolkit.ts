@@ -1514,63 +1514,6 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleSwaggerEnvs(toolkitConfig);
         },
       },
-      swagger_get: {
-        description:
-          "Compatibility alias for openapi_get. OpenAPI / Swagger JSON spec 을 캐시 우선 정책으로 가져온다.",
-        parameters: { input: { type: "string", required: true } },
-        async handler({ input }: { input: string }) {
-          return handleSwaggerGet(openapi, input, registry);
-        },
-      },
-      swagger_refresh: {
-        description:
-          "Compatibility alias for openapi_refresh. 캐시를 무시하고 OpenAPI spec URL 에서 강제로 다시 가져와 캐시를 갱신한다.",
-        parameters: { input: { type: "string", required: true } },
-        async handler({ input }: { input: string }) {
-          return handleSwaggerRefresh(openapi, input, registry);
-        },
-      },
-      swagger_status: {
-        description:
-          "Compatibility alias for openapi_status. 캐시된 OpenAPI spec 의 메타만 조회한다. remote 호출 없음.",
-        parameters: { input: { type: "string", required: true } },
-        async handler({ input }: { input: string }) {
-          return handleSwaggerStatus(openapi, input, registry);
-        },
-      },
-      swagger_search: {
-        description:
-          "Compatibility alias for openapi_search. 캐시된 OpenAPI spec 들을 검색한다. remote 호출 없음.",
-        parameters: {
-          query: { type: "string", required: true },
-          limit: { type: "number", required: false },
-          scope: { type: "string", required: false },
-        },
-        async handler({
-          query,
-          limit,
-          scope,
-        }: {
-          query: string;
-          limit?: number;
-          scope?: string;
-        }) {
-          return handleSwaggerSearch(
-            openapi,
-            query,
-            { limit, scope },
-            registry,
-          );
-        },
-      },
-      swagger_envs: {
-        description:
-          "Compatibility alias for openapi_envs. agent-toolkit.json 의 openapi.registry 를 host:env:spec 평면 리스트로 반환한다.",
-        parameters: {},
-        async handler() {
-          return handleSwaggerEnvs(toolkitConfig);
-        },
-      },
       journal_append: {
         description:
           "에이전트 저널에 한 줄을 append-only 로 기록한다. 다음 turn 에 인용할 결정 / blocker / 사용자 답변 / 메모를 남길 때 사용. (content: 본문 필수, kind?: decision/blocker/answer/note 등 자유 문자열, 기본 'note', tags?: 문자열 배열, pageId?: 연결할 Notion page id 또는 URL — 정규화되어 저장)",

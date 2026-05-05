@@ -253,7 +253,7 @@ describe("plugin handlers", () => {
   });
 });
 
-describe("swagger handlers", () => {
+describe("openapi handlers", () => {
   let oaDir: string;
   let oaCache: OpenapiCache;
   let oaServer: ReturnType<typeof Bun.serve>;
@@ -321,7 +321,7 @@ describe("swagger handlers", () => {
     oaServer.stop(true);
   });
 
-  it("swagger_get: cache miss → write → second call hits cache", async () => {
+  it("openapi_get: cache miss → write → second call hits cache", async () => {
     const url = `${baseUrl}/spec.json`;
     const first = await handleSwaggerGet(oaCache, url);
     expect(first.fromCache).toBe(false);
@@ -333,7 +333,7 @@ describe("swagger handlers", () => {
     expect(oaCalls).toBe(1);
   });
 
-  it("swagger_refresh: ignores cache and re-fetches", async () => {
+  it("openapi_refresh: ignores cache and re-fetches", async () => {
     const url = `${baseUrl}/spec.json`;
     await handleSwaggerGet(oaCache, url);
     expect(oaCalls).toBe(1);
@@ -343,7 +343,7 @@ describe("swagger handlers", () => {
     expect(oaCalls).toBe(2);
   });
 
-  it("swagger_status: reflects cache state", async () => {
+  it("openapi_status: reflects cache state", async () => {
     const url = `${baseUrl}/spec.json`;
     const before = await handleSwaggerStatus(oaCache, url);
     expect(before.exists).toBe(false);
@@ -374,7 +374,7 @@ describe("swagger handlers", () => {
     expect(s.exists).toBe(false);
   });
 
-  it("swagger_get with a 16-hex key recovers the spec URL via meta and refetches", async () => {
+  it("openapi_get with a 16-hex key recovers the spec URL via meta and refetches", async () => {
     const url = `${baseUrl}/spec.json`;
     const first = await handleSwaggerGet(oaCache, url);
     expect(first.fromCache).toBe(false);
@@ -390,7 +390,7 @@ describe("swagger handlers", () => {
     expect(oaCalls).toBe(2);
   });
 
-  it("swagger_get with a 16-hex key throws clearly when meta is also gone", async () => {
+  it("openapi_get with a 16-hex key throws clearly when meta is also gone", async () => {
     const url = `${baseUrl}/spec.json`;
     const first = await handleSwaggerGet(oaCache, url);
     const { rmSync } = await import("node:fs");
@@ -403,14 +403,14 @@ describe("swagger handlers", () => {
     );
   });
 
-  it("swagger_status returns endpointCount on cache hit", async () => {
+  it("openapi_status returns endpointCount on cache hit", async () => {
     const url = `${baseUrl}/spec.json`;
     await handleSwaggerGet(oaCache, url);
     const s = await handleSwaggerStatus(oaCache, url);
     expect(s.endpointCount).toBe(3);
   });
 
-  it("swagger_search spans every cached spec", async () => {
+  it("openapi_search spans every cached spec", async () => {
     await handleSwaggerGet(oaCache, `${baseUrl}/spec.json`);
     await handleSwaggerGet(oaCache, `${baseUrl}/other.json`);
 
@@ -432,7 +432,7 @@ describe("swagger handlers", () => {
   });
 });
 
-describe("swagger handlers — registry handles", () => {
+describe("openapi handlers — registry handles", () => {
   let oaDir: string;
   let oaCache: OpenapiCache;
   let oaServer: ReturnType<typeof Bun.serve>;
@@ -488,7 +488,7 @@ describe("swagger handlers — registry handles", () => {
     oaServer.stop(true);
   });
 
-  it("swagger_get accepts a host:env:spec handle and resolves via registry", async () => {
+  it("openapi_get accepts a host:env:spec handle and resolves via registry", async () => {
     const r = await handleSwaggerGet(oaCache, "acme:dev:users", registry);
     expect(r.fromCache).toBe(false);
     expect(r.entry.title).toBe("dev-users");
@@ -500,13 +500,13 @@ describe("swagger handlers — registry handles", () => {
     expect(status.exists).toBe(true);
   });
 
-  it("swagger_get throws on unregistered handle", async () => {
+  it("openapi_get throws on unregistered handle", async () => {
     await expect(
       handleSwaggerGet(oaCache, "acme:dev:missing", registry),
     ).rejects.toThrow(/acme:dev:missing/);
   });
 
-  it("swagger_search scope=host:env limits the search to that env", async () => {
+  it("openapi_search scope=host:env limits the search to that env", async () => {
     await handleSwaggerGet(oaCache, "acme:dev:users", registry);
     await handleSwaggerGet(oaCache, "acme:dev:orders", registry);
     await handleSwaggerGet(oaCache, "acme:prod:users", registry);
@@ -530,14 +530,14 @@ describe("swagger handlers — registry handles", () => {
     expect(prod[0]?.specTitle).toBe("prod-users");
   });
 
-  it("swagger_search throws on unknown scope", async () => {
+  it("openapi_search throws on unknown scope", async () => {
     await handleSwaggerGet(oaCache, "acme:dev:users", registry);
     await expect(
       handleSwaggerSearch(oaCache, "pet", { scope: "nope" }, registry),
     ).rejects.toThrow(/scope.*nope/i);
   });
 
-  it("swagger_envs returns the flat registry list", () => {
+  it("openapi_envs returns the flat registry list", () => {
     const flat = handleSwaggerEnvs({ openapi: { registry } });
     expect(flat.length).toBe(3);
     const names = flat.map((e) => `${e.host}:${e.env}:${e.spec}`).sort();
@@ -548,7 +548,7 @@ describe("swagger handlers — registry handles", () => {
     ]);
   });
 
-  it("swagger_envs returns [] for empty config", () => {
+  it("openapi_envs returns [] for empty config", () => {
     expect(handleSwaggerEnvs({})).toEqual([]);
   });
 });
@@ -988,11 +988,6 @@ describe("plugin config hook", () => {
     "openapi_status",
     "openapi_search",
     "openapi_envs",
-    "swagger_get",
-    "swagger_refresh",
-    "swagger_status",
-    "swagger_search",
-    "swagger_envs",
     "journal_append",
     "journal_read",
     "journal_search",
@@ -1036,22 +1031,19 @@ describe("plugin config hook", () => {
     expect(cfg.agent.mindy.prompt).toContain("# mindy");
   });
 
-  it("registers exactly the 33 expected tools", async () => {
+  it("registers exactly the 28 expected tools", async () => {
     const plugin = await agentToolkitPlugin({});
     const actualToolNames = Object.keys(plugin.tool).sort();
-    expect(actualToolNames).toHaveLength(33);
+    expect(actualToolNames).toHaveLength(28);
     expect(actualToolNames).toEqual([...expectedToolNames].sort());
   });
 
-  it("registers openapi_* as the primary names while keeping swagger_* aliases", async () => {
+  it("registers openapi_* tool names without legacy swagger_* aliases", async () => {
     const plugin = await agentToolkitPlugin({});
     expect(plugin.tool.openapi_get.description).toContain("OpenAPI");
-    expect(plugin.tool.swagger_get.description).toContain(
-      "Compatibility alias",
-    );
-    expect(Object.keys(plugin.tool.openapi_search.args)).toEqual(
-      Object.keys(plugin.tool.swagger_search.args),
-    );
+    expect(plugin.tool.openapi_search).toBeDefined();
+    expect((plugin.tool as any).swagger_get).toBeUndefined();
+    expect((plugin.tool as any).swagger_search).toBeUndefined();
   });
 
   it("preserves existing paths in config", async () => {
