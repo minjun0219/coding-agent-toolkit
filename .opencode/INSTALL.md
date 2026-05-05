@@ -363,7 +363,7 @@ $ gh auth login --scopes "repo"   # if not authenticated; for GHE add --hostname
 @rocky `gh issue list --label bug` 검색해줘             # → gh_run({args:["issue","list","--label","bug"]}) — read, 즉시 실행
 @rocky `bug` 라벨 새로 만들어줘                           # → gh_run({args:["label","create","bug",...], dryRun:true}) plan 먼저
                                                           # → 사용자 승인 후 dryRun:false 로 재호출
-@rocky #42 PR 머지해줘                                    # → gh_run({args:["pr","merge","42",...], dryRun:true}) plan 먼저
+@rocky #42 PR 머지해줘                                    # → GhDeniedCommandError, stop (pr merge 는 deny — toolkit 책임 밖)
 @rocky `gh extension install owner/repo`                  # → GhDeniedCommandError, stop
 @rocky `gh auth login`                                    # → GhDeniedCommandError, stop (사용자가 직접 셸에서 실행)
 ```

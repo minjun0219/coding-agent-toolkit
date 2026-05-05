@@ -231,7 +231,7 @@ dedupe 라벨 / 추가 라벨은 `agent-toolkit.json` 의 `github.defaultLabels`
 
 | 도구 | 동작 |
 | --- | --- |
-| `gh_run` | `args` (`gh` subcommand 부터 시작하는 문자열 배열) 를 받아 분류 (`read` / `write` / `deny`) → 정책 적용. **read** (auth status / repo view / issue list / pr view / api default GET / search / gist list\|view / ...) 는 즉시 실행. **write** (issue create / pr merge / label create / api --method POST / ...) 는 `dryRun: true` (기본) 면 plan 만, `dryRun: false` 로 명시해야 실행. **deny** (`auth login\|logout\|refresh\|setup-git\|token` / `extension *` / `alias *` / `config *` / `gist create\|edit\|delete\|clone`) 는 `GhDeniedCommandError` 로 즉시 throw — `gist list\|view` 는 read 로 허용. journal 자동 append (tags `["gh-passthrough", "read"\|"dry-run"\|"applied"]`) |
+| `gh_run` | `args` (`gh` subcommand 부터 시작하는 문자열 배열) 를 받아 분류 (`read` / `write` / `deny`) → 정책 적용. **read** (auth status / repo view / issue list / pr view / api default GET / search / gist list\|view / ...) 는 즉시 실행. **write** (issue create / label create / api --method POST / ...) 는 `dryRun: true` (기본) 면 plan 만, `dryRun: false` 로 명시해야 실행. **deny** (`pr merge` / `auth login\|logout\|refresh\|setup-git\|token` / `extension *` / `alias *` / `config *` / `gist create\|edit\|delete\|clone` / 알 수 없는 subcommand) 는 `GhDeniedCommandError` 로 즉시 throw — `gist list\|view` 는 read 로 허용. journal 자동 append (tags `["gh-passthrough", "read"\|"dry-run"\|"applied"]`) |
 
 분류 정책은 `lib/gh-cli.ts` 의 `classifyGhCommand` + read/write/deny set 에 명시. 알 수 없는 subcommand 는 보수적으로 deny — gh 새 버전 추가 시 follow-up PR 에서 분류 표 업데이트.
 

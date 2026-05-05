@@ -474,7 +474,6 @@ const WRITE_VERBS: Record<string, ReadonlySet<string>> = {
   repo: new Set(["create", "clone", "fork", "sync", "archive", "rename"]),
   label: new Set(["create", "edit", "delete", "clone"]),
   release: new Set(["create", "edit", "upload", "download"]),
-  workflow: new Set(["enable", "disable"]),
   run: new Set(["delete"]),
   secret: new Set(["set", "delete"]),
   variable: new Set(["set", "delete"]),
@@ -487,7 +486,7 @@ const DENY_VERBS: Record<string, ReadonlySet<string>> = {
   pr: new Set(["merge"]),
   repo: new Set(["delete", "edit"]),
   release: new Set(["delete"]),
-  workflow: new Set(["run"]),
+  workflow: new Set(["run", "enable", "disable"]),
   run: new Set(["rerun", "cancel"]),
   extension: new Set([
     "install",

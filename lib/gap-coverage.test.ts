@@ -115,7 +115,10 @@ describe("gh-cli error classes smoke", () => {
   });
 
   it("GhDeniedCommandError exposes the denied command", () => {
-    const err = new GhDeniedCommandError(["auth", "login"]);
+    const err = new GhDeniedCommandError(
+      ["auth", "login"],
+      "environment-affecting command",
+    );
     expect(err.name).toBe("GhDeniedCommandError");
     expect(err.message).toContain("is denied");
   });
