@@ -28,7 +28,7 @@
 | `issue_create_from_spec` (`dryRun:false`) | `local-config` + `gh-cli` | `localFsRead`, `githubRead`, `githubWriteApply`, `journalWrite` | locked SPEC 을 기준으로 missing sub-issue 를 먼저 만들고 epic 을 create/patch 한다. `gh` 가 auth/repo/GHE/scope 책임을 가진다. apply 완료 후에는 sync 이력 1건을 journal 에 남길 수 있다. |
 | `issue_status` | `local-config` + `gh-cli` | `localFsRead`, `githubRead`, `githubWriteDryRun` | read-only alias / status surface. `gh issue list` 기반으로 기존 epic/sub 와 생성 예정 plan/orphan 을 보여준다. **정책상 `issue_status` 는 기본적으로 `journalWrite` 없음**. |
 | `gh_run` (read 분류) | `gh-cli` | `githubRead`, `journalWrite` | `auth status`, `repo view`, `issue list/view/status`, `pr view/list/status/diff/checks`, `label list`, `release list/view`, `search`, `api` GET/HEAD 등은 즉시 실행된다. passthrough 호출 이력은 `gh-passthrough/read` journal entry 로 남길 수 있다. |
-| `gh_run` (write + `dryRun:true`, 기본) | `gh-cli` | `githubWriteDryRun` | write 로 분류되는 `issue create/edit`, `pr create/edit/close`, `label create/edit/delete`, `api` POST/PUT/PATCH/DELETE 등은 기본 dry-run 에서 실행하지 않는다. 정책상 write dry-run 은 plan only 이며 **기본적으로 `journalWrite` 없음**. |
+| `gh_run` (write + `dryRun:true`, 기본) | `gh-cli` | `githubWriteDryRun`, `journalWrite` | write 로 분류되는 `issue create/edit`, `pr create/edit/close`, `label create/edit/delete`, `api` POST/PUT/PATCH/DELETE 등은 기본 dry-run 에서 실행하지 않는다. **단, `gh_run` 은 read/dry-run/applied 모든 호출 후 journal entry 를 남긴다** (`tags: ["gh-passthrough","dry-run"]`). 이는 `issue_create_from_spec(dryRun:true)`/`issue_status` 의 journal-free 정책과 구별된다. |
 | `gh_run` (write + `dryRun:false`) | `gh-cli` | `githubWriteApply`, `journalWrite` | 사용자의 명시 apply 뒤에만 실제 `gh` write 를 실행한다. 성공한 apply 이력만 `gh-passthrough/applied` 로 journal 에 남길 수 있다. |
 | `gh_run pr merge` | `gh-cli` | 없음 (`denied`) | **denied**. PR 머지는 mindy/toolkit 이 수행하지 않는다. merge 여부 관찰/상태 조회는 external MCP 또는 `gh_run` read surface, 실제 merge execution 은 toolkit passthrough 정책 밖으로 둔다. |
 | `gh_run` (deny 분류) | `gh-cli` | 없음 (`denied`) | `auth login/logout/refresh/setup-git/token`, `extension *`, `alias *`, `config *`, `gist create/edit/delete/clone`, 알 수 없는 subcommand 는 즉시 거부한다. 환경 변경/비밀/확장 설치는 toolkit 책임 밖이다. |
@@ -43,6 +43,6 @@
 
 1. PR 코멘트/답글/thread resolve/머지 상태 조회는 external GitHub MCP 책임이다. toolkit 의 `pr_*` 도구는 journal-only 이며 직접 GitHub API 를 호출하지 않는다. `fetch`, `curl`, `gh` 로 PR 코멘트/답글을 우회 호출하는 것도 금지한다.
 2. `gh` CLI transport 는 사용자의 `gh auth login`, repo detection, GHE host routing, 권한 scope 를 그대로 사용한다. toolkit config 에 GitHub token, API key, password, custom API URL 을 추가하지 않는다.
-3. `issue_status` 와 `dryRun:true` 는 기본적으로 journal write 가 없어야 한다. write apply 가 아닌 계획/조회 결과를 memory 로 고정하지 않는다.
+3. `issue_status` 와 `issue_create_from_spec(dryRun:true)` 는 journal write 가 없어야 한다. `gh_run` 은 read/dry-run 포함 모든 호출이 journal entry 를 남기므로 구별된다. write apply 가 아닌 계획/조회 결과를 memory 로 고정하지 않는 것은 `issue_*` 도구에만 적용된다.
 4. `gh_run pr merge` 는 denied 이다. Mindy/PR-watch 는 merge 를 실행하지 않고, merge/close 결과를 관찰해 watch 를 stop 할 뿐이다.
 5. GitHub 관련 runtime tool 은 local GitHub source-of-truth 를 쓰지 않는다. local filesystem write 는 이 artifact/evidence 같은 Sisyphus 작업 산출물에 한정한다.
