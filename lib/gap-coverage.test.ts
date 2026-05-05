@@ -26,9 +26,7 @@ import {
   GhDeniedCommandError,
   classifyGhCommand,
 } from "./gh-cli";
-import {
-  handleSwaggerGet,
-} from "../.opencode/plugins/agent-toolkit";
+import { handleSwaggerGet } from "../.opencode/plugins/agent-toolkit";
 
 // ── 1. fake GhExecutor integration ──────────────────────────────────────────
 
@@ -72,9 +70,7 @@ describe("fake GhExecutor integration", () => {
   });
 
   it("passes stdin through to seen", async () => {
-    const exec = new FakeGhExecutor([
-      { stdout: "", stderr: "", exitCode: 0 },
-    ]);
+    const exec = new FakeGhExecutor([{ stdout: "", stderr: "", exitCode: 0 }]);
     await exec.run(["issue", "create"], "body text");
     expect(exec.seen[0]?.stdin).toBe("body text");
   });
@@ -223,7 +219,9 @@ describe("OpenAPI error cases", () => {
       },
     });
     const url = `http://${server.hostname}:${server.port}/spec.json`;
-    await expect(handleSwaggerGet(cache, url)).rejects.toThrow(/openapi.*swagger/i);
+    await expect(handleSwaggerGet(cache, url)).rejects.toThrow(
+      /openapi.*swagger/i,
+    );
   });
 
   it("does not cache on fetch error (status remains miss)", async () => {
