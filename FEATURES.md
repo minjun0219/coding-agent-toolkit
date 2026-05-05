@@ -34,7 +34,7 @@ Single-page, cache-first reads against the user's Notion via the Notion remote M
 
 - **What**: Cache-first read of a single Notion page. Hit returns immediately; miss calls the remote MCP, validates the page id, and writes the cache.
 - **Input**: `input` — Notion page id or page URL.
-- **Output**: `{ markdown, title, cachedAt, ttlSeconds, contentHash, hit }`.
+- **Output**: `NotionPageResult` — `{ entry: { pageId, url, cachedAt, ttlSeconds, contentHash, title }, markdown, fromCache }`. (`fromCache: true` on hit, `false` on miss.)
 - **Owner**: `notion-context` skill, conducted by `rocky`. Also called by `spec-pact` (DRAFT / DRIFT-CHECK).
 - **Side effects**: writes `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}` on miss.
 - **Related config**: `AGENT_TOOLKIT_NOTION_MCP_URL`, `AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS`, `AGENT_TOOLKIT_CACHE_DIR`, `AGENT_TOOLKIT_CACHE_TTL`.
@@ -43,16 +43,16 @@ Single-page, cache-first reads against the user's Notion via the Notion remote M
 
 - **What**: Force-fetch a Notion page from the remote MCP (ignore cache), validate the id, and rewrite the cache.
 - **Input**: `input` — Notion page id or page URL.
-- **Output**: same shape as `notion_get` with `hit: false`.
+- **Output**: same `NotionPageResult` shape as `notion_get`, always with `fromCache: false`.
 - **Owner**: `notion-context` skill.
 - **Side effects**: rewrites `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}`.
 - **Related config**: same as `notion_get`.
 
 #### `notion_status`
 
-- **What**: Inspect cache metadata for a single page (`cachedAt`, `ttlSeconds`, `expired`). No remote call.
+- **What**: Inspect cache metadata for a single page. No remote call.
 - **Input**: `input` — Notion page id or page URL.
-- **Output**: `{ pageId, exists, cachedAt, ttlSeconds, expired }`.
+- **Output**: `NotionCacheStatus` — `{ pageId, exists, expired, cachedAt?, ttlSeconds?, ageSeconds?, title? }`. The optional fields are populated only when the cache file exists.
 - **Owner**: `notion-context` skill.
 - **Side effects**: none.
 - **Related config**: `AGENT_TOOLKIT_CACHE_DIR`.
@@ -60,8 +60,8 @@ Single-page, cache-first reads against the user's Notion via the Notion remote M
 #### `notion_extract`
 
 - **What**: Cache-first read, then split the Notion markdown into heading-based chunks and emit implementation-action candidates (`requirements` / `screens` / `apis` / `todos` / `questions`).
-- **Input**: `input` — Notion page id or page URL.
-- **Output**: `{ chunks, candidates: { requirements, screens, apis, todos, questions } }`.
+- **Input**: `input` — Notion page id or page URL. Optional `maxCharsPerChunk: number` (default 1400).
+- **Output**: `NotionExtractResult` — `{ entry, fromCache, chunkCount, chunks, extracted: { requirements, screens, apis, todos, questions } }`. Note the field name is `extracted`, not `candidates`.
 - **Owner**: `notion-context` skill (Korean spec mode), and `spec-pact` (DRAFT mode).
 - **Side effects**: same cache write as `notion_get` on miss; otherwise none.
 - **Related config**: same as `notion_get`.
@@ -74,7 +74,7 @@ Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint se
 
 - **What**: Cache-first read of an OpenAPI / Swagger JSON spec. Hit returns immediately; miss downloads the spec by URL, validates JSON shape, and writes the cache.
 - **Input**: `input` — spec URL (`https://…` / `file://…`), a 16-hex disk key, or a `host:env:spec` handle declared in `agent-toolkit.json`.
-- **Output**: `{ key, specUrl, doc, cachedAt, ttlSeconds, specHash, title, version, openapi, endpointCount, hit }`.
+- **Output**: `OpenapiSpecResult` — `{ entry: { key, specUrl, cachedAt, ttlSeconds, specHash, title, version, openapi, endpointCount }, spec, fromCache }`. `spec` is the full parsed OpenAPI document.
 - **Owner**: `openapi-client` skill, conducted by `rocky`.
 - **Side effects**: writes `<AGENT_TOOLKIT_OPENAPI_CACHE_DIR>/<key>.{json,spec.json}` on miss (`key = sha256(specUrl)[:16]`).
 - **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `AGENT_TOOLKIT_OPENAPI_CACHE_TTL`, `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS`, `openapi.registry` in `agent-toolkit.json`.
@@ -83,16 +83,16 @@ Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint se
 
 - **What**: Force-download an OpenAPI / Swagger JSON spec (ignore cache), validate, and rewrite the cache.
 - **Input**: `input` — same accepted shapes as `swagger_get`.
-- **Output**: same shape as `swagger_get` with `hit: false`.
+- **Output**: same `OpenapiSpecResult` shape, always with `fromCache: false`.
 - **Owner**: `openapi-client` skill.
 - **Side effects**: rewrites the two cache files.
 - **Related config**: same as `swagger_get`.
 
 #### `swagger_status`
 
-- **What**: Inspect cache metadata for one spec (`cachedAt`, `ttlSeconds`, `expired`, `title`, `endpointCount`). No network call.
+- **What**: Inspect cache metadata for one spec. No network call.
 - **Input**: `input` — same accepted shapes as `swagger_get`.
-- **Output**: `{ key, specUrl, exists, cachedAt, ttlSeconds, expired, title, endpointCount }`.
+- **Output**: `OpenapiCacheStatus` — `{ key, exists, expired, cachedAt?, ttlSeconds?, ageSeconds?, title?, specUrl?, endpointCount? }`. The optional fields are populated only on cache hit.
 - **Owner**: `openapi-client` skill.
 - **Side effects**: none.
 - **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `openapi.registry`.
@@ -101,16 +101,16 @@ Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint se
 
 - **What**: Substring search across cached specs over `path` / `method` / `tag` / `operationId` / `summary`. Optional `scope` narrows to host / `host:env` / `host:env:spec`. No network call.
 - **Input**: `query: string`, `limit?: number` (default 20), `scope?: string`.
-- **Output**: `{ matches: [{ specKey, specTitle, host, env, spec, path, method, operationId, tag, summary }] }`.
+- **Output**: bare `OpenapiEndpointMatch[]` — `[{ specKey, specUrl, specTitle, method, path, operationId?, summary?, tags? }]`. No wrapper object; `tags` is plural.
 - **Owner**: `openapi-client` skill.
 - **Side effects**: none (reads cache only).
 - **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `openapi.registry`.
 
 #### `swagger_envs`
 
-- **What**: Flatten the `openapi.registry` tree from `agent-toolkit.json` into a list of `{ host, env, spec, url }` entries. No network call.
+- **What**: Flatten the `openapi.registry` tree from `agent-toolkit.json` into a list of registry entries. No network call.
 - **Input**: none.
-- **Output**: `{ entries: [{ host, env, spec, url }] }`.
+- **Output**: bare `OpenapiRegistryEntry[]` — `[{ host, env, spec, url }]`. No wrapper object. Empty array when the registry is unconfigured.
 - **Owner**: `openapi-client` skill.
 - **Side effects**: none.
 - **Related config**: `openapi.registry` in `agent-toolkit.json`.
@@ -123,7 +123,7 @@ Turn-spanning agent memory. Append-only JSONL, no TTL. Use it to record decision
 
 - **What**: Append one entry to the journal.
 - **Input**: `content: string` (required), `kind?: string` (e.g. `decision` / `blocker` / `answer` / `note` — free string, defaults to `note`), `tags?: string[]`, `pageId?: string` (Notion page id or URL — normalised to `8-4-4-4-12` on save).
-- **Output**: the appended entry `{ id, timestamp, kind, content, tags, pageId? }`.
+- **Output**: the appended `JournalEntry` — `{ id, timestamp, kind, content, tags, pageId? }`.
 - **Owner**: `rocky` (general use), and every skill that records lifecycle events (`spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`).
 - **Side effects**: appends one line to `<AGENT_TOOLKIT_JOURNAL_DIR>/journal.jsonl`.
 - **Related config**: `AGENT_TOOLKIT_JOURNAL_DIR`.
@@ -132,7 +132,7 @@ Turn-spanning agent memory. Append-only JSONL, no TTL. Use it to record decision
 
 - **What**: Return recent entries, newest first, with optional filters and limit.
 - **Input**: `limit?: number` (default 20), `kind?: string`, `tag?: string`, `pageId?: string` (page-key lookup), `since?: string` (ISO 8601 — only entries after that instant).
-- **Output**: `{ entries: [...] }`.
+- **Output**: bare `JournalEntry[]` — no wrapper object.
 - **Owner**: any agent / skill that needs to recover prior context.
 - **Side effects**: none.
 - **Related config**: `AGENT_TOOLKIT_JOURNAL_DIR`.
@@ -141,7 +141,7 @@ Turn-spanning agent memory. Append-only JSONL, no TTL. Use it to record decision
 
 - **What**: Substring search (case-insensitive) over `content`, `kind`, `tags`, and `pageId`.
 - **Input**: `query: string`, `limit?: number`, `kind?: string`.
-- **Output**: `{ entries: [...] }`.
+- **Output**: bare `JournalEntry[]` — no wrapper object.
 - **Owner**: lifecycle recovery for `spec-pact` (`journal_search "spec-pact"`) and `pr-review-watch` (`journal_search "pr-watch"`), plus general agent use.
 - **Side effects**: none.
 - **Related config**: `AGENT_TOOLKIT_JOURNAL_DIR`.
@@ -150,7 +150,7 @@ Turn-spanning agent memory. Append-only JSONL, no TTL. Use it to record decision
 
 - **What**: Report file path, existence, valid entry count (corrupted lines excluded), byte size, and last-entry timestamp.
 - **Input**: none.
-- **Output**: `{ path, exists, validEntries, bytes, lastTimestamp? }`.
+- **Output**: `JournalStatus` — `{ path, exists, totalEntries, sizeBytes, lastEntryAt? }`.
 - **Owner**: any.
 - **Side effects**: none.
 - **Related config**: `AGENT_TOOLKIT_JOURNAL_DIR`.
@@ -161,9 +161,9 @@ Read-only inspection of MySQL via `host:env:db` handles declared in `agent-toolk
 
 #### `mysql_envs`
 
-- **What**: Flatten the `mysql.connections` tree into `{ handle, host, env, db, authMode, authEnv, hostName, port, user, database }` entries. **Credential values are never returned — only the env-var names.**
+- **What**: Flatten the `mysql.connections` tree into registry entries. **Credential values are never returned — only the env-var names.**
 - **Input**: none.
-- **Output**: `{ entries: [...] }`.
+- **Output**: bare `MysqlRegistryEntry[]` — `[{ host, env, db, handle, authMode, authEnv, hostName, port, user, database }]`. No wrapper object. Empty array when no connections are configured.
 - **Owner**: `mysql-query` skill, conducted by `rocky`.
 - **Side effects**: none (no DB connection).
 - **Related config**: `mysql.connections` in `agent-toolkit.json`.
@@ -172,7 +172,7 @@ Read-only inspection of MySQL via `host:env:db` handles declared in `agent-toolk
 
 - **What**: Resolve a handle, build a connection from `passwordEnv` / `dsnEnv`, and run a single `SELECT 1` ping.
 - **Input**: `handle: string` (`host:env:db`).
-- **Output**: `{ handle, ok, hostName, port, database, user }`.
+- **Output**: `MysqlRegistryEntry & { ok: boolean }` — the registry entry described above plus a single `ok` field from the ping.
 - **Owner**: `mysql-query` skill.
 - **Side effects**: opens a short-lived connection to the target server.
 - **Related config**: `mysql.connections`; the env var named by `passwordEnv` or `dsnEnv`.
@@ -181,7 +181,7 @@ Read-only inspection of MySQL via `host:env:db` handles declared in `agent-toolk
 
 - **What**: `SHOW FULL TABLES` against the resolved database — list of tables and views.
 - **Input**: `handle: string`.
-- **Output**: `{ rows, columns }`.
+- **Output**: bare `Array<{ name: string; type: string }>`. No wrapper object. `type` is the raw `SHOW FULL TABLES` value (e.g. `BASE TABLE` / `VIEW`).
 - **Owner**: `mysql-query` skill.
 - **Side effects**: opens one connection and runs one read query.
 - **Related config**: `mysql.connections`.
@@ -190,7 +190,7 @@ Read-only inspection of MySQL via `host:env:db` handles declared in `agent-toolk
 
 - **What**: Without `table`, return an `INFORMATION_SCHEMA.COLUMNS` summary for the current DB. With `table`, return the combined output of `SHOW CREATE TABLE` + `SHOW INDEX FROM`.
 - **Input**: `handle: string`, `table?: string`.
-- **Output**: `{ rows, columns }` (shape depends on the path taken).
+- **Output**: discriminated union by `mode`. Summary mode (no `table`): `{ mode: "summary", columns: [{ table, column, type, nullable, key, default, extra }] }`. Detail mode (with `table`): `{ mode: "detail", createTable: string, indexes: [{ keyName, column, nonUnique, type }] }`.
 - **Owner**: `mysql-query` skill.
 - **Side effects**: opens one connection and runs one or two read queries.
 - **Related config**: `mysql.connections`.
@@ -199,7 +199,7 @@ Read-only inspection of MySQL via `host:env:db` handles declared in `agent-toolk
 
 - **What**: Run a single read-only SQL statement. Pipeline: `assertReadOnlySql(sql)` → `enforceLimit(sql, { limit })` → execute. The first keyword must be one of `SELECT` / `SHOW` / `DESCRIBE` / `DESC` / `EXPLAIN` / `WITH`. `LIMIT` is auto-applied (default 100, hard cap 1000) on row-returning statements.
 - **Input**: `handle: string`, `sql: string`, `limit?: number`.
-- **Output**: `{ sql, rows, columns, rowCount, truncated, effectiveLimit }`.
+- **Output**: `MysqlQueryResult` — `{ sql, rows, columns, rowCount, truncated, effectiveLimit }`. `effectiveLimit` is `null` for `SHOW` / `DESCRIBE` / `EXPLAIN`.
 - **Owner**: `mysql-query` skill.
 - **Side effects**: opens one connection and runs one read query.
 - **Related config**: `mysql.connections`.
@@ -210,27 +210,27 @@ Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for P
 
 #### `pr_watch_start`
 
-- **What**: Register a PR handle as an active watch, persist the `pr_watch_start` journal entry, and return the updated watch state.
-- **Input**: `handle: string` (`owner/repo#NUMBER` or a github.com PR URL), `note?: string`, `labels?: string[]`, `mergeMode?: "merge" | "squash" | "rebase"`.
-- **Output**: `{ watch, pendingCount }`.
+- **What**: Register a PR handle as an active watch, persist a `pr_watch_start` journal entry, and return the updated watch state.
+- **Input**: `handle: string` (`owner/repo#NUMBER` or a github.com PR URL), `note?: string`, `labels?: string[]`, `mergeMode?: "merge" | "squash" | "rebase"`. `mergeMode` is enum-validated; values outside the enum throw.
+- **Output**: `{ entry: JournalEntry, state: PrWatchState }`. `state` = `{ handle, active, startedAt?, stoppedAt?, note? }`.
 - **Owner**: `pr-review-watch` skill, conducted by `mindy`.
 - **Side effects**: appends a `pr_watch_start` entry to the journal.
 - **Related config**: `github.repositories` in `agent-toolkit.json`.
 
 #### `pr_watch_stop`
 
-- **What**: Stop a watch and append a `pr_watch_stop` journal entry, returning the final state.
-- **Input**: `handle: string`, `reason?: "merged" | "closed" | "manual" | string`.
-- **Output**: `{ watch, finalReason }`.
+- **What**: Stop a watch, append a `pr_watch_stop` journal entry, and return the final state.
+- **Input**: `handle: string`, `reason?: "merged" | "closed" | "manual"`. `reason` is enum-validated; free strings are rejected so the journal `reason:<value>` tag stays consistent for recovery / aggregation.
+- **Output**: `{ entry: JournalEntry, state: PrWatchState }` (with `active: false` and `stoppedAt` set).
 - **Owner**: `pr-review-watch` skill.
 - **Side effects**: appends a `pr_watch_stop` entry.
 - **Related config**: `github.repositories`.
 
 #### `pr_watch_status`
 
-- **What**: List every active watch and the per-PR pending event count.
+- **What**: Reduce the journal once and return every active watch plus the per-handle pending event total.
 - **Input**: none.
-- **Output**: `{ active: [{ handle, startedAt, pendingCount }] }`.
+- **Output**: `{ active: PrWatchState[], totals: { active: number, pending: number } }`. `pending` is the sum across all active watches.
 - **Owner**: `pr-review-watch` skill.
 - **Side effects**: none.
 - **Related config**: `github.repositories`.
@@ -238,8 +238,8 @@ Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for P
 #### `pr_event_record`
 
 - **What**: Enqueue a single inbound PR event (comment / review / review comment / check / status / merge / close) fetched by the external GitHub MCP. Same `(handle, type, externalId)` reappends on disk (append-only) but responds with `alreadySeen: true`.
-- **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | "pr_review_comment" | "check_run" | "status" | "merge" | "close"`, `externalId: string`, `payload: object`.
-- **Output**: `{ event, alreadySeen }`.
+- **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | "pr_review_comment" | "check_run" | "status" | "merge" | "close"`, `externalId: string`, `summary: string` (one-line digest from the caller — author + short excerpt; the full external MCP payload is not stored here).
+- **Output**: `{ entry: JournalEntry, ref: { type, externalId, toolkitKey }, alreadySeen }`.
 - **Owner**: `pr-review-watch` skill.
 - **Side effects**: appends a `pr_event_inbound` entry.
 - **Related config**: `github.repositories`.
@@ -248,7 +248,7 @@ Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for P
 
 - **What**: List inbound events for a handle that have no corresponding `pr_event_resolved` entry, ordered by timestamp ascending.
 - **Input**: `handle: string`.
-- **Output**: `{ events: [...] }`.
+- **Output**: bare `PendingPrEvent[]` — `[{ handle, ref, receivedAt, summary, inboundEntryId }]`. No wrapper object.
 - **Owner**: `pr-review-watch` skill.
 - **Side effects**: none.
 - **Related config**: `github.repositories`.
@@ -256,8 +256,8 @@ Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for P
 #### `pr_event_resolve`
 
 - **What**: Record `mindy`'s validation outcome for one inbound event. Track the reply id from the external GitHub MCP via `replyExternalId` so future polls can correlate.
-- **Input**: `handle: string`, `toolkitKey: string`, `outcome: "accepted" | "rejected" | "deferred"`, `replyExternalId?: string`, `note?: string`.
-- **Output**: `{ event }`.
+- **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | …` (same enum as `pr_event_record`), `externalId: string`, `decision: "accepted" | "rejected" | "deferred"`, `reasoning: string`, `replyExternalId?: string`. The handler resolves the `toolkitKey` internally from `(type, externalId)`. Throws if no matching `pr_event_inbound` exists yet (orphan-resolve guard).
+- **Output**: `{ entry: JournalEntry, resolved: { type, externalId, toolkitKey } }`.
 - **Owner**: `pr-review-watch` skill — `mindy` is the sole authority over `pr_event_resolved` entries.
 - **Side effects**: appends a `pr_event_resolved` entry.
 - **Related config**: `github.repositories`.
@@ -283,7 +283,7 @@ One-way sync from a locked SPEC (`<spec.dir>/<slug>.md` or `**/SPEC.md`) into a 
 
 - **What**: Reconcile the SPEC's `# 합의 TODO` flat bullets into a GitHub epic plus one sub-issue per bullet. Marker-based dedupe (`<!-- spec-pact:slug=…:kind=epic|sub:index=N -->`) makes it idempotent — re-runs are no-ops, only newly added bullets create new sub-issues. dryRun-first contract: the default `dryRun: true` returns the plan only, `dryRun: false` actually invokes `gh`.
 - **Input**: `slug?: string` xor `path?: string`, `repo?: string` (`owner/name` override), `dryRun?: boolean` (default `true`).
-- **Output**: `{ plan: { epic, subs: [...], orphans: [...] }, applied?: { epic, subs, orphans } }`.
+- **Output**: a sync report containing the epic, the sub-issue plan (created / existing / orphans), and — when `dryRun: false` — the applied result. Exact field shape lives in `lib/github-issue-sync.ts`.
 - **Owner**: `spec-to-issues` skill, conducted by `rocky`. `grace`'s authority stops at the SPEC — GitHub state is rocky's surface.
 - **Side effects**: when `dryRun: false`, calls `gh issue create` / `gh issue edit` and appends a journal entry.
 - **Related config**: `github.repo`, `github.defaultLabels` (default `["spec-pact"]`, index 0 is the dedupe filter), `spec.dir`, `spec.scanDirectorySpec`, `spec.indexFile`.
@@ -292,7 +292,7 @@ One-way sync from a locked SPEC (`<spec.dir>/<slug>.md` or `**/SPEC.md`) into a 
 
 - **What**: Read-only alias of `dryRun: true`. Calls `gh issue list` once, surfaces what would be created, what already exists, and any orphaned sub-issues whose source bullet was removed from the SPEC.
 - **Input**: same as `issue_create_from_spec` minus `dryRun`.
-- **Output**: same plan shape as `issue_create_from_spec` (`applied` is always absent).
+- **Output**: same plan shape as `issue_create_from_spec` with no applied section (read-only).
 - **Owner**: `spec-to-issues` skill.
 - **Side effects**: one `gh issue list` call. **No journal entry** — read-only.
 - **Related config**: same as `issue_create_from_spec`.
@@ -305,10 +305,10 @@ Generic ad-hoc passthrough to the user's `gh` CLI for anything that doesn't fit 
 
 - **What**: Take an `args` array starting with a `gh` subcommand, classify it as `read` / `write` / `deny`, then enforce policy.
   - **read** (`auth status` / `repo view` / `issue list` / `pr view` / `api` default GET / `search` / `gist list|view` / …) — runs immediately.
-  - **write** (`issue create` / `label create` / `api --method POST` / …) — `dryRun: true` (default) returns the plan; `dryRun: false` actually runs.
+  - **write** (`issue create` / `label create` / `api --method POST` / …) — `dryRun: true` (default) returns a plan-only result; `dryRun: false` actually runs.
   - **deny** (`pr merge` / `repo edit|delete` / `release delete` / `workflow run|enable|disable` / `run rerun|cancel` / `auth login|logout|refresh|setup-git|token` / `extension *` / `alias *` / `config *` / `gist create|edit|delete|clone` / unknown subcommand) — throws `GhDeniedCommandError` immediately. `gist list|view` is allowed as read.
 - **Input**: `args: string[]`, `dryRun?: boolean` (default `true`).
-- **Output**: `{ kind: "read" | "write", classification, command, stdout?, stderr?, plan? }`.
+- **Output**: `RunGhResult` — `{ args, kind, executed, dryRun, stdout, stderr, exitCode }`. For a write + `dryRun: true` call, `executed` is `false` and `stdout` carries a `(dry-run, not executed) gh …` line. Non-zero `exitCode` from `gh` throws `GhCommandError` instead of returning.
 - **Owner**: `gh-passthrough` skill, conducted by `rocky`.
 - **Side effects**: every call (read / dry-run / applied) appends a journal entry tagged `["gh-passthrough", "read" | "dry-run" | "applied"]`. Read calls and applied write calls also invoke `gh` on the user's machine.
 - **Related config**: none directly (the `gh` CLI handles its own auth and `~/.config/gh/`).
