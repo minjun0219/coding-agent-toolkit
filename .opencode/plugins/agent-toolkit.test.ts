@@ -918,7 +918,7 @@ describe("plugin config hook", () => {
     );
     expect(skillMatches.length).toBe(1);
 
-    expect(cfg.agent.rocky.mode).toBe("primary");
+    expect(cfg.agent.rocky.mode).toBe("all");
     expect(cfg.agent.grace.mode).toBe("subagent");
     expect(cfg.agent.mindy.mode).toBe("subagent");
     expect(cfg.agent.rocky.description).toContain("Primary conductor");
@@ -939,11 +939,16 @@ describe("plugin config hook", () => {
       skills: { paths: ["/pre-existing/skills"] },
       agent: {
         build: { mode: "primary", description: "existing build" },
+        rocky: { model: "openai/gpt-5", permission: { bash: "ask" } },
       },
     };
     plugin.config(cfg);
     expect(cfg.skills.paths).toContain("/pre-existing/skills");
     expect(cfg.agent.build.description).toBe("existing build");
+    expect(cfg.agent.rocky.description).toContain("Primary conductor");
+    expect(cfg.agent.rocky.model).toBe("openai/gpt-5");
+    expect(cfg.agent.rocky.permission.edit).toBe("deny");
+    expect(cfg.agent.rocky.permission.bash).toBe("ask");
   });
 });
 

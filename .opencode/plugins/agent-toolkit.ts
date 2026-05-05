@@ -175,7 +175,7 @@ function createOpencodeTools<T extends Record<string, LegacyToolDefinition>>(
 function parseAgentMarkdown(fileName: string) {
   const filePath = resolve(AGENTS_DIR, fileName);
   const markdown = readFileSync(filePath, "utf8");
-  const match = markdown.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match)
     throw new Error(`agent markdown is missing frontmatter: ${filePath}`);
 
@@ -189,8 +189,7 @@ function parseAgentMarkdown(fileName: string) {
   if (!description)
     throw new Error(`agent markdown is missing description: ${filePath}`);
 
-  const rawMode = frontmatter.match(/mode:\s*(\S+)/)?.[1] ?? "subagent";
-  const mode = rawMode === "all" ? "primary" : rawMode;
+  const mode = frontmatter.match(/mode:\s*(\S+)/)?.[1] ?? "subagent";
   return {
     description,
     mode,
@@ -205,11 +204,32 @@ function parseAgentMarkdown(fileName: string) {
   };
 }
 
+function mergeAgentConfig(existing: any, packaged: any) {
+  if (!existing) return packaged;
+  return {
+    ...packaged,
+    ...existing,
+    permission: {
+      ...packaged.permission,
+      ...existing.permission,
+    },
+  };
+}
+
 function registerAgents(config: any) {
   config.agent ??= {};
-  config.agent.rocky = parseAgentMarkdown("rocky.md");
-  config.agent.grace = parseAgentMarkdown("grace.md");
-  config.agent.mindy = parseAgentMarkdown("mindy.md");
+  config.agent.rocky = mergeAgentConfig(
+    config.agent.rocky,
+    parseAgentMarkdown("rocky.md"),
+  );
+  config.agent.grace = mergeAgentConfig(
+    config.agent.grace,
+    parseAgentMarkdown("grace.md"),
+  );
+  config.agent.mindy = mergeAgentConfig(
+    config.agent.mindy,
+    parseAgentMarkdown("mindy.md"),
+  );
 }
 
 /**
