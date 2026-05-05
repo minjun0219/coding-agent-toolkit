@@ -58,6 +58,7 @@ let server: ReturnType<typeof Bun.serve>;
 let calls: number;
 let respondWithWrongId: boolean;
 let mcpOmitIdentifier: boolean;
+let responseMarkdown: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "plugin-"));
@@ -65,6 +66,8 @@ beforeEach(() => {
   calls = 0;
   respondWithWrongId = false;
   mcpOmitIdentifier = false;
+  responseMarkdown =
+    "# Hello\n\nworld\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n\n## API\n\n- GET /api/orders";
   server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
@@ -75,8 +78,7 @@ beforeEach(() => {
         return Response.json({
           id: respondWithWrongId ? "deadbeefdeadbeefdeadbeefdeadbeef" : PAGE,
           title: "Hello",
-          markdown:
-            "# Hello\n\nworld\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n\n## API\n\n- GET /api/orders",
+          markdown: responseMarkdown,
         });
       }
       if (url.pathname === "/mcp" && req.method === "POST") {
@@ -155,13 +157,21 @@ describe("plugin handlers", () => {
     expect(calls).toBe(1);
   });
 
-  it("notion_refresh: ignores cache and re-fetches", async () => {
+  it("notion_refresh: ignores cache, re-fetches, and returns section diff", async () => {
     await handleNotionGet(cache, PAGE);
     expect(calls).toBe(1);
 
+    responseMarkdown =
+      "# Hello\n\nworld changed\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n- [ ] 결제 API 연동\n\n## API\n\n- GET /api/orders";
     const r = await handleNotionRefresh(cache, PAGE);
     expect(r.fromCache).toBe(false);
     expect(calls).toBe(2);
+    expect(r.diff?.changed).toBe(true);
+    expect(r.diff?.sections.map((section) => section.path)).toEqual([
+      "Hello",
+      "Hello > TODO",
+    ]);
+    expect(r.diff?.sections[1]?.preview).toContain("+ - [ ] 결제 API 연동");
   });
 
   it("notion_status: reflects cache state", async () => {

@@ -42,9 +42,9 @@ Related config — 이 도구가 읽는 env 변수 + agent-toolkit.json 키
 
 #### `notion_refresh`
 
-- **What**: 캐시 무시하고 remote MCP 에서 강제 재다운로드 → page id 검증 → 캐시 갱신.
+- **What**: 캐시 무시하고 remote MCP 에서 강제 재다운로드 → page id 검증 → 캐시 갱신. 기존 cache 가 있으면 긴 기획서용 heading section diff 도 같이 반환.
 - **Input**: `input` — Notion page id 또는 페이지 URL.
-- **Output**: `notion_get` 과 같은 `NotionPageResult` shape, 항상 `fromCache: false`.
+- **Output**: `notion_get` 과 같은 `NotionPageResult` shape, 항상 `fromCache: false`, 선택적으로 `diff: { changed, previousHash, currentHash, sections, truncated }`. 각 section 은 `{ path, status, previousLineCount, currentLineCount, lineDelta, preview }`.
 - **Owner**: `notion-context` 스킬.
 - **Side effects**: `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}` 재작성.
 - **Related config**: `notion_get` 와 동일.

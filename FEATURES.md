@@ -42,9 +42,9 @@ Single-page, cache-first reads against the user's Notion via the Notion remote M
 
 #### `notion_refresh`
 
-- **What**: Force-fetch a Notion page from the remote MCP (ignore cache), validate the id, and rewrite the cache.
+- **What**: Force-fetch a Notion page from the remote MCP (ignore cache), validate the id, rewrite the cache, and — when a previous cache exists — return a heading-section diff for long planning docs.
 - **Input**: `input` — Notion page id or page URL.
-- **Output**: same `NotionPageResult` shape as `notion_get`, always with `fromCache: false`.
+- **Output**: same `NotionPageResult` shape as `notion_get`, always with `fromCache: false`, plus optional `diff: { changed, previousHash, currentHash, sections, truncated }`. Each section has `{ path, status, previousLineCount, currentLineCount, lineDelta, preview }`.
 - **Owner**: `notion-context` skill.
 - **Side effects**: rewrites `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}`.
 - **Related config**: same as `notion_get`.

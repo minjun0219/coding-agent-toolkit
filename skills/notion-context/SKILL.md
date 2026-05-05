@@ -33,7 +33,7 @@ Notion is the source of truth. The cache exists so the same page does not hit th
    * When `exists=true && expired=false`, only call `notion_get` (do not refresh, do not re-fetch).
    * Otherwise call `notion_get` — it hits the remote on cache miss automatically.
 3. Do not fetch the same page more than once per turn. Reuse the markdown or `notion_extract` result you already have.
-4. Use `notion_refresh` only when the user explicitly asks to refresh / force-refresh.
+4. Use `notion_refresh` only when the user explicitly asks to refresh / force-refresh. When it returns `diff`, inspect `diff.sections` first and cite changed `path` values before re-reading/summarizing the full document.
 5. Pass the user-supplied page id or Notion URL into `input` verbatim — the tool normalizes it.
 6. For long documents or requests phrased as "필요한 작업만" / "기능 단위" / "이슈로 쪼개기", prefer `notion_extract` over dumping the whole markdown. Use `extracted.todos` as implementation candidates and cite `chunkId` when explaining provenance.
 

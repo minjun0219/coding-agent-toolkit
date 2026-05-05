@@ -19,6 +19,7 @@ import {
   type NotionActionExtraction,
   type NotionChunkSummary,
 } from "../../lib/notion-chunking";
+import { diffMarkdownBySection } from "../../lib/notion-diff";
 import {
   type OpenapiCache,
   createOpenapiCacheFromEnv,
@@ -583,7 +584,13 @@ export async function handleNotionRefresh(
   cache: NotionCache,
   input: string,
 ): Promise<NotionPageResult> {
-  return fetchAndCache(cache, input);
+  const previous = await cache.readAny(input);
+  const refreshed = await fetchAndCache(cache, input);
+  if (!previous) return refreshed;
+  return {
+    ...refreshed,
+    diff: diffMarkdownBySection(previous.markdown, refreshed.markdown),
+  };
 }
 
 export async function handleNotionStatus(
@@ -1426,7 +1433,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
       },
       notion_refresh: {
         description:
-          "캐시를 무시하고 remote Notion MCP 에서 강제로 다시 가져와 캐시를 갱신한다. (input: pageId 또는 URL)",
+          "캐시를 무시하고 remote Notion MCP 에서 강제로 다시 가져와 캐시를 갱신한다. 기존 캐시가 있으면 heading section 단위 diff 를 함께 반환해 긴 기획서에서 어디가 바뀌었는지 확인할 수 있다. (input: pageId 또는 URL)",
         parameters: { input: { type: "string", required: true } },
         async handler({ input }: { input: string }) {
           return handleNotionRefresh(cache, input);
