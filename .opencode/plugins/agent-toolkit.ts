@@ -73,6 +73,7 @@ import {
   syncSpecToIssues,
   type SyncSpecToIssuesOutput,
 } from "../../lib/github-issue-sync";
+import { assertReadOnlySql } from "../../lib/mysql-readonly";
 import {
   MysqlExecutorRegistry,
   describeHandle as mysqlDescribeHandle,
@@ -1199,6 +1200,9 @@ export async function handleMysqlQuery(
   sql: string,
   options: RunReadonlyQueryOptions = {},
 ): Promise<MysqlQueryResult> {
+  // SQL guard 는 연결/자격증명 해석보다 먼저 실행한다. write/DDL/multi-statement 요청은
+  // DB env var 가 없더라도 네트워크/secret surface 에 닿지 않고 거부되어야 한다.
+  assertReadOnlySql(sql);
   const executor = registry.getExecutor(handle, config);
   return mysqlRunReadonlyQuery(executor, sql, options);
 }

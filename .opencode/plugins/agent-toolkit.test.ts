@@ -1254,6 +1254,18 @@ describe("handleMysqlQuery", () => {
     expect(fake.seen).toEqual([]);
   });
 
+  it("rejects writes before resolving connection secrets", async () => {
+    const registry = new MysqlExecutorRegistry({});
+    await expect(
+      handleMysqlQuery(
+        registry,
+        mysqlConfig,
+        "acme:prod:users",
+        "DELETE FROM users",
+      ),
+    ).rejects.toThrow(/MySQL read-only guard/);
+  });
+
   it("attaches LIMIT 100 to a bare SELECT", async () => {
     const fake = new MysqlPluginFakeExecutor([
       { rows: [{ id: 1 } as unknown as RowDataPacket], fields: noFields },
