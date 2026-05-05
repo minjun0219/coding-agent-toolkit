@@ -77,6 +77,37 @@ beforeEach(() => {
             "# Hello\n\nworld\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n\n## API\n\n- GET /api/orders",
         });
       }
+      if (url.pathname === "/mcp" && req.method === "POST") {
+        const sessionHeaders = { "mcp-session-id": "test-session" };
+        return req.json().then((body: any) => {
+          if (body.method === "initialize") {
+            return new Response(
+              `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: "Mock Notion MCP", version: "1.0.0" } } })}\n\n`,
+              {
+                headers: {
+                  ...sessionHeaders,
+                  "content-type": "text/event-stream",
+                },
+              },
+            );
+          }
+          if (body.method === "notifications/initialized") {
+            return new Response(null, { status: 202, headers: sessionHeaders });
+          }
+          if (body.method === "tools/call") {
+            calls += 1;
+            return new Response(
+              `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: JSON.stringify({ title: "Hello MCP", url: `https://www.notion.so/${PAGE}`, text: "# Hello MCP\n\nworld" }) }] } })}\n\n`,
+              { headers: { "content-type": "text/event-stream" } },
+            );
+          }
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            error: { code: -32601, message: "not found" },
+          });
+        });
+      }
       return new Response("not found", { status: 404 });
     },
   });
@@ -86,6 +117,8 @@ beforeEach(() => {
 afterEach(() => {
   server.stop(true);
   delete process.env.AGENT_TOOLKIT_NOTION_MCP_URL;
+  delete process.env.AGENT_TOOLKIT_MCP_AUTH_FILE;
+  delete process.env.AGENT_TOOLKIT_NOTION_MCP_AUTH_KEY;
 });
 
 describe("plugin handlers", () => {
@@ -136,6 +169,34 @@ describe("plugin handlers", () => {
     ).toBe(true);
 
     const second = await handleNotionExtract(cache, PAGE);
+    expect(second.fromCache).toBe(true);
+    expect(calls).toBe(1);
+  });
+
+  it("notion_get: uses opencode MCP OAuth auth file when it matches the remote MCP URL", async () => {
+    const authFile = join(dir, "mcp-auth.json");
+    process.env.AGENT_TOOLKIT_NOTION_MCP_URL = `http://${server.hostname}:${server.port}/mcp`;
+    process.env.AGENT_TOOLKIT_MCP_AUTH_FILE = authFile;
+    writeFileSync(
+      authFile,
+      JSON.stringify({
+        notion: {
+          serverUrl: process.env.AGENT_TOOLKIT_NOTION_MCP_URL,
+          tokens: {
+            accessToken: "test-token",
+            expiresAt: Date.now() / 1000 + 3600,
+          },
+        },
+      }),
+    );
+
+    const first = await handleNotionGet(cache, PAGE);
+    expect(first.fromCache).toBe(false);
+    expect(first.entry.title).toBe("Hello MCP");
+    expect(first.markdown).toBe("# Hello MCP\n\nworld");
+    expect(calls).toBe(1);
+
+    const second = await handleNotionGet(cache, PAGE);
     expect(second.fromCache).toBe(true);
     expect(calls).toBe(1);
   });

@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tool as defineTool } from "@opencode-ai/plugin";
-import { resolve, dirname } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type NotionCache,
@@ -253,10 +254,18 @@ const AGENTS_DIR = resolve(REPO_ROOT, "agents");
 
 /**
  * remote Notion MCP base URL 기본값.
- * Notion 공식 remote MCP 가 OAuth 로 인증을 처리하므로 이 plugin 은 토큰을 다루지 않는다.
+ * 실제 Notion remote MCP 는 opencode 의 OAuth auth cache 를 읽어 Streamable HTTP JSON-RPC 로 호출한다.
  * 로컬 게이트웨이를 쓰거나 다른 endpoint 로 보내려면 `AGENT_TOOLKIT_NOTION_MCP_URL` 로 덮어쓴다.
  */
 export const DEFAULT_NOTION_MCP_URL = "https://mcp.notion.com/mcp";
+const DEFAULT_MCP_AUTH_FILE = join(
+  homedir(),
+  ".local",
+  "share",
+  "opencode",
+  "mcp-auth.json",
+);
+const DEFAULT_NOTION_MCP_KEY = "notion";
 
 /**
  * OpenAPI / Swagger spec 다운로드 timeout 기본값.
@@ -268,14 +277,178 @@ export const DEFAULT_OPENAPI_DOWNLOAD_TIMEOUT_MS = 30_000;
 function readEnv() {
   const url =
     process.env.AGENT_TOOLKIT_NOTION_MCP_URL ?? DEFAULT_NOTION_MCP_URL;
+  const authFile =
+    process.env.AGENT_TOOLKIT_MCP_AUTH_FILE ?? DEFAULT_MCP_AUTH_FILE;
+  const authKey =
+    process.env.AGENT_TOOLKIT_NOTION_MCP_AUTH_KEY ?? DEFAULT_NOTION_MCP_KEY;
   const timeoutMs = Number.parseInt(
     process.env.AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS ?? "15000",
     10,
   );
   return {
     url: url.replace(/\/$/, ""),
+    authFile,
+    authKey,
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15_000,
   };
+}
+
+interface McpAuthEntry {
+  serverUrl?: string;
+  tokens?: {
+    accessToken?: string;
+    expiresAt?: number;
+  };
+}
+
+function readMcpAuth(): McpAuthEntry | null {
+  const { authFile, authKey } = readEnv();
+  if (!existsSync(authFile)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(authFile, "utf8")) as Record<
+      string,
+      McpAuthEntry
+    >;
+    return parsed[authKey] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function parseMcpSse(text: string): unknown {
+  const dataLines = text
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.replace(/^data:\s?/, ""));
+  const payload = dataLines.length > 0 ? dataLines.join("\n") : text;
+  return JSON.parse(payload);
+}
+
+async function postNotionMcpJsonRpc(
+  body: unknown,
+  options: { sessionId?: string; signal: AbortSignal; accessToken: string },
+): Promise<{ payload: any; sessionId?: string }> {
+  const { url } = readEnv();
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${options.accessToken}`,
+    "content-type": "application/json",
+    accept: "application/json, text/event-stream",
+  };
+  if (options.sessionId) headers["mcp-session-id"] = options.sessionId;
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const text = await res.text().catch(() => "");
+  if (!res.ok) {
+    throw new Error(
+      `Remote Notion MCP error ${res.status} ${res.statusText}: ${text.slice(0, 200)}`,
+    );
+  }
+  if (res.status === 202 || text.trim().length === 0) {
+    return {
+      payload: null,
+      sessionId: res.headers.get("mcp-session-id") ?? options.sessionId,
+    };
+  }
+  return {
+    payload: parseMcpSse(text),
+    sessionId: res.headers.get("mcp-session-id") ?? options.sessionId,
+  };
+}
+
+function normalizeMcpToolResult(pageId: string, payload: any): RawNotionPage {
+  if (payload?.error) {
+    throw new Error(
+      `Remote Notion MCP error ${payload.error.code ?? "unknown"}: ${payload.error.message ?? "unknown error"}`,
+    );
+  }
+
+  const text = payload?.result?.content?.find?.(
+    (item: { type?: string; text?: string }) =>
+      item?.type === "text" && typeof item.text === "string",
+  )?.text;
+  if (typeof text !== "string" || text.trim().length === 0) {
+    throw new Error(
+      "Remote Notion MCP returned malformed payload (missing text content)",
+    );
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = { text };
+  }
+
+  const url = typeof parsed.url === "string" ? parsed.url : pageId;
+  const id = resolveCacheKey(url).pageId;
+  return {
+    id,
+    title: typeof parsed.title === "string" ? parsed.title : "(untitled)",
+    markdown: typeof parsed.text === "string" ? parsed.text : text,
+  };
+}
+
+async function callAuthenticatedNotionMcp(
+  pageId: string,
+  input?: string,
+): Promise<RawNotionPage> {
+  const auth = readMcpAuth();
+  const accessToken = auth?.tokens?.accessToken;
+  if (!accessToken) {
+    throw new Error(
+      "Remote Notion MCP OAuth token not found. Run `opencode mcp list` / reconnect the Notion MCP, or set AGENT_TOOLKIT_MCP_AUTH_FILE.",
+    );
+  }
+
+  const { timeoutMs } = readEnv();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const init = await postNotionMcpJsonRpc(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "agent-toolkit", version: "0.1.0" },
+        },
+      },
+      { signal: ac.signal, accessToken },
+    );
+    const sessionId = init.sessionId;
+    await postNotionMcpJsonRpc(
+      { jsonrpc: "2.0", method: "notifications/initialized", params: {} },
+      { signal: ac.signal, accessToken, sessionId },
+    );
+    const fetched = await postNotionMcpJsonRpc(
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: "notion-fetch",
+          arguments: { id: input ?? pageId },
+        },
+      },
+      { signal: ac.signal, accessToken, sessionId },
+    );
+    return normalizeMcpToolResult(pageId, fetched.payload);
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        `Remote Notion MCP request timed out after ${timeoutMs}ms (pageId=${pageId})`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -302,12 +475,20 @@ function readOpenapiEnv() {
  */
 export async function callRemoteNotionMcp(
   pageId: string,
+  input?: string,
 ): Promise<RawNotionPage> {
   const { url, timeoutMs } = readEnv();
+  const auth = readMcpAuth();
+  if (
+    auth?.tokens?.accessToken &&
+    (auth.serverUrl ?? "").replace(/\/$/, "") === url
+  ) {
+    return callAuthenticatedNotionMcp(pageId, input);
+  }
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    // 인증은 remote MCP 측 OAuth 가 처리. 이 plugin 은 헤더에 자격증명을 붙이지 않는다.
+    // 테스트/로컬 게이트웨이용 legacy endpoint. 실제 Notion remote MCP 는 위의 OAuth JSON-RPC 경로를 탄다.
     const headers: Record<string, string> = {
       "content-type": "application/json",
       accept: "application/json",
@@ -352,7 +533,7 @@ async function fetchAndCache(
   input: string,
 ): Promise<NotionPageResult> {
   const { pageId } = resolveCacheKey(input);
-  const raw = await callRemoteNotionMcp(pageId);
+  const raw = await callRemoteNotionMcp(pageId, input);
   const rawNormalized = resolveCacheKey(raw.id).pageId;
   if (rawNormalized !== pageId) {
     throw new Error(
