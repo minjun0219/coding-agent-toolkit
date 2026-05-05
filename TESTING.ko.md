@@ -15,8 +15,8 @@
 - 런타임: Bun.
 - 검증 레포: `/tmp/agent-toolkit-main`.
 - 실제 설치 smoke 대상: `/tmp/agent-toolkit-test-target-repo`.
-- opencode 사용자 설정: `/Users/openclaw/.config/opencode/opencode.json`.
-- 민감정보는 로그에 남기지 않는다. OAuth/PAT/password/DSN 값은 출력 금지.
+- opencode 사용자 설정: `$HOME/.config/opencode/opencode.json` (이 문서의 과거 실측 로그에서 나온 `/Users/openclaw/...` 같은 절대 경로는 작성자 로컬 예시로만 취급한다).
+- 민감정보는 로그에 남기지 않는다. OAuth/PAT/password/DSN 값은 출력 금지. 문서 예시는 placeholder 를 쓰고, 실제 값은 로컬 shell/session 에서만 설정한다.
 - GitHub 관련 실제 API 변경은 dry-run 또는 명시적 테스트 repo 에서만 수행한다.
 
 ## 1. 정적/단위 검증 게이트
@@ -242,7 +242,8 @@ opencode run --agent rocky --model openai/gpt-5.5 \
 ```bash
 cd /tmp/agent-toolkit-test-target-repo
 CACHE_DIR="$PWD/.agent-toolkit-cache-minjun-notion-full"
-/usr/bin/trash "$CACHE_DIR" 2>/dev/null || true
+# 주의: smoke 전용 cache 디렉터리만 지운다. trash 가 있으면 복구 가능 삭제, 없으면 rm -rf fallback.
+if command -v trash >/dev/null 2>&1; then trash "$CACHE_DIR" 2>/dev/null || true; else rm -rf "$CACHE_DIR"; fi
 mkdir -p "$CACHE_DIR"
 
 AGENT_TOOLKIT_CACHE_DIR="$CACHE_DIR" opencode run --model openai/gpt-5.5 --format json \
@@ -293,7 +294,8 @@ AGENT_TOOLKIT_CACHE_DIR="$CACHE_DIR" opencode run --model openai/gpt-5.5 --forma
 ```bash
 cd /tmp/agent-toolkit-test-target-repo
 CACHE_DIR="$PWD/.agent-toolkit-openapi-cache-petstore"
-/usr/bin/trash "$CACHE_DIR" 2>/dev/null || true
+# 주의: smoke 전용 cache 디렉터리만 지운다. trash 가 있으면 복구 가능 삭제, 없으면 rm -rf fallback.
+if command -v trash >/dev/null 2>&1; then trash "$CACHE_DIR" 2>/dev/null || true; else rm -rf "$CACHE_DIR"; fi
 mkdir -p "$CACHE_DIR"
 
 AGENT_TOOLKIT_OPENAPI_CACHE_DIR="$CACHE_DIR" opencode run --model openai/gpt-5.5 --format json \
@@ -339,7 +341,8 @@ GitHub REST OpenAPI spec:
 ```bash
 cd /tmp/agent-toolkit-test-target-repo
 CACHE_DIR="$PWD/.agent-toolkit-openapi-cache-github"
-/usr/bin/trash "$CACHE_DIR" 2>/dev/null || true
+# 주의: smoke 전용 cache 디렉터리만 지운다. trash 가 있으면 복구 가능 삭제, 없으면 rm -rf fallback.
+if command -v trash >/dev/null 2>&1; then trash "$CACHE_DIR" 2>/dev/null || true; else rm -rf "$CACHE_DIR"; fi
 mkdir -p "$CACHE_DIR"
 
 AGENT_TOOLKIT_OPENAPI_CACHE_DIR="$CACHE_DIR" \
@@ -411,10 +414,11 @@ INSERT INTO agent_toolkit_test.orders (id, user_id, amount) VALUES
   (2, 1, 34000),
   (3, 2, 5600)
 ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), amount = VALUES(amount);
-CREATE USER IF NOT EXISTS 'agent_toolkit_ro'@'localhost' IDENTIFIED BY 'agent_toolkit_ro_pw';
-CREATE USER IF NOT EXISTS 'agent_toolkit_ro'@'127.0.0.1' IDENTIFIED BY 'agent_toolkit_ro_pw';
-ALTER USER 'agent_toolkit_ro'@'localhost' IDENTIFIED BY 'agent_toolkit_ro_pw';
-ALTER USER 'agent_toolkit_ro'@'127.0.0.1' IDENTIFIED BY 'agent_toolkit_ro_pw';
+-- <YOUR_PASSWORD> 는 로컬 테스트용 값으로 치환한다. 문서/로그/PR 에 실제 값을 남기지 않는다.
+CREATE USER IF NOT EXISTS 'agent_toolkit_ro'@'localhost' IDENTIFIED BY '<YOUR_PASSWORD>';
+CREATE USER IF NOT EXISTS 'agent_toolkit_ro'@'127.0.0.1' IDENTIFIED BY '<YOUR_PASSWORD>';
+ALTER USER 'agent_toolkit_ro'@'localhost' IDENTIFIED BY '<YOUR_PASSWORD>';
+ALTER USER 'agent_toolkit_ro'@'127.0.0.1' IDENTIFIED BY '<YOUR_PASSWORD>';
 GRANT SELECT ON agent_toolkit_test.* TO 'agent_toolkit_ro'@'localhost';
 GRANT SELECT ON agent_toolkit_test.* TO 'agent_toolkit_ro'@'127.0.0.1';
 FLUSH PRIVILEGES;
@@ -450,8 +454,9 @@ SQL
 
 ```bash
 cd /tmp/agent-toolkit-test-target-repo
-export AGENT_TOOLKIT_TEST_MYSQL_PASSWORD='agent_toolkit_ro_pw'
-export AGENT_TOOLKIT_TEST_MYSQL_DSN='mysql://agent_toolkit_ro:agent_toolkit_ro_pw@127.0.0.1:3306/agent_toolkit_test'
+# 실제 password/DSN 값은 문서/로그/PR 에 남기지 않는다. 아래 placeholder 를 로컬 값으로만 치환한다.
+export AGENT_TOOLKIT_TEST_MYSQL_PASSWORD='<YOUR_PASSWORD>'
+export AGENT_TOOLKIT_TEST_MYSQL_DSN='<YOUR_DSN>'
 
 opencode run --model openai/gpt-5.5 --format json \
   'Run mysql_status demo:dev:users, mysql_tables demo:dev:users, mysql_schema demo:dev:users table users, mysql_query demo:dev:users SQL "SELECT id, name, status FROM users ORDER BY id" limit 10. Respond compact JSON.'
