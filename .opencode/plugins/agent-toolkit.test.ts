@@ -867,6 +867,37 @@ describe("pr-watch handlers", () => {
 });
 
 describe("plugin config hook", () => {
+  const expectedToolNames = [
+    "notion_get",
+    "notion_refresh",
+    "notion_status",
+    "notion_extract",
+    "swagger_get",
+    "swagger_refresh",
+    "swagger_status",
+    "swagger_search",
+    "swagger_envs",
+    "journal_append",
+    "journal_read",
+    "journal_search",
+    "journal_status",
+    "mysql_envs",
+    "mysql_status",
+    "mysql_tables",
+    "mysql_schema",
+    "mysql_query",
+    "pr_watch_start",
+    "pr_watch_stop",
+    "pr_watch_status",
+    "pr_event_record",
+    "pr_event_pending",
+    "pr_event_resolve",
+    "spec_pact_fragment",
+    "issue_create_from_spec",
+    "issue_status",
+    "gh_run",
+  ];
+
   it("registers skills/, agents/, and agent/ paths and is idempotent", async () => {
     const plugin = await agentToolkitPlugin({});
     const cfg: any = {};
@@ -886,6 +917,13 @@ describe("plugin config hook", () => {
     expectPath("skills", "skills");
     expectPath("agents", "agents");
     expectPath("agent", "agents");
+  });
+
+  it("registers exactly the 28 expected tools", async () => {
+    const plugin = await agentToolkitPlugin({});
+    const actualToolNames = Object.keys(plugin.tool).sort();
+    expect(actualToolNames).toHaveLength(28);
+    expect(actualToolNames).toEqual([...expectedToolNames].sort());
   });
 
   it("preserves existing paths in config", async () => {
