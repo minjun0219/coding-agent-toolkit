@@ -57,12 +57,14 @@ let cache: NotionCache;
 let server: ReturnType<typeof Bun.serve>;
 let calls: number;
 let respondWithWrongId: boolean;
+let mcpOmitIdentifier: boolean;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "plugin-"));
   cache = new NotionCache({ baseDir: dir, defaultTtlSeconds: 60 });
   calls = 0;
   respondWithWrongId = false;
+  mcpOmitIdentifier = false;
   server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
@@ -78,8 +80,21 @@ beforeEach(() => {
         });
       }
       if (url.pathname === "/mcp" && req.method === "POST") {
+        if (req.headers.get("authorization") !== "Bearer test-token") {
+          return new Response("missing authorization", { status: 401 });
+        }
         const sessionHeaders = { "mcp-session-id": "test-session" };
         return req.json().then((body: any) => {
+          if (body.method !== "initialize") {
+            if (req.headers.get("mcp-session-id") !== "test-session") {
+              return new Response("missing mcp-session-id", { status: 400 });
+            }
+            if (req.headers.get("mcp-protocol-version") !== "2025-06-18") {
+              return new Response("missing mcp-protocol-version", {
+                status: 400,
+              });
+            }
+          }
           if (body.method === "initialize") {
             return new Response(
               `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: "Mock Notion MCP", version: "1.0.0" } } })}\n\n`,
@@ -96,8 +111,15 @@ beforeEach(() => {
           }
           if (body.method === "tools/call") {
             calls += 1;
+            const payload = mcpOmitIdentifier
+              ? { title: "Hello MCP", text: "# Hello MCP\n\nworld" }
+              : {
+                  title: "Hello MCP",
+                  url: `https://www.notion.so/${PAGE}`,
+                  text: "# Hello MCP\n\nworld",
+                };
             return new Response(
-              `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: JSON.stringify({ title: "Hello MCP", url: `https://www.notion.so/${PAGE}`, text: "# Hello MCP\n\nworld" }) }] } })}\n\n`,
+              `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: JSON.stringify(payload) }] } })}\n\n`,
               { headers: { "content-type": "text/event-stream" } },
             );
           }
@@ -199,6 +221,28 @@ describe("plugin handlers", () => {
     const second = await handleNotionGet(cache, PAGE);
     expect(second.fromCache).toBe(true);
     expect(calls).toBe(1);
+  });
+
+  it("rejects OAuth MCP response without a remote identifier and does not cache", async () => {
+    const authFile = join(dir, "mcp-auth.json");
+    process.env.AGENT_TOOLKIT_NOTION_MCP_URL = `http://${server.hostname}:${server.port}/mcp`;
+    process.env.AGENT_TOOLKIT_MCP_AUTH_FILE = authFile;
+    writeFileSync(
+      authFile,
+      JSON.stringify({
+        notion: {
+          serverUrl: process.env.AGENT_TOOLKIT_NOTION_MCP_URL,
+          tokens: { accessToken: "test-token" },
+        },
+      }),
+    );
+    mcpOmitIdentifier = true;
+
+    await expect(handleNotionGet(cache, PAGE)).rejects.toThrow(
+      /missing remote page identifier/i,
+    );
+    const s = await handleNotionStatus(cache, PAGE);
+    expect(s.exists).toBe(false);
   });
 
   it("rejects remote response with mismatched page id and does not cache", async () => {

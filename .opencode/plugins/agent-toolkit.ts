@@ -326,7 +326,12 @@ function parseMcpSse(text: string): unknown {
 
 async function postNotionMcpJsonRpc(
   body: unknown,
-  options: { sessionId?: string; signal: AbortSignal; accessToken: string },
+  options: {
+    sessionId?: string;
+    signal: AbortSignal;
+    accessToken: string;
+    protocolVersion?: string;
+  },
 ): Promise<{ payload: any; sessionId?: string }> {
   const { url } = readEnv();
   const headers: Record<string, string> = {
@@ -335,6 +340,9 @@ async function postNotionMcpJsonRpc(
     accept: "application/json, text/event-stream",
   };
   if (options.sessionId) headers["mcp-session-id"] = options.sessionId;
+  if (options.protocolVersion) {
+    headers["mcp-protocol-version"] = options.protocolVersion;
+  }
   const res = await fetch(url, {
     method: "POST",
     headers,
@@ -359,7 +367,7 @@ async function postNotionMcpJsonRpc(
   };
 }
 
-function normalizeMcpToolResult(pageId: string, payload: any): RawNotionPage {
+function normalizeMcpToolResult(payload: any): RawNotionPage {
   if (payload?.error) {
     throw new Error(
       `Remote Notion MCP error ${payload.error.code ?? "unknown"}: ${payload.error.message ?? "unknown error"}`,
@@ -383,8 +391,18 @@ function normalizeMcpToolResult(pageId: string, payload: any): RawNotionPage {
     parsed = { text };
   }
 
-  const url = typeof parsed.url === "string" ? parsed.url : pageId;
-  const id = resolveCacheKey(url).pageId;
+  const remoteIdentifier =
+    typeof parsed.url === "string"
+      ? parsed.url
+      : typeof parsed.id === "string"
+        ? parsed.id
+        : null;
+  if (!remoteIdentifier) {
+    throw new Error(
+      "Remote Notion MCP returned malformed payload (missing remote page identifier)",
+    );
+  }
+  const id = resolveCacheKey(remoteIdentifier).pageId;
   return {
     id,
     title: typeof parsed.title === "string" ? parsed.title : "(untitled)",
@@ -422,9 +440,13 @@ async function callAuthenticatedNotionMcp(
       { signal: ac.signal, accessToken },
     );
     const sessionId = init.sessionId;
+    const protocolVersion =
+      typeof init.payload?.result?.protocolVersion === "string"
+        ? init.payload.result.protocolVersion
+        : "2025-06-18";
     await postNotionMcpJsonRpc(
       { jsonrpc: "2.0", method: "notifications/initialized", params: {} },
-      { signal: ac.signal, accessToken, sessionId },
+      { signal: ac.signal, accessToken, sessionId, protocolVersion },
     );
     const fetched = await postNotionMcpJsonRpc(
       {
@@ -436,9 +458,9 @@ async function callAuthenticatedNotionMcp(
           arguments: { id: input ?? pageId },
         },
       },
-      { signal: ac.signal, accessToken, sessionId },
+      { signal: ac.signal, accessToken, sessionId, protocolVersion },
     );
-    return normalizeMcpToolResult(pageId, fetched.payload);
+    return normalizeMcpToolResult(fetched.payload);
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new Error(
@@ -470,8 +492,10 @@ function readOpenapiEnv() {
 
 /**
  * remote Notion MCP 단일 호출.
- * wire format: POST `${url}/getPage` { pageId } -> RawNotionPage
- * 다른 wire 가 필요해지면 이 함수만 교체.
+ * 기본 Notion remote MCP 는 opencode OAuth auth cache 가 있으면 Streamable HTTP JSON-RPC 로
+ * `notion-fetch` tool 을 호출한다. 이때 `input` 은 tool argument 의 `id` 로 전달된다.
+ * auth cache 가 없거나 URL 이 일치하지 않으면 테스트/로컬 게이트웨이용 legacy
+ * POST `${url}/getPage` { pageId } -> RawNotionPage wire format 으로 fallback 한다.
  */
 export async function callRemoteNotionMcp(
   pageId: string,
