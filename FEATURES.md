@@ -345,7 +345,7 @@ Each skill bundles a small surface of tools into a step-by-step prompt. Skills l
 
 ### `pr-review-watch`
 
-- **Conducted by**: `mindy` (sole authority over `pr_event_resolved`).
+- **Conducted by**: `mindy` (sole authority over `pr_event_resolved`). Trigger only when the user explicitly asks to review/check/watch; a PR URL/handle alone is not enough.
 - **Modes**: `WATCH-START`, `PULL`, `VALIDATE`, `WATCH-STOP`.
 - **Tools used**: `pr_watch_start`, `pr_watch_stop`, `pr_watch_status`, `pr_event_record`, `pr_event_pending`, `pr_event_resolve`, `journal_append`, `journal_read`, `journal_search`, opencode's `read` / `glob` / `grep`. **External GitHub MCP must be registered in the opencode session** so `mindy` can fetch PR meta, comments, replies, and merge state.
 - **PR handle**: `owner/repo#NUMBER` or a github.com PR URL. Journal-side handle is the tag `pr:<canonical>`; the `pageId` slot is intentionally unused (Notion id pattern doesn't match).
@@ -376,7 +376,7 @@ Each agent's full prompt and exact tool / permission frontmatter live under `age
 - **Conducts**: `notion-context`, `openapi-client`, `mysql-query`, `spec-to-issues`, `gh-passthrough`, plus journal usage.
 - **Routes**:
   - SPEC lifecycle keywords ("스펙 합의", "SPEC 작성", "SPEC 검증", "SPEC drift", "기획문서 변경 반영") → `@grace`.
-  - PR review watch keywords ("PR review", "리뷰 봐줘", "코멘트 확인", "머지까지 watch", "리뷰 답글", "PR drift") → `@mindy`.
+  - Explicit PR review watch keywords ("PR review", "리뷰 봐줘", "리뷰 확인", "코멘트 확인", "머지까지 watch", "리뷰 답글", "PR drift") + PR handle → `@mindy`. A bare PR link / reference mention does not start watch.
   - Multi-step implementation (writing code, refactor, multi-file changes) → external sub-agent / skill, or returns the work to the caller. Rocky never implements directly.
 - **Hard refusals**: MySQL writes / DDL (the SQL guard rejects them), direct GitHub API calls (delegated to the external GitHub MCP).
 

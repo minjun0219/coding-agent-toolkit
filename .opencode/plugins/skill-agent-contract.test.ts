@@ -60,9 +60,11 @@ describe("skill/agent contract inventory", () => {
     expect(mindy).toContain("The toolkit never calls the GitHub API itself");
     expect(mindy).toContain("permission.edit: deny");
     expect(mindy).toContain("permission.bash: deny");
+    expect(mindy).toContain("a bare PR link must not start watch");
 
     expect(prSkill).toContain("The toolkit never calls the GitHub API itself");
     expect(prSkill).toContain("mindy");
+    expect(prSkill).toContain("a bare PR link must not start watch");
 
     expect(grace).toContain("GitHub Issue 동기화");
     expect(grace).toContain("gh-passthrough");
