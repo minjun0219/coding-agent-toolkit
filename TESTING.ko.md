@@ -121,14 +121,14 @@ bun test ./.opencode/plugins/agent-toolkit-install.test.ts
   - SELECT/WITH 에 LIMIT 부착/cap.
   - `truncated:true` 는 rowCount 가 effectiveLimit 에 도달한 경우만.
 
-### PR review watch (`pr_*`, routing 변경 검토 대상)
+### PR review watch (`unstable_pr_*`, routing 변경 검토 대상)
 
-- `pr_watch_start`
-- `pr_watch_stop`
-- `pr_watch_status`
-- `pr_event_record`
-- `pr_event_pending`
-- `pr_event_resolve`
+- `unstable_pr_watch_start`
+- `unstable_pr_watch_stop`
+- `unstable_pr_watch_status`
+- `unstable_pr_event_record`
+- `unstable_pr_event_pending`
+- `unstable_pr_event_resolve`
 
 테스트 포인트:
 
@@ -144,19 +144,19 @@ bun test ./.opencode/plugins/agent-toolkit-install.test.ts
   - `draft` / `verify` / `drift-check` / `amend` fragment read.
   - package root / server export 설치에서도 절대경로 read 성공.
 
-### spec-to-issues (`issue_*`)
+### spec-to-issues (`unstable_issue_*`)
 
-- `issue_create_from_spec`
+- `unstable_issue_create_from_spec`
   - locked SPEC parse.
   - dryRun plan.
   - apply 시 GitHub issue create/edit + journal append.
   - idempotent re-apply.
-- `issue_status`
+- `unstable_issue_status`
   - dryRun alias, no mutation.
 
 ### gh-passthrough
 
-- `gh_run`
+- `unstable_gh_run`
   - read command immediate.
   - write command dryRun plan only.
   - write command apply with `dryRun:false`.
@@ -482,22 +482,22 @@ opencode run --model openai/gpt-5.5 --format json \
 
 GitHub 표면은 두 종류다.
 
-1. `gh_run` / `issue_*`: 사용자의 `gh` CLI 로 직접 실행.
+1. `unstable_gh_run` / `unstable_issue_*`: 사용자의 `gh` CLI 로 직접 실행.
 2. `pr-review-watch`: 외부 GitHub MCP 가 PR 메타/댓글을 가져오고, toolkit 은 로컬 lifecycle queue 만 관리.
 
-### gh_run
+### unstable_gh_run
 
 ```bash
 cd /tmp/agent-toolkit-test-target-repo
 
 opencode run --model openai/gpt-5.5 --format json \
-  'Use gh_run for read command: gh repo view minjun0219/agent-toolkit --json nameWithOwner,defaultBranchRef. Respond JSON.'
+  'Use unstable_gh_run for read command: gh repo view minjun0219/agent-toolkit --json nameWithOwner,defaultBranchRef. Respond JSON.'
 
 opencode run --model openai/gpt-5.5 --format json \
-  'Use gh_run for write command: gh issue create --repo minjun0219/agent-toolkit --title test --body test with dryRun true. Respond JSON.'
+  'Use unstable_gh_run for write command: gh issue create --repo minjun0219/agent-toolkit --title test --body test with dryRun true. Respond JSON.'
 
 opencode run --model openai/gpt-5.5 --format json \
-  'Use gh_run for denied command: gh auth token. Respond JSON with rejected/error.'
+  'Use unstable_gh_run for denied command: gh auth token. Respond JSON with rejected/error.'
 ```
 
 기대값:
@@ -512,10 +512,10 @@ opencode run --model openai/gpt-5.5 --format json \
 
 ```bash
 opencode run --model openai/gpt-5.5 --format json \
-  'Use issue_status for the locked SPEC path ... Respond JSON with plan.'
+  'Use unstable_issue_status for the locked SPEC path ... Respond JSON with plan.'
 
 opencode run --model openai/gpt-5.5 --format json \
-  'Use issue_create_from_spec dryRun true for ... Respond JSON with plan.'
+  'Use unstable_issue_create_from_spec dryRun true for ... Respond JSON with plan.'
 ```
 
 실제 issue 생성은 테스트 repo / 명시 승인 후만 `dryRun:false`.
@@ -548,27 +548,27 @@ bun test ./.opencode/plugins/agent-toolkit.test.ts --test-name-pattern 'pr_watch
 - `mindy` / `pr-review-watch` trigger 를 “리뷰 확인”, “코멘트 확인”, “리뷰 답글”, “머지까지 watch”, “PR drift” 같은 명시적 작업 요청으로 제한.
 - 단순 PR URL / handle 은 GitHub surface 후보로만 인식하고, 사용자가 원하는 작업을 묻거나 `gh-passthrough` read 로 처리.
 - agent tests 에 negative routing case 추가:
-  - “이 PR 링크 참고: …” → no `pr_watch_start`.
+  - “이 PR 링크 참고: …” → no `unstable_pr_watch_start`.
   - “이 PR 리뷰 코멘트 확인해줘: …” → `mindy`.
 
-### 10.2 `pr_*` tool rename 검토
+### 10.2 `unstable_pr_*` tool rename 검토
 
 현재 이름은 lifecycle 내부 구현 느낌이 강하다.
 
 후보:
 
-- `pr_watch_start` → `review_watch_start`
-- `pr_watch_stop` → `review_watch_stop`
-- `pr_watch_status` → `review_watch_status`
-- `pr_event_record` → `review_event_record`
-- `pr_event_pending` → `review_event_pending`
-- `pr_event_resolve` → `review_event_resolve`
+- `unstable_pr_watch_start` → `review_watch_start`
+- `unstable_pr_watch_stop` → `review_watch_stop`
+- `unstable_pr_watch_status` → `review_watch_status`
+- `unstable_pr_event_record` → `review_event_record`
+- `unstable_pr_event_pending` → `review_event_pending`
+- `unstable_pr_event_resolve` → `review_event_resolve`
 
 권장 migration:
 
 1. 새 이름 추가 + 기존 이름 alias 유지.
 2. docs/skills/agents 를 새 이름 기준으로 업데이트.
-3. 한 릴리스 뒤 기존 `pr_*` deprecate 문구 추가.
+3. 한 릴리스 뒤 기존 `unstable_pr_*` deprecate 문구 추가.
 4. 최종 제거는 실제 사용자 workflow 안정화 후.
 
 ### 10.3 `swagger_*` → `openapi_*` rename 검토
@@ -602,7 +602,7 @@ bun test ./.opencode/plugins/agent-toolkit.test.ts --test-name-pattern 'pr_watch
 - [ ] OpenAPI Petstore: envs/get/status/search/hit/key
 - [ ] OpenAPI GitHub REST: 대형 spec get/status/search/key
 - [ ] MySQL: envs/status/tables/schema/query/join/write guard/read-only DB user
-- [ ] GitHub: `gh_run` read/write dryRun/deny, `issue_*` dryRun
+- [ ] GitHub: `unstable_gh_run` read/write dryRun/deny, `unstable_issue_*` dryRun
 - [ ] PR watch: lifecycle 단위 테스트 + routing negative/positive case
 - [ ] Agent routing: rocky/grace/mindy trigger 확인
 - [ ] 문서/FEATURES/schema/skills/agents consistency 확인

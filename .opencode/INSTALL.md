@@ -52,11 +52,11 @@ If `rocky`, `grace`, or `mindy` agents do not appear in `opencode agent list` (c
 
 GitHub 관련 도구는 보안을 위해 세 가지 Transport로 분리되어 동작합니다:
 
-- **gh-cli**: `issue_*` 및 `gh_run` 도구가 사용합니다. 사용자 셸의 `gh auth login` 상태를 그대로 이용하며, toolkit 설정에 토큰을 저장하지 않습니다.
+- **gh-cli**: `unstable_issue_*` 및 `unstable_gh_run` 도구가 사용합니다. 사용자 셸의 `gh auth login` 상태를 그대로 이용하며, toolkit 설정에 토큰을 저장하지 않습니다.
 - **external-mcp**: PR 코멘트 읽기/쓰기는 사용자가 opencode에 등록한 외부 GitHub MCP를 통해서만 이루어집니다.
-- **journal-only**: `pr_*` 도구들은 로컬 저널에만 기록하며 GitHub API를 직접 호출하지 않습니다.
+- **journal-only**: `unstable_pr_*` 도구들은 로컬 저널에만 기록하며 GitHub API를 직접 호출하지 않습니다.
 
-**보안 주의**: `gh_run pr merge`, `repo edit|delete`, `release delete`, `workflow run|enable|disable`, `run rerun|cancel` 및 `auth`, `config` 등 고위험 명령은 차단되어 있습니다. 모든 쓰기 작업은 `dryRun: true`가 기본입니다. `issue_status`와 `issue_create_from_spec(dryRun: true)`는 저널 기록을 남기지 않는 순수 읽기 작업입니다. `gh_run`은 read/dry-run/applied 모든 호출에 journal entry를 남깁니다.
+**보안 주의**: `unstable_gh_run pr merge`, `repo edit|delete`, `release delete`, `workflow run|enable|disable`, `run rerun|cancel` 및 `auth`, `config` 등 고위험 명령은 차단되어 있습니다. 모든 쓰기 작업은 `dryRun: true`가 기본입니다. `unstable_issue_status`와 `unstable_issue_create_from_spec(dryRun: true)`는 저널 기록을 남기지 않는 순수 읽기 작업입니다. `unstable_gh_run`은 read/dry-run/applied 모든 호출에 journal entry를 남깁니다.
 
 ## Environment variables
 
@@ -98,28 +98,28 @@ Then verify the tools are registered:
 > use journal_append tool with content "decided to ship Phase 3" kind "decision"
 > use journal_read tool   # most recent first
 > use spec_pact_fragment tool with mode "draft"   # Phase 6.A — returns the DRAFT mode body from the plugin's absolute path
-> use gh_run tool with args ["auth", "status"]    # Phase 2 후속 — read 명령은 즉시 실행
-> use gh_run tool with args ["issue", "list", "--repo", "<owner/repo>"]  # read
+> use unstable_gh_run tool with args ["auth", "status"]    # Phase 2 후속 — read 명령은 즉시 실행
+> use unstable_gh_run tool with args ["issue", "list", "--repo", "<owner/repo>"]  # read
 ```
 
-Optional PR review watch smoke (works without external GitHub MCP — the toolkit's six `pr_*` tools never call GitHub; mindy reads PR meta / comments through whichever GitHub MCP server you have registered separately):
+Optional PR review watch smoke (works without external GitHub MCP — the toolkit's six `unstable_pr_*` tools never call GitHub; mindy reads PR meta / comments through whichever GitHub MCP server you have registered separately):
 
 ```
-> use pr_watch_start tool with handle "owner/repo#42" note "review 1차"
-> use pr_watch_status tool                                                       # active watches + pending counts
-> use pr_event_record tool with handle "owner/repo#42" type "issue_comment" externalId "1" summary "user bob: typo on /api/orders"
-> use pr_event_pending tool with handle "owner/repo#42"                         # surfaces the new event
-> use pr_event_resolve tool with handle "owner/repo#42" type "issue_comment" externalId "1" decision "accepted" reasoning "fixed missing await"
-> use pr_watch_stop tool with handle "owner/repo#42" reason "merged"
+> use unstable_pr_watch_start tool with handle "owner/repo#42" note "review 1차"
+> use unstable_pr_watch_status tool                                                       # active watches + pending counts
+> use unstable_pr_event_record tool with handle "owner/repo#42" type "issue_comment" externalId "1" summary "user bob: typo on /api/orders"
+> use unstable_pr_event_pending tool with handle "owner/repo#42"                         # surfaces the new event
+> use unstable_pr_event_resolve tool with handle "owner/repo#42" type "issue_comment" externalId "1" decision "accepted" reasoning "fixed missing await"
+> use unstable_pr_watch_stop tool with handle "owner/repo#42" reason "merged"
 ```
 
 Optional spec-to-issues smoke (Phase 2 — only after `gh` is installed and authenticated; see "GitHub Issue sync" below):
 
 ```
-> use issue_status tool with slug "<existing-locked-spec-slug>"                          # plan only, single `gh issue list` call
-> use issue_create_from_spec tool with slug "<slug>" dryRun true                         # same as issue_status (read-only)
-> use issue_create_from_spec tool with slug "<slug>" dryRun false                        # apply: creates missing subs, then patches/creates the epic
-> use issue_create_from_spec tool with slug "<slug>" dryRun false                        # re-run is a no-op (markers match)
+> use unstable_issue_status tool with slug "<existing-locked-spec-slug>"                          # plan only, single `gh issue list` call
+> use unstable_issue_create_from_spec tool with slug "<slug>" dryRun true                         # same as unstable_issue_status (read-only)
+> use unstable_issue_create_from_spec tool with slug "<slug>" dryRun false                        # apply: creates missing subs, then patches/creates the epic
+> use unstable_issue_create_from_spec tool with slug "<slug>" dryRun false                        # re-run is a no-op (markers match)
 ```
 
 `gh` 미설치면 `GhNotInstalledError`, 미인증이면 `GhAuthError` 가 한 줄 install / login 가이드와 함께 throw.
@@ -309,7 +309,7 @@ The SPEC layer lives at `<spec.dir>/<spec.indexFile>` (entry point — default `
 
 If the plugin is not registered, or the opencode version does not recognize plugin-provided `config.agent.*` entries, drop a symlink or copy of `agents/rocky.md`, `agents/grace.md`, and `agents/mindy.md` into the project's `.opencode/agents/` instead.
 
-## GitHub Issue sync (Phase 2 — `spec-to-issues` skill / `issue_*` tools)
+## GitHub Issue sync (Phase 2 — `spec-to-issues` skill / `unstable_issue_*` tools)
 
 `spec-to-issues` 는 잠긴 SPEC 의 `# 합의 TODO` 를 GitHub epic + sub-issue 시리즈로 한 방향 동기화한다 (Rocky 가 conduct, Grace 는 책임 외). **모든 GitHub 호출은 사용자 환경의 `gh` CLI 위임으로 처리** — agent-toolkit 은 토큰 / API URL 같은 새 env 변수를 추가하지 않는다. (PR review watch 의 GitHub 호출도 별도 — 이쪽은 외부 GitHub MCP 가 책임.)
 
@@ -350,19 +350,19 @@ $ gh auth login --scopes "repo"   # if not authenticated; for GHE add --hostname
 ### 사용 예 (Rocky 경유)
 
 ```
-@rocky user-auth SPEC 의 GitHub 이슈 상태 보여줘                # → issue_status (dryRun, plan only)
-@rocky user-auth SPEC 을 이슈로 만들어줘                         # → issue_create_from_spec dryRun=true 먼저
+@rocky user-auth SPEC 의 GitHub 이슈 상태 보여줘                # → unstable_issue_status (dryRun, plan only)
+@rocky user-auth SPEC 을 이슈로 만들어줘                         # → unstable_issue_create_from_spec dryRun=true 먼저
                                                                 # → 사용자 확인 후 dryRun=false 로 apply
 @rocky user-auth 에 새 bullet 추가했어, 이슈 추가 동기화해줘     # → 같은 호출, 새 sub 만 생성 + epic body patch
 ```
 
-### gh-passthrough (Phase 2 후속 — `gh_run`)
+### gh-passthrough (Phase 2 후속 — `unstable_gh_run`)
 
 `spec-to-issues` 와 무관한 ad-hoc gh 호출 — read 즉시 실행, write 는 `dryRun: true` (기본) 로 plan 먼저, 환경 변경 위험 명령은 거부.
 
 ```
-@rocky `gh issue list --label bug` 검색해줘             # → gh_run({args:["issue","list","--label","bug"]}) — read, 즉시 실행
-@rocky `bug` 라벨 새로 만들어줘                           # → gh_run({args:["label","create","bug",...], dryRun:true}) plan 먼저
+@rocky `gh issue list --label bug` 검색해줘             # → unstable_gh_run({args:["issue","list","--label","bug"]}) — read, 즉시 실행
+@rocky `bug` 라벨 새로 만들어줘                           # → unstable_gh_run({args:["label","create","bug",...], dryRun:true}) plan 먼저
                                                           # → 사용자 승인 후 dryRun:false 로 재호출
 @rocky #42 PR 머지해줘                                    # → GhDeniedCommandError, stop (pr merge 는 deny — toolkit 책임 밖)
 @rocky `gh extension install owner/repo`                  # → GhDeniedCommandError, stop

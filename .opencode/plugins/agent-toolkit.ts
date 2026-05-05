@@ -851,10 +851,10 @@ export async function handleJournalStatus(
 // `journal.append` 로 흘려보내는 얇은 layer 일 뿐.
 //
 // 사용 패턴 요약:
-//   - `pr_watch_start` / `_stop` / `_status`        watch lifecycle
-//   - `pr_event_record`                             외부 MCP 가 가져온 코멘트/리뷰/체크/머지 신호 1 건 흡수
-//   - `pr_event_pending`                            한 핸들의 미처리 이벤트 list
-//   - `pr_event_resolve`                            mindy 의 검증 결과 (accepted / rejected / deferred)
+//   - `unstable_pr_watch_start` / `_stop` / `_status`        watch lifecycle
+//   - `unstable_pr_event_record`                             외부 MCP 가 가져온 코멘트/리뷰/체크/머지 신호 1 건 흡수
+//   - `unstable_pr_event_pending`                            한 핸들의 미처리 이벤트 list
+//   - `unstable_pr_event_resolve`                            mindy 의 검증 결과 (accepted / rejected / deferred)
 
 export interface PrWatchStartInput {
   handle: string;
@@ -868,7 +868,7 @@ export interface PrWatchStartResult {
   state: PrWatchState;
 }
 
-/** 도구 핸들러: PR watch 시작. `pr_watch_start` 한 줄 append + 갱신된 state 반환. */
+/** 도구 핸들러: PR watch 시작. `unstable_pr_watch_start` 한 줄 append + 갱신된 state 반환. */
 export async function handlePrWatchStart(
   journal: AgentJournal,
   input: PrWatchStartInput,
@@ -882,7 +882,7 @@ export async function handlePrWatchStart(
   const mergeMode = normalizeOptionalEnum(input.mergeMode);
   if (mergeMode !== undefined && !isMergeMode(mergeMode)) {
     throw new Error(
-      `pr_watch_start: mergeMode must be one of ${MERGE_MODES.join(" / ")} — got "${input.mergeMode}"`,
+      `unstable_pr_watch_start: mergeMode must be one of ${MERGE_MODES.join(" / ")} — got "${input.mergeMode}"`,
     );
   }
   const entry = await journal.append(
@@ -933,7 +933,7 @@ export async function handlePrWatchStop(
   const reason = normalizeOptionalEnum(input.reason);
   if (reason !== undefined && !isStopReason(reason)) {
     throw new Error(
-      `pr_watch_stop: reason must be one of ${STOP_REASONS.join(" / ")} — got "${input.reason}"`,
+      `unstable_pr_watch_stop: reason must be one of ${STOP_REASONS.join(" / ")} — got "${input.reason}"`,
     );
   }
   const entry = await journal.append(
@@ -1073,13 +1073,13 @@ export async function handlePrEventResolve(
   const decision = decisionRaw as ResolveDecision;
   if (!RESOLVE_DECISIONS.includes(decision)) {
     throw new Error(
-      `pr_event_resolve: decision must be one of ${RESOLVE_DECISIONS.join(", ")} — got "${input.decision}"`,
+      `unstable_pr_event_resolve: decision must be one of ${RESOLVE_DECISIONS.join(", ")} — got "${input.decision}"`,
     );
   }
   const before = await readPrWatchJournalEntries(journal);
   if (!hasInboundFor(handle, ref.toolkitKey, before)) {
     throw new Error(
-      `pr_event_resolve: no prior pr_event_inbound for handle "${handle.canonical}" + toolkitKey "${ref.toolkitKey}" (type=${ref.type}, externalId=${ref.externalId}) — call pr_event_pending to confirm the right key, then resolve.`,
+      `unstable_pr_event_resolve: no prior pr_event_inbound for handle "${handle.canonical}" + toolkitKey "${ref.toolkitKey}" (type=${ref.type}, externalId=${ref.externalId}) — call unstable_pr_event_pending to confirm the right key, then resolve.`,
     );
   }
   const entry = await journal.append(
@@ -1102,9 +1102,9 @@ export async function handlePrEventResolve(
  *
  * 이전엔 모든 종류의 entry 를 (decisions / blockers / SPEC anchor / journal 메모 등 포함)
  * 한 번에 5000 까지 끌어와 *그 부분집합에서* PR 항목을 reduce 했다 — 다른 도메인 entry 가
- * 5000 을 채우면 오래된 `pr_watch_start` / `pr_event_inbound` 가 잘려 (1) active watch
+ * 5000 을 채우면 오래된 `unstable_pr_watch_start` / `pr_event_inbound` 가 잘려 (1) active watch
  * 누락 / (2) `alreadySeen: false` 오판 / (3) 정상 inbound 를 orphan 으로 오인해
- * `pr_event_resolve` 가 실패하는 정확성 저하가 일어났다.
+ * `unstable_pr_event_resolve` 가 실패하는 정확성 저하가 일어났다.
  *
  * 메인 태그 `pr-watch` 로 좁혀 PR 항목만 limit 안에 채우게 하면 cap 동일성 (`100_000`) 이
  * 동일한 PR 라이프사이클 라이브 환경에서는 사실상 무한대로 동작 — 그럼에도 폭주 방지를
@@ -1127,7 +1127,7 @@ async function readPrWatchJournalEntries(
  * 도구 입력에서 enum 후보 값을 정규화한다 — string 이 아니거나 trim 후 비어 있으면
  * undefined, 아니면 trim 결과를 그대로 돌려준다. enum 검증은 caller 가 한다.
  *
- * 같은 패턴이 `pr_watch_start.mergeMode` / `pr_watch_stop.reason` 두 곳에서 쓰이고,
+ * 같은 패턴이 `unstable_pr_watch_start.mergeMode` / `unstable_pr_watch_stop.reason` 두 곳에서 쓰이고,
  * 의도는 동일: LLM / 사용자 입력에서 끼는 공백을 enum 검증 *전에* 흡수해 정상 값이
  * 무의미한 형식 차이로 거부되는 것을 막는다.
  */
@@ -1233,7 +1233,7 @@ const resolveSpecPath = (
 };
 
 /**
- * `issue_create_from_spec` / `issue_status` 의 공통 백엔드. dryRun 만 다름.
+ * `unstable_issue_create_from_spec` / `unstable_issue_status` 의 공통 백엔드. dryRun 만 다름.
  * journal append 는 실제 GitHub issue 변경이 발생한 apply 에서만 남긴다 — status / dry-run 은
  * read-only planning surface 이므로 journal 파일까지 부작용 없이 유지한다.
  */
@@ -1286,7 +1286,7 @@ export async function handleIssueCreateFromSpec(
   return result;
 }
 
-/** `issue_status` — `dryRun=true` alias, plan 만 반환. */
+/** `unstable_issue_status` — `dryRun=true` alias, plan 만 반환. */
 export async function handleIssueStatus(
   exec: GhExecutor,
   journal: AgentJournal,
@@ -1302,7 +1302,7 @@ export async function handleIssueStatus(
 // ── gh-passthrough (Phase 2 후속 — generic gh runner) ────────────────────────
 
 /**
- * `gh_run` plugin tool 의 백엔드. classify → 정책 적용 (read 즉시 / write +
+ * `unstable_gh_run` plugin tool 의 백엔드. classify → 정책 적용 (read 즉시 / write +
  * dryRun=true 면 plan / write + dryRun=false 면 실행 / deny throw) → journal
  * append 한 줄.
  *
@@ -1320,18 +1320,18 @@ export async function handleGhRun(
   // 요소가 있는 args 로 불필요한 `gh auth status` 호출이 발생하지 않게 한다.
   if (!Array.isArray(args)) {
     throw new Error(
-      `gh_run: args must be an array of strings, got ${typeof args}`,
+      `unstable_gh_run: args must be an array of strings, got ${typeof args}`,
     );
   }
   if (args.length === 0) {
     throw new Error(
-      'gh_run: args must be a non-empty array (e.g. ["auth", "status"] or ["issue", "list"])',
+      'unstable_gh_run: args must be a non-empty array (e.g. ["auth", "status"] or ["issue", "list"])',
     );
   }
   for (const [i, a] of args.entries()) {
     if (typeof a !== "string") {
       throw new Error(
-        `gh_run: args[${i}] must be a string, got ${typeof a} (${JSON.stringify(a)})`,
+        `unstable_gh_run: args[${i}] must be a string, got ${typeof a} (${JSON.stringify(a)})`,
       );
     }
   }
@@ -1601,9 +1601,9 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleJournalStatus(journal);
         },
       },
-      pr_watch_start: {
+      unstable_pr_watch_start: {
         description:
-          "GitHub PR review watch 를 시작한다. journal 에 `pr_watch_start` 한 줄 append + 갱신된 watch state 반환. 토킷은 GitHub API 를 직접 호출하지 않는다 — 코멘트/리뷰 수신은 외부 GitHub MCP 가 처리한 결과를 `pr_event_record` 로 등록. (handle: `owner/repo#123` 또는 https://github.com/.../pull/N URL, note?: 한 줄 메모, labels?: 권고 레이블 list, mergeMode?: `merge`/`squash`/`rebase`)",
+          "UNSTABLE: 안정화 전 GitHub PR review watch 도구. GitHub PR review watch 를 시작한다. journal 에 `pr_watch_start` 한 줄 append + 갱신된 watch state 반환. 토킷은 GitHub API 를 직접 호출하지 않는다 — 코멘트/리뷰 수신은 외부 GitHub MCP 가 처리한 결과를 `unstable_pr_event_record` 로 등록. (handle: `owner/repo#123` 또는 https://github.com/.../pull/N URL, note?: 한 줄 메모, labels?: 권고 레이블 list, mergeMode?: `merge`/`squash`/`rebase`)",
         parameters: {
           handle: { type: "string", required: true },
           note: { type: "string", required: false },
@@ -1633,9 +1633,9 @@ export default async function agentToolkitPlugin(_input: unknown) {
           });
         },
       },
-      pr_watch_stop: {
+      unstable_pr_watch_stop: {
         description:
-          "GitHub PR review watch 를 종료한다. journal 에 `pr_watch_stop` 한 줄 append + final state 반환. 머지/닫힘은 외부 GitHub MCP 응답을 caller (mindy) 가 보고 reason 을 박는다. (handle: 등록된 watch 의 handle, reason?: `merged`/`closed`/`manual` 등)",
+          "UNSTABLE: 안정화 전 GitHub PR review watch 도구. GitHub PR review watch 를 종료한다. journal 에 `pr_watch_stop` 한 줄 append + final state 반환. 머지/닫힘은 외부 GitHub MCP 응답을 caller (mindy) 가 보고 reason 을 박는다. (handle: 등록된 watch 의 handle, reason?: `merged`/`closed`/`manual` 등)",
         parameters: {
           handle: { type: "string", required: true },
           reason: { type: "string", required: false },
@@ -1644,17 +1644,17 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handlePrWatchStop(journal, { handle, reason });
         },
       },
-      pr_watch_status: {
+      unstable_pr_watch_status: {
         description:
-          "현재 active 인 모든 PR watch 와 그 PR 들의 미처리 이벤트 합계를 반환한다. journal 한 번만 reduce — remote 호출 없음. 인자 없음.",
+          "UNSTABLE: 안정화 전 GitHub PR review watch 도구. 현재 active 인 모든 PR watch 와 그 PR 들의 미처리 이벤트 합계를 반환한다. journal 한 번만 reduce — remote 호출 없음. 인자 없음.",
         parameters: {},
         async handler() {
           return handlePrWatchStatus(journal);
         },
       },
-      pr_event_record: {
+      unstable_pr_event_record: {
         description:
-          "외부 GitHub MCP 가 가져온 PR 이벤트 1 건 (코멘트/리뷰/리뷰 코멘트/체크/머지/닫힘) 을 watch 큐에 등록한다. polling 정의상 같은 코멘트가 두 번 들어올 수 있어 — 같은 (type, externalId) 가 이미 있으면 entry 는 두 번째도 append 되지만 `alreadySeen: true` 로 응답 (디스크 dedup 안 함). (handle: PR 핸들, type: `issue_comment`/`pr_review`/`pr_review_comment`/`check_run`/`status`/`merge`/`close`, externalId: 외부 MCP 의 numeric/sha/timestamp id, summary: 한 줄 요약 — author + 짧은 발췌)",
+          "UNSTABLE: 안정화 전 GitHub PR review watch 도구. 외부 GitHub MCP 가 가져온 PR 이벤트 1 건 (코멘트/리뷰/리뷰 코멘트/체크/머지/닫힘) 을 watch 큐에 등록한다. polling 정의상 같은 코멘트가 두 번 들어올 수 있어 — 같은 (type, externalId) 가 이미 있으면 entry 는 두 번째도 append 되지만 `alreadySeen: true` 로 응답 (디스크 dedup 안 함). (handle: PR 핸들, type: `issue_comment`/`pr_review`/`pr_review_comment`/`check_run`/`status`/`merge`/`close`, externalId: 외부 MCP 의 numeric/sha/timestamp id, summary: 한 줄 요약 — author + 짧은 발췌)",
         parameters: {
           handle: { type: "string", required: true },
           type: { type: "string", required: true },
@@ -1680,17 +1680,17 @@ export default async function agentToolkitPlugin(_input: unknown) {
           });
         },
       },
-      pr_event_pending: {
+      unstable_pr_event_pending: {
         description:
-          "한 PR 핸들의 미처리 이벤트 list. inbound 가 있고 같은 toolkitKey 의 resolved 가 없는 것만 시간 오름차순으로 반환. remote 호출 없음. (handle: PR 핸들)",
+          "UNSTABLE: 안정화 전 GitHub PR review watch 도구. 한 PR 핸들의 미처리 이벤트 list. inbound 가 있고 같은 toolkitKey 의 resolved 가 없는 것만 시간 오름차순으로 반환. remote 호출 없음. (handle: PR 핸들)",
         parameters: { handle: { type: "string", required: true } },
         async handler({ handle }: { handle: string }) {
           return handlePrEventPending(journal, handle);
         },
       },
-      pr_event_resolve: {
+      unstable_pr_event_resolve: {
         description:
-          "PR 이벤트 1 건의 검증 결과를 박는다 — accepted (수정/답글 완료) / rejected (반박 답글 완료) / deferred (다음 turn 으로 미룸). 같은 (type, externalId) 의 inbound 가 이미 있어야 의미가 있음. 외부 GitHub MCP 로의 reply post 자체는 caller (mindy) 가 직접 호출 — 그 commentId 를 `replyExternalId` 로 함께 박아 추후 추적. (handle, type, externalId, decision, reasoning: 한 줄 근거, replyExternalId?: 외부 MCP 가 돌려준 reply commentId)",
+          "UNSTABLE: 안정화 전 GitHub PR review watch 도구. PR 이벤트 1 건의 검증 결과를 박는다 — accepted (수정/답글 완료) / rejected (반박 답글 완료) / deferred (다음 turn 으로 미룸). 같은 (type, externalId) 의 inbound 가 이미 있어야 의미가 있음. 외부 GitHub MCP 로의 reply post 자체는 caller (mindy) 가 직접 호출 — 그 commentId 를 `replyExternalId` 로 함께 박아 추후 추적. (handle, type, externalId, decision, reasoning: 한 줄 근거, replyExternalId?: 외부 MCP 가 돌려준 reply commentId)",
         parameters: {
           handle: { type: "string", required: true },
           type: { type: "string", required: true },
@@ -1781,9 +1781,9 @@ export default async function agentToolkitPlugin(_input: unknown) {
           });
         },
       },
-      issue_create_from_spec: {
+      unstable_issue_create_from_spec: {
         description:
-          "잠긴 SPEC (slug 또는 path) 의 `# 합의 TODO` 를 GitHub epic + sub-issue 시리즈로 idempotent 하게 동기화한다. 마커 (<!-- spec-pact:slug=…:kind=epic|sub -->) 기반 — 같은 SPEC 재호출은 no-op, bullet 추가만 새 sub. dryRun=true (기본) 면 plan 만 반환하고 gh 호출은 list 한 번뿐. apply 는 dryRun=false. 인증 / repo 자동 감지는 gh CLI 가 처리 — gh 미설치 / 미인증 시 한 줄 가이드로 throw. (slug?: SPEC slug, path?: SPEC 경로 — 둘 중 하나, repo?: owner/name override (없으면 gh repo view), dryRun?: 기본 true)",
+          "UNSTABLE: 민준이 직접 테스트 후 안정화할 GitHub Issue sync 도구. 잠긴 SPEC (slug 또는 path) 의 `# 합의 TODO` 를 GitHub epic + sub-issue 시리즈로 idempotent 하게 동기화한다. 마커 (<!-- spec-pact:slug=…:kind=epic|sub -->) 기반 — 같은 SPEC 재호출은 no-op, bullet 추가만 새 sub. dryRun=true (기본) 면 plan 만 반환하고 gh 호출은 list 한 번뿐. apply 는 dryRun=false. 인증 / repo 자동 감지는 gh CLI 가 처리 — gh 미설치 / 미인증 시 한 줄 가이드로 throw. (slug?: SPEC slug, path?: SPEC 경로 — 둘 중 하나, repo?: owner/name override (없으면 gh repo view), dryRun?: 기본 true)",
         parameters: {
           slug: { type: "string", required: false },
           path: { type: "string", required: false },
@@ -1804,9 +1804,9 @@ export default async function agentToolkitPlugin(_input: unknown) {
           );
         },
       },
-      issue_status: {
+      unstable_issue_status: {
         description:
-          "SPEC 의 GitHub 동기화 plan 만 반환한다 (issue_create_from_spec 의 dryRun=true read-only alias). gh 호출은 issue list 한 번뿐. 어떤 epic/sub 가 이미 존재하는지, 새로 만들어질 항목이 무엇인지, orphan (사라진 bullet) 이 있는지 한눈에 본다. (slug?: SPEC slug, path?: SPEC 경로 — 둘 중 하나, repo?: owner/name override)",
+          "UNSTABLE: 민준이 직접 테스트 후 안정화할 GitHub Issue sync 도구. SPEC 의 GitHub 동기화 plan 만 반환한다 (unstable_issue_create_from_spec 의 dryRun=true read-only alias). gh 호출은 issue list 한 번뿐. 어떤 epic/sub 가 이미 존재하는지, 새로 만들어질 항목이 무엇인지, orphan (사라진 bullet) 이 있는지 한눈에 본다. (slug?: SPEC slug, path?: SPEC 경로 — 둘 중 하나, repo?: owner/name override)",
         parameters: {
           slug: { type: "string", required: false },
           path: { type: "string", required: false },
@@ -1816,9 +1816,9 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleIssueStatus(ghExecutor, journal, toolkitConfig, args);
         },
       },
-      gh_run: {
+      unstable_gh_run: {
         description:
-          '사용자 환경의 `gh` CLI 를 ad-hoc 호출. read 명령 (auth status / repo view / issue list / pr view / api default GET (body flag 없음) / search / gist list / gist view / ...) 은 즉시 실행. write 명령 (issue create / pr merge / label create / api --method POST / api ... body-bearing flag (-f / -F / --field / --raw-field / --input / -b / --body-file) 가 있으면 default POST → write / ...) 은 dryRun=true (기본) 면 plan 만, dryRun=false 로 명시해야 실행. 환경 변경 위험 명령 (auth login/logout/refresh/setup-git/token, extension *, alias *, config *, gist create|edit|delete|clone) 은 GhDeniedCommandError 로 거부 — gist 의 list/view 는 read 로 허용. (args: gh subcommand 부터 시작하는 문자열 배열 — 예: ["issue", "list", "--repo", "x/y"], dryRun?: write 호출에서만 의미 있음, 기본 true)',
+          'UNSTABLE: 민준이 직접 테스트 후 안정화할 GitHub passthrough 도구. 사용자 환경의 `gh` CLI 를 ad-hoc 호출. read 명령 (auth status / repo view / issue list / pr view / api default GET (body flag 없음) / search / gist list / gist view / ...) 은 즉시 실행. write 명령 (issue create / pr merge / label create / api --method POST / api ... body-bearing flag (-f / -F / --field / --raw-field / --input / -b / --body-file) 가 있으면 default POST → write / ...) 은 dryRun=true (기본) 면 plan 만, dryRun=false 로 명시해야 실행. 환경 변경 위험 명령 (auth login/logout/refresh/setup-git/token, extension *, alias *, config *, gist create|edit|delete|clone) 은 GhDeniedCommandError 로 거부 — gist 의 list/view 는 read 로 허용. (args: gh subcommand 부터 시작하는 문자열 배열 — 예: ["issue", "list", "--repo", "x/y"], dryRun?: write 호출에서만 의미 있음, 기본 true)',
         parameters: {
           args: {
             type: "array",
