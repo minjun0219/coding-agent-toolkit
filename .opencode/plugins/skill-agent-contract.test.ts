@@ -64,6 +64,7 @@ describe("skill/agent contract inventory", () => {
 
     expect(grace).toContain("GitHub Issue 동기화");
     expect(grace).toContain("gh-passthrough");
-    expect(grace).toContain("grace's finalize/lock authority covers the SPEC layer only");
+    expect(grace).toContain("finalize/lock authority");
+    expect(grace).toContain("SPEC 까지");
   });
 });

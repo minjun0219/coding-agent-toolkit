@@ -42,3 +42,4 @@
 
 - Skill contract tests can stay text-based by reading `allowed-tools` from markdown and comparing only against the plugin's registered tool keys plus native OpenCode primitives.
 - Forbidden-policy checks are stable when asserted as exact substrings on `rocky.md`, `grace.md`, `mindy.md`, and `skills/pr-review-watch/SKILL.md`.
+- When a wording check is too specific, prefer stable substrings already present in the file (`finalize/lock authority`, `SPEC 까지`) instead of a quoted paraphrase.
