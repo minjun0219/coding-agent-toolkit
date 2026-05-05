@@ -1467,7 +1467,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
       },
       openapi_refresh: {
         description:
-          "캐시를 무시하고 OpenAPI spec URL 에서 강제로 다시 가져와 캐시를 갱신한다. (input: spec URL 또는 host:env:spec handle)",
+          "캐시를 무시하고 OpenAPI spec URL 에서 강제로 다시 가져와 캐시를 갱신한다. (input: spec URL, agent-toolkit.json 의 host:env:spec handle, 또는 이미 캐시된 16-hex key)",
         parameters: { input: { type: "string", required: true } },
         async handler({ input }: { input: string }) {
           return handleSwaggerRefresh(openapi, input, registry);

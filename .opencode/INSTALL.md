@@ -92,9 +92,9 @@ Then verify the tools are registered:
 > use notion_status tool with input "<pageId or url>"
 > use notion_get tool with input "<pageId or url>"
 > use notion_extract tool with input "<pageId or url>" maxCharsPerChunk 1400
-> use swagger_status tool with input "<spec URL or host:env:spec handle>"
-> use swagger_get tool with input "<spec URL or host:env:spec handle>"
-> use swagger_envs tool   # flatten the registry from agent-toolkit.json
+> use openapi_status tool with input "<spec URL or host:env:spec handle>"
+> use openapi_get tool with input "<spec URL or host:env:spec handle>"
+> use openapi_envs tool   # flatten the registry from agent-toolkit.json
 > use journal_append tool with content "decided to ship Phase 3" kind "decision"
 > use journal_read tool   # most recent first
 > use spec_pact_fragment tool with mode "draft"   # Phase 6.A — returns the DRAFT mode body from the plugin's absolute path
@@ -143,11 +143,11 @@ Reject smoke (these MUST throw `MySQL read-only guard: …`):
 > use mysql_query tool with handle "<host:env:db>" sql "SELECT * FROM <t> INTO OUTFILE '/tmp/x'"
 ```
 
-The first call returns `fromCache: false` — remote is hit once. The second call returns `fromCache: true` (same policy for `notion_*` and `swagger_*`). `journal_*` does not hit any remote — it only reads / writes the local JSONL file.
+The first call returns `fromCache: false` — remote is hit once. The second call returns `fromCache: true` (same policy for `notion_*` and `openapi_*`). `journal_*` does not hit any remote — it only reads / writes the local JSONL file.
 
 ## OpenAPI registry (`agent-toolkit.json`)
 
-Once you write an `agent-toolkit.json`, the swagger tools accept short `host:env:spec` handles in addition to raw URLs. The project file (`./.opencode/agent-toolkit.json`) overrides the user file (`~/.config/opencode/agent-toolkit/agent-toolkit.json`) at the leaf level.
+Once you write an `agent-toolkit.json`, the OpenAPI tools accept short `host:env:spec` handles in addition to raw URLs. The project file (`./.opencode/agent-toolkit.json`) overrides the user file (`~/.config/opencode/agent-toolkit/agent-toolkit.json`) at the leaf level.
 
 ```jsonc
 {
@@ -167,8 +167,8 @@ Once you write an `agent-toolkit.json`, the swagger tools accept short `host:env
 After that:
 
 ```
-> use swagger_get tool with input "acme:dev:users"
-> use swagger_search tool with query "/pets" scope "acme:dev"
+> use openapi_get tool with input "acme:dev:users"
+> use openapi_search tool with query "/pets" scope "acme:dev"
 ```
 
 Identifier pattern is `^[a-zA-Z0-9_-]+$` — colons are reserved as the handle separator. URLs must parse and use `http`, `https`, or `file` scheme. If the config violates the schema, the plugin logs a single error line and falls back to an empty registry — the tools themselves keep working.
