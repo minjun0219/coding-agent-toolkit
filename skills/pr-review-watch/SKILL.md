@@ -1,6 +1,6 @@
 ---
 name: pr-review-watch
-description: Watch an existing GitHub PR for new review comments / reviews / check-runs / merge signals through polling, validate each comment against the codebase, draft a Korean reply or counter-argument, post the reply through the external GitHub MCP server, and unsubscribe on merge / close. PR creation and the actual merge stay outside the toolkit (Claude Code / `gh` CLI / external GitHub MCP own those). Conducted by the `mindy` sub-agent. The toolkit never calls the GitHub API itself — credentials live with the external MCP. Auto-trigger when a PR URL / `owner/repo#123` handle appears together with phrases like "PR review" / "리뷰 봐줘" / "코멘트 확인" / "머지까지 watch" / "리뷰 답글" / "PR drift".
+description: Watch an existing GitHub PR for new review comments / reviews / check-runs / merge signals through polling, validate each comment against the codebase, draft a Korean reply or counter-argument, post the reply through the external GitHub MCP server, and unsubscribe on merge / close. PR creation and the actual merge stay outside the toolkit (Claude Code / `gh` CLI / external GitHub MCP own those). Conducted by the `mindy` sub-agent. The toolkit never calls the GitHub API itself — credentials live with the external MCP. Auto-trigger only when a PR URL / `owner/repo#123` handle appears together with explicit review-watch phrases like "PR review" / "리뷰 봐줘" / "리뷰 확인" / "코멘트 확인" / "머지까지 watch" / "리뷰 답글" / "PR drift"; a bare PR link must not start watch.
 allowed-tools: [pr_watch_start, pr_watch_stop, pr_watch_status, pr_event_record, pr_event_pending, pr_event_resolve, journal_append, journal_read, journal_search, read, glob, grep]
 license: MIT
 version: 0.1.0
@@ -51,7 +51,7 @@ Recover full lifecycle history with `journal_search "pr-watch"` (= the same tag-
 
 1. **Toolkit tools never call GitHub.** The 6 `pr_*` tools only read / write the journal. GitHub fetch is always the caller's external MCP.
 2. **One mode per turn.** WATCH-START does not flow into PULL in the same turn; PULL does not flow into VALIDATE.
-3. **Polling is explicit.** PULL only runs when the user / caller asks; the skill does not loop or schedule.
+3. **Polling is explicit.** PULL only runs when the user / caller asks; the skill does not loop or schedule. A bare PR URL / handle is context, not a trigger.
 4. **Idempotency lives in the reducer.** `pr_event_record` returns `alreadySeen: true` when the same `(handle, type, externalId)` has *ever* been inbound (resolved 여부 무관) — mindy uses this to skip already-processed comments without disk dedup. GitHub list-comments 류는 매 polling 마다 과거 항목까지 반복 반환하므로, resolve 된 코멘트가 다시 들어와도 새 이벤트로 surface 되지 않는다.
 5. **`bash: deny`.** Even though the skill's `allowed-tools` does not include `bash`, mindy's frontmatter doubles down — never run `gh` CLI, `curl`, or `bun test` from this skill.
 6. **`pr_event_resolved` is single-author.** Only the conducting agent (mindy) writes it. Other agents / skills can suggest a decision; only mindy commits it.
