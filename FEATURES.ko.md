@@ -406,7 +406,7 @@ project (`./.opencode/agent-toolkit.json`) 가 user (`~/.config/opencode/agent-t
 | `openapi.registry` | `host:env:spec` 핸들 → spec URL | `{ [host]: { [env]: { [spec]: "https://…" } } }` | 식별자는 `^[a-zA-Z0-9_-]+$`, URL 은 비어 있지 않은 문자열. YAML 미지원. |
 | `spec.dir` / `spec.scanDirectorySpec` / `spec.indexFile` | `spec-pact` 의 SPEC 레이아웃 | `string` / `boolean` / `string` | 기본 `.agent/specs` / `true` / `INDEX.md`. |
 | `mysql.connections` | `host:env:db` 핸들 → MySQL 프로파일 | `{ [host]: { [env]: { [db]: { passwordEnv } | { dsnEnv } } } }` | **이 파일에 평문 비밀번호 / DSN 을 박는 것은 loader 가 거부한다.** `passwordEnv` (`host` / `user` / `database` / 선택 `port` 와 함께) 또는 `dsnEnv` (한 줄짜리 `mysql://user:pass@host:port/db` env 변수) 중 정확히 하나만 사용. |
-| `github.repositories` | PR review watch 의 `owner/repo` allow-list | `{ alias?, labels?, defaultBranch?, mergeMode? }` | 토큰 / 시크릿 leaf 는 거부 — 인증은 외부 GitHub MCP. `mergeMode ∈ {"merge", "squash", "rebase"}`. |
+| `github.repositories` | PR review watch 의 `owner/repo` allow-list | `{ [owner/repo]: { alias?, labels?, defaultBranch?, mergeMode? } }` | 키는 `^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$` (정확히 슬래시 1 개, 예: `minjun0219/agent-toolkit`) — `host:env:spec` / `host:env:db` 의 콜론 핸들과 다른 형식. 토큰 / 시크릿 leaf 는 거부 — 인증은 외부 GitHub MCP. `mergeMode ∈ {"merge", "squash", "rebase"}`. |
 | `github.repo` / `github.defaultLabels` | `spec-to-issues` 의 default repo / dedupe 라벨 | `string` / `string[]` | `defaultLabels` 기본 `["spec-pact"]`, index 0 이 dedupe 필터. repo 우선순위: tool param > config > `gh` 자동 감지. |
 
 ## 저장소 레이아웃

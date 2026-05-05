@@ -144,7 +144,8 @@ MySQL 자격증명용 env 변수는 사용자가 직접 이름을 정한다 — 
 ```
 
 핵심 가드레일:
-- `openapi.registry` / `mysql.connections` / `github.repositories` 의 식별자는 `^[a-zA-Z0-9_-]+$` (콜론은 핸들 separator 로 예약).
+- `openapi.registry` / `mysql.connections` 의 host / env / spec / db 식별자는 `^[a-zA-Z0-9_-]+$` (콜론은 핸들 separator 로 예약).
+- `github.repositories` 의 키는 `owner/repo` 형식 — 정확히 1 개의 슬래시 + 양쪽 모두 `[a-zA-Z0-9_.-]+` (예: `minjun0219/agent-toolkit`).
 - `mysql.connections` leaf 에 평문 비밀번호 / DSN 을 두면 loader 가 reject — 항상 `passwordEnv` 또는 `dsnEnv` 로 env 변수 *이름* 만 가리키게 한다.
 - `github.repositories` leaf 에 `token` / `passwordEnv` / `apiKey` 같은 시크릿 의도 키는 reject — GitHub 인증은 외부 GitHub MCP / `gh` CLI 책임.
 
