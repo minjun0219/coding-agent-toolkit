@@ -1,6 +1,6 @@
 ---
 name: spec-to-issues
-description: Sync a locked SPEC (under `<spec.dir>/<slug>.md` or `**/SPEC.md`) into a GitHub epic + sub-issue series via the user's `gh` CLI. Idempotent — re-runs are no-ops, additive bullets create only the new sub. Two-step flow — `dryRun: true` first to inspect the plan, then `dryRun: false` to apply. Conducted by `rocky` (NOT `grace` — grace's finalize/lock authority stops at the SPEC; GitHub-side state is rocky's surface). Auto-trigger when a SPEC slug or path appears together with phrases like "이슈로 만들어줘" / "GitHub 이슈 동기화" / "issue 시리즈로 쪼개줘" / "이슈 상태 보여줘".
+description: Sync a locked SPEC (under `<spec.dir>/<slug>.md` or `**/SPEC.md`) into a GitHub epic + sub-issue series via the user's `gh` CLI. Idempotent — re-runs are no-ops, additive bullets create only the new sub. Two-step flow — `issue_status` (or `dryRun: true`) first to inspect the plan, then `dryRun: false` to apply. `issue_status` 는 journal 을 남기지 않는 read-only 관측용. Conducted by `rocky` (NOT `grace` — grace's finalize/lock authority stops at the SPEC; GitHub-side state is rocky's surface). Auto-trigger when a SPEC slug or path appears together with phrases like "이슈로 만들어줘" / "GitHub 이슈 동기화" / "issue 시리즈로 쪼개줘" / "이슈 상태 보여줘".
 allowed-tools: [issue_create_from_spec, issue_status, journal_append, journal_read, journal_search, read]
 license: MIT
 version: 0.1.0

@@ -48,7 +48,7 @@ $ gh auth login --scopes "repo"   # 미인증 시
 |---|---|---|
 | **read** | 즉시 실행, dryRun 무시 | `auth status` / `repo view` / `issue list|view|status` / `pr list|view|status|diff|checks` / `label list` / `release list|view` / `search ...` / `api ...` (default GET — body flag 없음) / `workflow list|view` / `run list|view|watch` |
 | **write** | dryRun=true 면 plan, false 면 실행 | `issue create|edit|close|reopen|delete|comment|...` / `pr create|edit|merge|close|...` / `repo create|edit|delete|fork|...` / `label create|edit|delete` / `release create|edit|delete` / `api --method POST|PUT|PATCH|DELETE` / `api ...` **body-bearing flag** (`-f` / `-F` / `--field` / `--raw-field` / `--input` / `-b` / `--body-file`) 가 하나라도 있으면 default POST → write |
-| **deny** | 즉시 throw | `auth login|logout|refresh|setup-git|token` / `extension *` / `alias *` / `config *` / `gist create|edit|delete|clone` / 알 수 없는 subcommand |
+| **deny** | 즉시 throw | `auth login|logout|refresh|setup-git|token` / `extension *` / `alias *` / `config *` / `gist create|edit|delete|clone` / `pr merge` (Mindy 도 Rocky 도 머지는 직접 안 함) / 알 수 없는 subcommand |
 
 `gh api` 의 method 결정: 명시적 `--method <verb>` / `-X <verb>` / `--method=<verb>` 가 우선. 그 외엔 `gh api` 매뉴얼대로 — body-bearing flag (`-f` / `-F` / `--field` / `--raw-field` / `--input` / `-b` / `--body-file` 또는 attached form `--field=...`) 가 있으면 **default POST** (write), 없으면 default GET (read). 즉 `gh api repos/x/y/issues -f title=...` 는 method 미지정이라도 write 로 분류되어 dryRun guard 를 통과한다.
 
