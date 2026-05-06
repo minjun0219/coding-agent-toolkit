@@ -353,7 +353,7 @@ Each skill bundles a small surface of tools into a step-by-step prompt. Skills l
 
 ### `pr-review-watch`
 
-- **Conducted by**: `mindy` (sole authority over `unstable_pr_event_resolved`). Trigger only when the user explicitly asks to review/check/watch; a PR URL/handle alone is not enough.
+- **Conducted by**: `mindy` (sole authority over `pr_event_resolved`). Trigger only when the user explicitly asks to review/check/watch; a PR URL/handle alone is not enough.
 - **Modes**: `WATCH-START`, `PULL`, `VALIDATE`, `WATCH-STOP`.
 - **Tools used**: `unstable_pr_watch_start`, `unstable_pr_watch_stop`, `unstable_pr_watch_status`, `unstable_pr_event_record`, `unstable_pr_event_pending`, `unstable_pr_event_resolve`, `journal_append`, `journal_read`, `journal_search`, opencode's `read` / `glob` / `grep`. **External GitHub MCP must be registered in the opencode session** so `mindy` can fetch PR meta, comments, replies, and merge state.
 - **PR handle**: `owner/repo#NUMBER` or a github.com PR URL. Journal-side handle is the tag `pr:<canonical>`; the `pageId` slot is intentionally unused (Notion id pattern doesn't match).

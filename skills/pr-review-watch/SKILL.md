@@ -43,13 +43,13 @@ Recover full lifecycle history with `journal_search "pr-watch"` (= the same tag-
 
 ## Inputs
 
-- **PR handle** — `owner/repo#123` or `https://github.com/owner/repo/pull/123`. The `pr_*` tools normalize it.
+- **PR handle** — `owner/repo#123` or `https://github.com/owner/repo/pull/123`. The `unstable_pr_*` tools normalize it.
 - **External MCP results** — caller (mindy) collects raw payloads from `mcp__github__pull_request_read` etc. and feeds each event into `unstable_pr_event_record` one at a time.
 - **Validation context** — for VALIDATE, mindy reads the local code with `read` / `glob` / `grep` only. mindy does **not** run `bun test` / `tsc` / lint commands itself (`bash: deny`); when the user wants type / test backing, they run those externally and tell mindy the result in one line.
 
 ## Tool usage rules
 
-1. **Toolkit tools never call GitHub.** The 6 `pr_*` tools only read / write the journal. GitHub fetch is always the caller's external MCP.
+1. **Toolkit tools never call GitHub.** The 6 `unstable_pr_*` tools only read / write the journal. GitHub fetch is always the caller's external MCP.
 2. **One mode per turn.** WATCH-START does not flow into PULL in the same turn; PULL does not flow into VALIDATE.
 3. **Polling is explicit.** PULL only runs when the user / caller asks; the skill does not loop or schedule. A bare PR URL / handle is context, not a trigger.
 4. **Idempotency lives in the reducer.** `unstable_pr_event_record` returns `alreadySeen: true` when the same `(handle, type, externalId)` has *ever* been inbound (resolved 여부 무관) — mindy uses this to skip already-processed comments without disk dedup. GitHub list-comments 류는 매 polling 마다 과거 항목까지 반복 반환하므로, resolve 된 코멘트가 다시 들어와도 새 이벤트로 surface 되지 않는다.
@@ -62,7 +62,7 @@ Register a PR for review watch.
 
 ### Steps
 
-1. **Read the journal.** `journal_read({ tag: "pr:<canonical>", limit: 50 })` — quote any prior `unstable_pr_watch_start` / `unstable_pr_watch_stop` so the user knows whether this is a re-start.
+1. **Read the journal.** `journal_read({ tag: "pr:<canonical>", limit: 50 })` — quote any prior `pr_watch_start` / `pr_watch_stop` so the user knows whether this is a re-start.
 2. **Optionally read `agent-toolkit.json`'s `github.repositories`** — when the repo is registered, surface its `defaultBranch` / `mergeMode` / `labels` for context. When unregistered, proceed anyway — registration is advisory, not mandatory.
 3. **Call `unstable_pr_watch_start`** with the handle plus optional `note` / `labels` / `mergeMode`.
 4. **Return**: a one-line confirmation + the next-step hint (run PULL when new comments are expected).

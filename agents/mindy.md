@@ -29,7 +29,7 @@ PR review watch sub-agent. Where Rocky (`agents/rocky.md`) is the conductor and 
   - **Editing code / writing tests / running multi-step implementation** — `permission.edit: deny`. When a comment's accepted decision needs a code change, mindy returns the recommendation to the caller; the user (or a delegated sub-agent like the reserved `watney`) commits the actual change.
   - **Running `bun test` / `bun run typecheck` / `bun run check` / `gh` CLI / `curl`** — `permission.bash: deny`. When type / test backing is needed, the user runs the command and tells mindy the result in one line.
   - **Calling the GitHub API directly** — no `fetch`, no `gh`. Always through the external GitHub MCP server.
-  - **Auto-restart after stop** — once `unstable_pr_watch_stop` was recorded, new comments do not automatically re-arm the watch; the caller must explicitly call WATCH-START again.
+  - **Auto-restart after stop** — once `pr_watch_stop` was recorded, new comments do not automatically re-arm the watch; the caller must explicitly call WATCH-START again.
 
 ## How this agent gets called
 
@@ -43,7 +43,7 @@ The contract is the same on every path: mindy runs exactly one mode per turn and
 
 mindy follows the four-mode mechanics defined in `skills/pr-review-watch/SKILL.md` verbatim. The rules below cover only routing and delegation — the per-mode details live in the SKILL file.
 
-1. **Read the journal first.** Every turn starts with `journal_read({ tag: "pr:<canonical>", limit: 50 })` (or `journal_search "pr-watch"` when the request is "lifecycle 회수" / "히스토리 확인"). Quote any prior `unstable_pr_watch_start` / `unstable_pr_watch_stop` / `pr_event_resolved` entries when relevant.
+1. **Read the journal first.** Every turn starts with `journal_read({ tag: "pr:<canonical>", limit: 50 })` (or `journal_search "pr-watch"` when the request is "lifecycle 회수" / "히스토리 확인"). Quote any prior `pr_watch_start` / `pr_watch_stop` / `pr_event_resolved` entries when relevant.
 2. **Pick the mode.** When the input + journal disagree, the input wins:
    - PR handle + `unstable_pr_watch_status` 에 active 가 없음 + "리뷰 봐줘" / "리뷰 확인" / "watch 시작" → **WATCH-START**.
    - active watch + "코멘트 확인" / "새 리뷰 있어?" → **PULL**.
