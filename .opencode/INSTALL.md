@@ -2,51 +2,90 @@
 
 Add this repository to the `plugin` array in `opencode.json` and restart opencode.
 
+Recommended while opencode `1.14.x` package-plugin git installs are uneven: use a local checkout directly.
+
+```bash
+git clone https://github.com/minjun0219/agent-toolkit.git /absolute/path/to/agent-toolkit
+cd /absolute/path/to/agent-toolkit
+bun install
+```
+
 ```json
 {
-  "plugin": [
-    "agent-toolkit@git+https://github.com/minjun0219/agent-toolkit.git"
-  ]
+  "plugin": ["/absolute/path/to/agent-toolkit"]
 }
 ```
 
-Or, to use a local checkout directly:
-
-```json
-{
-  "plugin": ["./path/to/agent-toolkit"]
-}
-```
+Known issue: on opencode `1.14.x`, registering `"agent-toolkit@git+https://github.com/minjun0219/agent-toolkit.git"` can create a cache wrapper package whose `package.json` only points at `node_modules/agent-toolkit`. That wrapper is not the real plugin package, so entrypoint verification and agent-file fallback must resolve the nested package first.
 
 ## Installation Verification
 
-opencode installs package plugins under its cache, not the consumer project's `node_modules`. Verify the installed package metadata and server module from the actual package directory:
+opencode installs package plugins under its cache, not the consumer project's `node_modules`. Verify the installed package metadata and server module from the actual package directory. For local checkout installs, set `PLUGIN_DIR` to the checkout path.
 
 ```bash
-PLUGIN_DIR=$(ls -d "$HOME"/.cache/opencode/packages/agent-toolkit@* | sort | tail -1)
-PLUGIN_DIR="$PLUGIN_DIR" bun -e 'const dir=process.env.PLUGIN_DIR; if (!dir) throw new Error("PLUGIN_DIR is required"); const p=await Bun.file(`${dir}/package.json`).json(); const root=p.exports?.["."]?.import; const server=p.exports?.["./server"]?.import; if (p.main!=="./.opencode/plugins/agent-toolkit-server.ts" || root!==p.main || server!==p.main) throw new Error("bad agent-toolkit entrypoint"); const mod=await import(`${dir}/${root.slice(2)}`); console.log("agent-toolkit root:", typeof mod.default)'
+PLUGIN_DIR="/absolute/path/to/agent-toolkit"
+# For a package-cache install instead, start from the cache dir:
+# PLUGIN_DIR=$(ls -d "$HOME"/.cache/opencode/packages/agent-toolkit@* | sort | tail -1)
+
+PLUGIN_DIR="$PLUGIN_DIR" bun - <<'EOF'
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+let dir = process.env.PLUGIN_DIR;
+if (!dir) throw new Error("PLUGIN_DIR is required");
+
+// opencode 1.14.x git installs may create a wrapper package whose real package
+// is nested at node_modules/agent-toolkit.
+const nested = join(dir, "node_modules", "agent-toolkit");
+if (existsSync(join(nested, "package.json"))) dir = nested;
+
+const p = await Bun.file(join(dir, "package.json")).json();
+const root = p.exports?.["."]?.import;
+const server = p.exports?.["./server"]?.import;
+if (p.main !== "./.opencode/plugins/agent-toolkit-server.ts" || root !== p.main || server !== p.main) {
+  throw new Error(`bad agent-toolkit entrypoint at ${dir}`);
+}
+const mod = await import(join(dir, root.slice(2)));
+console.log("agent-toolkit dir:", dir);
+console.log("agent-toolkit root:", typeof mod.default);
+EOF
 ```
 
-- **Expected output**: `agent-toolkit root: function`
-- For a local checkout plugin, set `PLUGIN_DIR` to that checkout path instead of using the cache lookup.
+- **Expected output**: `agent-toolkit root: function`.
 
 ## Troubleshooting: Agents Not Showing Up
 
-If `rocky`, `grace`, or `mindy` agents do not appear in `opencode agent list` (common on opencode `1.14.33` + Bun `1.3.11` + macOS), you can manually expose them to your project:
+First check the resolved config and direct agent lookup after restarting opencode:
+
+```bash
+opencode debug config | grep -E '"plugin"|"rocky"|"grace"|"mindy"'
+opencode debug agent rocky
+opencode debug agent grace
+opencode debug agent mindy
+```
+
+On opencode `1.14.x`, plugin-provided `config.agent.*` entries can be present in `opencode debug config` / `opencode debug agent <name>` but still absent from `opencode agent list`. In that state, the plugin is loaded, but the list command is not a reliable visibility check.
+
+If you need the agents to appear in `opencode agent list`, or `opencode debug agent <name>` fails, expose them project-locally:
 
 1. Create the project-local agent directory:
    ```bash
    mkdir -p .opencode/agents
    ```
-2. Copy the agent files from the installed package cache:
+2. Copy the agent files from the real package directory:
    ```bash
-   PLUGIN_DIR=$(ls -d "$HOME"/.cache/opencode/packages/agent-toolkit@* | sort | tail -1)
+   PLUGIN_DIR="/absolute/path/to/agent-toolkit"
+   # If starting from an opencode package cache wrapper, resolve the nested package:
+   [ -d "$PLUGIN_DIR/node_modules/agent-toolkit/agents" ] && PLUGIN_DIR="$PLUGIN_DIR/node_modules/agent-toolkit"
+
    cp "$PLUGIN_DIR/agents/rocky.md" .opencode/agents/
    cp "$PLUGIN_DIR/agents/grace.md" .opencode/agents/
    cp "$PLUGIN_DIR/agents/mindy.md" .opencode/agents/
    ```
-
-*Note: For a local checkout plugin, set `PLUGIN_DIR` to that checkout path instead of using the cache lookup.*
+3. Re-run:
+   ```bash
+   opencode agent list | grep -E '^(rocky|grace|mindy) '
+   ```
 
 ### GitHub Transport Policy
 
