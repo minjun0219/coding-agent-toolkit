@@ -13,6 +13,7 @@ const SKILL_FILES = [
   "skills/spec-to-issues/SKILL.md",
   "skills/pr-review-watch/SKILL.md",
   "skills/gh-passthrough/SKILL.md",
+  "skills/seo-validation/SKILL.md",
 ] as const;
 
 const NATIVE_ALLOWED_TOOLS = new Set(["read", "write", "edit", "glob", "grep"]);

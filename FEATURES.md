@@ -6,8 +6,8 @@
 
 ## At a glance
 
-- **28 tools** across 8 categories
-- **7 skills** (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`)
+- **29 tools** across 9 categories
+- **8 skills** (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`, `seo-validation`)
 - **3 agents** (`rocky`, `grace`, `mindy`)
 - **One config file** — `agent-toolkit.json` (project `./.opencode/agent-toolkit.json` overrides user `~/.config/opencode/agent-toolkit/agent-toolkit.json`)
 - **Runtime**: Bun ≥ 1.0, opencode-only. No build step.
@@ -314,6 +314,19 @@ Generic ad-hoc passthrough to the user's `gh` CLI for anything that doesn't fit 
 - **Side effects**: every call (read / dry-run / applied) appends a journal entry tagged `["gh-passthrough", "read" | "dry-run" | "applied"]`. Read calls and applied write calls also invoke `gh` on the user's machine.
 - **Related config**: none directly (the `gh` CLI handles its own auth and `~/.config/gh/`).
 
+### SEO validation (`seo_validate`)
+
+Single-URL Open Graph / Twitter Card / JSON-LD / favicon metadata validation, powered by the `ogpeek` library (npm `ogpeek@^0.5.0`).
+
+#### `seo_validate`
+
+- **What**: Fetch one http(s) URL and run `ogpeek.parse` on the body. Returns a curated `summary` (finalUrl / redirects / og:title / og:description / og:image / og:type / og:url / canonical / errors / warnings / info / hasJsonLd / hasFavicon / iconCount) plus the full `raw: OgDebugResult`. SSRF guard blocks private / loopback / link-local / IPv6 ULA hosts by default.
+- **Input**: `url: string` (required, http/https only), `timeoutMs?: number` (1..30000, default 8000), `allowPrivateHosts?: boolean` (default falls back to `seo.allowPrivateHosts ?? false`).
+- **Output**: `{ summary: SeoValidateSummary, raw: OgDebugResult }`. `summary.errors`/`warnings`/`info` are partitions of `raw.warnings` by severity (`error` / `warn` / `info`). Warning codes follow ogpeek's catalog: `OG_TITLE_MISSING`, `OG_TITLE_TOO_LONG`, `OG_TYPE_MISSING`, `OG_IMAGE_MISSING`, `OG_URL_MISSING`, `OG_URL_MISMATCH`, `OG_TYPE_UNKNOWN`, `URL_NOT_ABSOLUTE`, `DUPLICATE_SINGLETON`, `ORPHAN_STRUCTURED_PROPERTY`, `INVALID_DIMENSION`, `MISSING_PREFIX_ATTR`, `JSONLD_PARSE_ERROR`.
+- **Owner**: `seo-validation` skill, conducted by `rocky`.
+- **Side effects**: one outbound HTTP request per call (≤ 5 redirect hops, ≤ 5 MiB body cap from ogpeek). No journal entry by default — append only when the user explicitly asks to log.
+- **Related config**: `seo.allowPrivateHosts` (default `false`), `seo.timeoutMs` (default `8000`). Tool-call arguments win over config.
+
 ## Skills
 
 Each skill bundles a small surface of tools into a step-by-step prompt. Skills live under `skills/<name>/SKILL.md`.
@@ -365,6 +378,13 @@ Each skill bundles a small surface of tools into a step-by-step prompt. Skills l
 - **Tools used**: `gh_run`, `journal_append`, `journal_read`, `journal_search`.
 - **Contract**: dryRun-first for write commands. Read commands run immediately; environment-affecting and high-impact commands are denied at the tool level (see `gh_run`).
 
+### `seo-validation`
+
+- **Conducted by**: `rocky`.
+- **Tools used**: `seo_validate`, `journal_append`.
+- **Purpose**: Validate Open Graph / Twitter Card / JSON-LD / favicon metadata on a single http(s) URL and surface a Korean-language markdown report (table + 에러 / 경고 / 권고). One URL per turn — multi-URL or sitemap requests are out of scope.
+- **SSRF policy**: Guard is on by default. Toggle off only when the user explicitly requests an internal scan; pass `allowPrivateHosts: true` per call or set `seo.allowPrivateHosts: true` in `agent-toolkit.json`.
+
 ## Agents
 
 Each agent's full prompt and exact tool / permission frontmatter live under `agents/<name>.md`. The summary below covers mode, permissions, and routing rules.
@@ -409,6 +429,7 @@ Project (`./.opencode/agent-toolkit.json`) overrides user (`~/.config/opencode/a
 | `mysql.connections` | `host:env:db` handle → MySQL profile | `{ [host]: { [env]: { [db]: { passwordEnv } | { dsnEnv } } } }` | **Plaintext passwords / DSNs in this file are rejected by the loader.** Use `passwordEnv` (with `host` / `user` / `database` / optional `port`) or `dsnEnv` (single `mysql://user:pass@host:port/db` env var) — exactly one of the two. |
 | `github.repositories` | `owner/repo` allow-list for PR review watch | `{ [owner/repo]: { alias?, labels?, defaultBranch?, mergeMode? } }` | Keys must match `^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$` (exactly one slash, e.g. `minjun0219/agent-toolkit`) — different from the colon-separated `host:env:spec` / `host:env:db` handles. Token / secret leaves are rejected — auth lives with the external GitHub MCP. `mergeMode ∈ {"merge", "squash", "rebase"}`. |
 | `github.repo` / `github.defaultLabels` | Default repo and dedupe labels for `spec-to-issues` | `string` / `string[]` | `defaultLabels` defaults to `["spec-pact"]`; index 0 is the dedupe filter. Repo precedence: tool param > config > `gh` auto-detect. |
+| `seo.allowPrivateHosts` / `seo.timeoutMs` | `seo_validate` defaults | `boolean` / `integer` | `allowPrivateHosts` defaults to `false` — block private / loopback / link-local / IPv6 ULA hosts. `timeoutMs` defaults to `8000` (1..30000). Tool-call arguments win over config. |
 
 ## Storage layout
 
