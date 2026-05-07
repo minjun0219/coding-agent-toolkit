@@ -1,4 +1,3 @@
-import { diffLines } from "diff";
 import { contentHash } from "./notion-context";
 
 const MAX_PREVIEW_CHARS = 1200;
@@ -27,6 +26,7 @@ export interface NotionMarkdownDiff {
 
 interface MarkdownSection {
   path: string;
+  basePath: string;
   content: string;
   lineCount: number;
   hash: string;
@@ -43,26 +43,50 @@ function trimPreview(text: string): string {
   return `${trimmed.slice(0, MAX_PREVIEW_CHARS).trimEnd()}\n…`;
 }
 
-function makeUniquePath(path: string, counts: Map<string, number>): string {
-  const next = (counts.get(path) ?? 0) + 1;
-  counts.set(path, next);
-  return next === 1 ? path : `${path} #${next}`;
+function isFenceBoundary(line: string): boolean {
+  return /^\s*(```|~~~)/.test(line);
+}
+
+function assignStableDuplicatePaths(
+  sections: MarkdownSection[],
+): MarkdownSection[] {
+  const groups = new Map<string, MarkdownSection[]>();
+  for (const section of sections) {
+    const existing = groups.get(section.basePath) ?? [];
+    existing.push(section);
+    groups.set(section.basePath, existing);
+  }
+
+  const pathCounts = new Map<string, number>();
+  return sections.map((section) => {
+    const group = groups.get(section.basePath) ?? [];
+    const path =
+      group.length === 1
+        ? section.basePath
+        : `${section.basePath} [${section.hash.slice(0, 8)}]`;
+    const next = (pathCounts.get(path) ?? 0) + 1;
+    pathCounts.set(path, next);
+    return {
+      ...section,
+      path: next === 1 ? path : `${path} #${next}`,
+    };
+  });
 }
 
 export function splitMarkdownSections(markdown: string): MarkdownSection[] {
   const lines = markdown.split(/\r?\n/);
   const sections: MarkdownSection[] = [];
   const headingStack: string[] = [];
-  const pathCounts = new Map<string, number>();
   let currentPath = "(preamble)";
   let currentLines: string[] = [];
+  let inFence = false;
 
   const flush = () => {
     const content = currentLines.join("\n").trim();
     if (!content) return;
-    const path = makeUniquePath(currentPath, pathCounts);
     sections.push({
-      path,
+      path: currentPath,
+      basePath: currentPath,
       content,
       lineCount: lineCount(content),
       hash: contentHash(content),
@@ -70,7 +94,13 @@ export function splitMarkdownSections(markdown: string): MarkdownSection[] {
   };
 
   for (const line of lines) {
-    const match = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (isFenceBoundary(line)) {
+      inFence = !inFence;
+      currentLines.push(line);
+      continue;
+    }
+
+    const match = inFence ? null : line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
     if (match) {
       flush();
       const level = match[1]!.length;
@@ -85,26 +115,62 @@ export function splitMarkdownSections(markdown: string): MarkdownSection[] {
   }
   flush();
 
-  return sections;
+  return assignStableDuplicatePaths(sections);
+}
+
+function lineDiffPreview(
+  previousContent: string,
+  currentContent: string,
+): string {
+  const previousLines = previousContent.split(/\r?\n/);
+  const currentLines = currentContent.split(/\r?\n/);
+  const rows = previousLines.length + 1;
+  const cols = currentLines.length + 1;
+  const lengths = Array.from({ length: rows }, () =>
+    Array<number>(cols).fill(0),
+  );
+
+  for (let i = previousLines.length - 1; i >= 0; i--) {
+    for (let j = currentLines.length - 1; j >= 0; j--) {
+      lengths[i]![j] =
+        previousLines[i] === currentLines[j]
+          ? lengths[i + 1]![j + 1]! + 1
+          : Math.max(lengths[i + 1]![j]!, lengths[i]![j + 1]!);
+    }
+  }
+
+  const changed: string[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < previousLines.length && j < currentLines.length) {
+    if (previousLines[i] === currentLines[j]) {
+      i++;
+      j++;
+    } else if (lengths[i + 1]![j]! >= lengths[i]![j + 1]!) {
+      if (previousLines[i]!.trim()) changed.push(`- ${previousLines[i]}`);
+      i++;
+    } else {
+      if (currentLines[j]!.trim()) changed.push(`+ ${currentLines[j]}`);
+      j++;
+    }
+  }
+  while (i < previousLines.length) {
+    if (previousLines[i]!.trim()) changed.push(`- ${previousLines[i]}`);
+    i++;
+  }
+  while (j < currentLines.length) {
+    if (currentLines[j]!.trim()) changed.push(`+ ${currentLines[j]}`);
+    j++;
+  }
+
+  return changed.join("\n");
 }
 
 function sectionPreview(
   previousContent: string,
   currentContent: string,
 ): string {
-  const parts = diffLines(previousContent, currentContent);
-  const rendered = parts
-    .filter((part) => part.added || part.removed)
-    .map((part) => {
-      const prefix = part.added ? "+" : "-";
-      return part.value
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0)
-        .map((line) => `${prefix} ${line}`)
-        .join("\n");
-    })
-    .filter(Boolean)
-    .join("\n");
+  const rendered = lineDiffPreview(previousContent, currentContent);
   return trimPreview(rendered || currentContent || previousContent);
 }
 
