@@ -1,7 +1,7 @@
 ---
 name: gh-passthrough
-description: Run ad-hoc `gh` CLI commands through the `gh_run` plugin tool. Read commands (auth status / repo view / issue list / pr view / api default GET / search / gist list|view / ...) execute immediately. Write commands (issue create / label create / api --method POST / api with body flags `-f`/`-F`/`--field`/`--input`/`--body-file` — default POST → write / ...) are guarded by `dryRun: true` (default) — caller must explicitly pass `dryRun: false` to apply. Denied commands (`pr merge`, `repo edit|delete`, `release delete`, `workflow run|enable|disable`, `run rerun|cancel`, `auth login|logout|refresh|setup-git|token`, `extension *`, `alias *`, `config *`, `gist create|edit|delete|clone`) throw `GhDeniedCommandError` immediately — `gist list|view` itself is allowed as read. All calls (read / dry-run / applied) produce a journal entry. Conducted by `rocky`. Auto-trigger when the user wants to inspect or mutate GitHub state outside the spec-to-issues flow — e.g. "이슈 검색해줘", "label 만들어줘", "GitHub API 로 release 한번 봐줘".
-allowed-tools: [gh_run, journal_append, journal_read, journal_search]
+description: UNSTABLE tool surface (`unstable_gh_run`) for testing; run ad-hoc `gh` CLI commands through the `unstable_gh_run` plugin tool. Read commands (auth status / repo view / issue list / pr view / api default GET / search / gist list|view / ...) execute immediately. Write commands (issue create / label create / api --method POST / api with body flags `-f`/`-F`/`--field`/`--input`/`--body-file` — default POST → write / ...) are guarded by `dryRun: true` (default) — caller must explicitly pass `dryRun: false` to apply. Denied commands (`pr merge`, `repo edit|delete`, `release delete`, `workflow run|enable|disable`, `run rerun|cancel`, `auth login|logout|refresh|setup-git|token`, `extension *`, `alias *`, `config *`, `gist create|edit|delete|clone`) throw `GhDeniedCommandError` immediately — `gist list|view` itself is allowed as read. All calls (read / dry-run / applied) produce a journal entry. Conducted by `rocky`. Auto-trigger when the user wants to inspect or mutate GitHub state outside the spec-to-issues flow — e.g. "이슈 검색해줘", "label 만들어줘", "GitHub API 로 release 한번 봐줘".
+allowed-tools: [unstable_gh_run, journal_append, journal_read, journal_search]
 license: MIT
 version: 0.1.0
 ---
@@ -29,7 +29,7 @@ caller  ──► rocky  ──► gh-passthrough
 
 ## Precondition
 
-`gh` CLI 가 설치 + 인증되어 있어야 한다. plugin 이 매 호출마다 `gh auth status` 를 verify (단 `gh_run` 의 첫 인자가 `auth` 면 skip — verify 가 곧 본 호출).
+`gh` CLI 가 설치 + 인증되어 있어야 한다. plugin 이 매 호출마다 `gh auth status` 를 verify (단 `unstable_gh_run` 의 첫 인자가 `auth` 면 skip — verify 가 곧 본 호출).
 
 ```
 $ gh --version           # gh ≥ 2.40 권장
@@ -59,7 +59,7 @@ $ gh auth login --scopes "repo"   # 미인증 시
 3. **Do not retry on `GhAuthError` / `GhNotInstalledError` / `GhDeniedCommandError`.** 한 줄 가이드 surface 후 stop.
 4. **Do not bypass deny via shell tricks.** plugin 의 분류는 args[0..1] 기반이지만, agent 가 `["sh", "-c", "gh auth login"]` 같은 우회를 시도하지 말 것 — 정책 위반.
 5. **Do not parse stdout silently.** raw passthrough 가 원칙. JSON parsing 이 필요하면 `--json` flag 로 gh 가 정규화한 JSON 을 받고, agent 가 명시적으로 파싱.
-6. **Use `spec-to-issues` instead** when the task is "잠긴 SPEC 을 epic + sub 시리즈로". `gh_run` 은 SPEC 과 무관한 ad-hoc 호출용.
+6. **Use `spec-to-issues` instead** when the task is "잠긴 SPEC 을 epic + sub 시리즈로". `unstable_gh_run` 은 SPEC 과 무관한 ad-hoc 호출용.
 
 ## Output format
 
@@ -88,7 +88,7 @@ $ gh auth login --scopes "repo"   # 미인증 시
 gh <args...>
 
 ## 다음 단계
-- 그대로 실행: `gh_run({ args: [...], dryRun: false })`
+- 그대로 실행: `unstable_gh_run({ args: [...], dryRun: false })`
 - 명령을 수정하려면 args 를 바꿔서 다시 dryRun.
 ```
 

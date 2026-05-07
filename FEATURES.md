@@ -11,7 +11,8 @@
 - **3 agents** (`rocky`, `grace`, `mindy`)
 - **One config file** — `agent-toolkit.json` (project `./.opencode/agent-toolkit.json` overrides user `~/.config/opencode/agent-toolkit/agent-toolkit.json`)
 - **Runtime**: Bun ≥ 1.0, opencode-only. No build step.
-- **GitHub transport policy**: gh CLI for write, external GitHub MCP for live PR state, journal-only for `pr_*` queueing. The toolkit never stores GitHub tokens and never calls the GitHub API directly for PR comments.
+- **Unstable tool convention**: any tool whose name starts with `unstable_` is not considered a stable agent contract yet. Agents must treat these as test-only / human-supervised surfaces until the prefix is removed.
+- **GitHub transport policy**: gh CLI for write, external GitHub MCP for live PR state, journal-only for `unstable_pr_*` queueing. The toolkit never stores GitHub tokens and never calls the GitHub API directly for PR comments. `unstable_pr_*`, `unstable_issue_*`, and `unstable_gh_run` are intentionally unstable so Minjun can test them before promotion.
 
 Each tool entry below uses the same six-field shape so it can be quoted as a single block:
 
@@ -41,9 +42,9 @@ Single-page, cache-first reads against the user's Notion via the Notion remote M
 
 #### `notion_refresh`
 
-- **What**: Force-fetch a Notion page from the remote MCP (ignore cache), validate the id, and rewrite the cache.
+- **What**: Force-fetch a Notion page from the remote MCP (ignore cache), validate the id, rewrite the cache, and — when a previous cache exists — return a heading-section diff for long planning docs.
 - **Input**: `input` — Notion page id or page URL.
-- **Output**: same `NotionPageResult` shape as `notion_get`, always with `fromCache: false`.
+- **Output**: same `NotionPageResult` shape as `notion_get`, always with `fromCache: false`, plus optional `diff: { changed, previousHash, currentHash, sections, truncated }`. Each section has `{ path, status, previousLineCount, currentLineCount, lineDelta, preview }`.
 - **Owner**: `notion-context` skill.
 - **Side effects**: rewrites `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}`.
 - **Related config**: same as `notion_get`.
@@ -205,11 +206,13 @@ Read-only inspection of MySQL via `host:env:db` handles declared in `agent-toolk
 - **Side effects**: opens one connection and runs one read query.
 - **Related config**: `mysql.connections`.
 
-### PR review watch (`pr_*`)
+### PR review watch (`unstable_pr_*`)
+
+> **UNSTABLE**: this surface is deliberately prefixed with `unstable_`. Do not assume long-term name / schema stability; agents should surface plans and prefer human confirmation.
 
 Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for PR comments — the external GitHub MCP server (registered separately in the user's opencode session) handles PR meta / comments / replies / merge-state queries. These tools own the local queue and lifecycle state only.
 
-#### `pr_watch_start`
+#### `unstable_pr_watch_start`
 
 - **What**: Register a PR handle as an active watch, persist a `pr_watch_start` journal entry, and return the updated watch state.
 - **Input**: `handle: string` (`owner/repo#NUMBER` or a github.com PR URL), `note?: string`, `labels?: string[]`, `mergeMode?: "merge" | "squash" | "rebase"`. `mergeMode` is enum-validated; values outside the enum throw.
@@ -218,7 +221,7 @@ Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for P
 - **Side effects**: appends a `pr_watch_start` entry to the journal.
 - **Related config**: `github.repositories` in `agent-toolkit.json`.
 
-#### `pr_watch_stop`
+#### `unstable_pr_watch_stop`
 
 - **What**: Stop a watch, append a `pr_watch_stop` journal entry, and return the final state.
 - **Input**: `handle: string`, `reason?: "merged" | "closed" | "manual"`. `reason` is enum-validated; free strings are rejected so the journal `reason:<value>` tag stays consistent for recovery / aggregation.
@@ -227,7 +230,7 @@ Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for P
 - **Side effects**: appends a `pr_watch_stop` entry.
 - **Related config**: `github.repositories`.
 
-#### `pr_watch_status`
+#### `unstable_pr_watch_status`
 
 - **What**: Reduce the journal once and return every active watch plus the per-handle pending event total.
 - **Input**: none.
@@ -236,7 +239,7 @@ Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for P
 - **Side effects**: none.
 - **Related config**: `github.repositories`.
 
-#### `pr_event_record`
+#### `unstable_pr_event_record`
 
 - **What**: Enqueue a single inbound PR event (comment / review / review comment / check / status / merge / close) fetched by the external GitHub MCP. Same `(handle, type, externalId)` reappends on disk (append-only) but responds with `alreadySeen: true`.
 - **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | "pr_review_comment" | "check_run" | "status" | "merge" | "close"`, `externalId: string`, `summary: string` (one-line digest from the caller — author + short excerpt; the full external MCP payload is not stored here).
@@ -245,7 +248,7 @@ Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for P
 - **Side effects**: appends a `pr_event_inbound` entry.
 - **Related config**: `github.repositories`.
 
-#### `pr_event_pending`
+#### `unstable_pr_event_pending`
 
 - **What**: List inbound events for a handle that have no corresponding `pr_event_resolved` entry, ordered by timestamp ascending.
 - **Input**: `handle: string`.
@@ -254,10 +257,10 @@ Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for P
 - **Side effects**: none.
 - **Related config**: `github.repositories`.
 
-#### `pr_event_resolve`
+#### `unstable_pr_event_resolve`
 
 - **What**: Record `mindy`'s validation outcome for one inbound event. Track the reply id from the external GitHub MCP via `replyExternalId` so future polls can correlate.
-- **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | …` (same enum as `pr_event_record`), `externalId: string`, `decision: "accepted" | "rejected" | "deferred"`, `reasoning: string`, `replyExternalId?: string`. The handler resolves the `toolkitKey` internally from `(type, externalId)`. Throws if no matching `pr_event_inbound` exists yet (orphan-resolve guard).
+- **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | …` (same enum as `unstable_pr_event_record`), `externalId: string`, `decision: "accepted" | "rejected" | "deferred"`, `reasoning: string`, `replyExternalId?: string`. The handler resolves the `toolkitKey` internally from `(type, externalId)`. Throws if no matching `pr_event_inbound` exists yet (orphan-resolve guard).
 - **Output**: `{ entry: JournalEntry, resolved: { type, externalId, toolkitKey } }`.
 - **Owner**: `pr-review-watch` skill — `mindy` is the sole authority over `pr_event_resolved` entries.
 - **Side effects**: appends a `pr_event_resolved` entry.
@@ -276,11 +279,13 @@ The four `spec-pact` mode bodies live as separate files under `<plugin>/skills/s
 - **Side effects**: none (file read inside the plugin install).
 - **Related config**: none.
 
-### spec-to-issues (`issue_*`)
+### spec-to-issues (`unstable_issue_*`)
+
+> **UNSTABLE**: this surface is deliberately prefixed with `unstable_` while Minjun tests the real GitHub Issue sync workflow.
 
 One-way sync from a locked SPEC (`<spec.dir>/<slug>.md` or `**/SPEC.md`) into a GitHub epic + sub-issue series. Auth, repo detection, GHE hosting, and scope are all delegated to the user's `gh` CLI — the toolkit adds no new env vars and no octokit / raw-fetch dependency.
 
-#### `issue_create_from_spec`
+#### `unstable_issue_create_from_spec`
 
 - **What**: Reconcile the SPEC's `# 합의 TODO` flat bullets into a GitHub epic plus one sub-issue per bullet. Marker-based dedupe (`<!-- spec-pact:slug=…:kind=epic|sub:index=N -->`) makes it idempotent — re-runs are no-ops, only newly added bullets create new sub-issues. dryRun-first contract: the default `dryRun: true` returns the plan only, `dryRun: false` actually invokes `gh`.
 - **Input**: `slug?: string` xor `path?: string`, `repo?: string` (`owner/name` override), `dryRun?: boolean` (default `true`).
@@ -289,20 +294,22 @@ One-way sync from a locked SPEC (`<spec.dir>/<slug>.md` or `**/SPEC.md`) into a 
 - **Side effects**: when `dryRun: false`, calls `gh issue create` / `gh issue edit` and appends a journal entry.
 - **Related config**: `github.repo`, `github.defaultLabels` (default `["spec-pact"]`, index 0 is the dedupe filter), `spec.dir`, `spec.scanDirectorySpec`, `spec.indexFile`.
 
-#### `issue_status`
+#### `unstable_issue_status`
 
 - **What**: Read-only alias of `dryRun: true`. Calls `gh issue list` once, surfaces what would be created, what already exists, and any orphaned sub-issues whose source bullet was removed from the SPEC.
-- **Input**: same as `issue_create_from_spec` minus `dryRun`.
-- **Output**: same plan shape as `issue_create_from_spec` with no applied section (read-only).
+- **Input**: same as `unstable_issue_create_from_spec` minus `dryRun`.
+- **Output**: same plan shape as `unstable_issue_create_from_spec` with no applied section (read-only).
 - **Owner**: `spec-to-issues` skill.
 - **Side effects**: one `gh issue list` call. **No journal entry** — read-only.
-- **Related config**: same as `issue_create_from_spec`.
+- **Related config**: same as `unstable_issue_create_from_spec`.
 
-### gh-passthrough (`gh_run`)
+### gh-passthrough (`unstable_gh_run`)
+
+> **UNSTABLE**: this surface is deliberately prefixed with `unstable_` while Minjun tests which `gh` passthrough commands are safe and useful.
 
 Generic ad-hoc passthrough to the user's `gh` CLI for anything that doesn't fit the high-level `spec-to-issues` flow.
 
-#### `gh_run`
+#### `unstable_gh_run`
 
 - **What**: Take an `args` array starting with a `gh` subcommand, classify it as `read` / `write` / `deny`, then enforce policy.
   - **read** (`auth status` / `repo view` / `issue list` / `pr view` / `api` default GET / `search` / `gist list|view` / …) — runs immediately.
@@ -348,22 +355,22 @@ Each skill bundles a small surface of tools into a step-by-step prompt. Skills l
 
 - **Conducted by**: `mindy` (sole authority over `pr_event_resolved`). Trigger only when the user explicitly asks to review/check/watch; a PR URL/handle alone is not enough.
 - **Modes**: `WATCH-START`, `PULL`, `VALIDATE`, `WATCH-STOP`.
-- **Tools used**: `pr_watch_start`, `pr_watch_stop`, `pr_watch_status`, `pr_event_record`, `pr_event_pending`, `pr_event_resolve`, `journal_append`, `journal_read`, `journal_search`, opencode's `read` / `glob` / `grep`. **External GitHub MCP must be registered in the opencode session** so `mindy` can fetch PR meta, comments, replies, and merge state.
+- **Tools used**: `unstable_pr_watch_start`, `unstable_pr_watch_stop`, `unstable_pr_watch_status`, `unstable_pr_event_record`, `unstable_pr_event_pending`, `unstable_pr_event_resolve`, `journal_append`, `journal_read`, `journal_search`, opencode's `read` / `glob` / `grep`. **External GitHub MCP must be registered in the opencode session** so `mindy` can fetch PR meta, comments, replies, and merge state.
 - **PR handle**: `owner/repo#NUMBER` or a github.com PR URL. Journal-side handle is the tag `pr:<canonical>`; the `pageId` slot is intentionally unused (Notion id pattern doesn't match).
 - **Lifecycle journal kinds**: `pr_watch_start`, `pr_watch_stop`, `pr_event_inbound`, `pr_event_resolved`. Recover history with `journal_search "pr-watch"`.
 
 ### `spec-to-issues`
 
 - **Conducted by**: `rocky`. `grace` does not call this skill — finalize / lock authority stops at the SPEC.
-- **Tools used**: `issue_create_from_spec`, `issue_status`, `journal_append`, `journal_read`, `journal_search`, opencode's `read`.
-- **Contract**: dryRun-first. Always run `issue_status` (or `issue_create_from_spec` with `dryRun: true`) first, surface the plan to the user, then re-run with `dryRun: false`.
+- **Tools used**: `unstable_issue_create_from_spec`, `unstable_issue_status`, `journal_append`, `journal_read`, `journal_search`, opencode's `read`.
+- **Contract**: dryRun-first. Always run `unstable_issue_status` (or `unstable_issue_create_from_spec` with `dryRun: true`) first, surface the plan to the user, then re-run with `dryRun: false`.
 - **Auth**: delegated to the user's `gh` CLI. Throws a one-line guidance error if `gh` is missing or unauthenticated.
 
 ### `gh-passthrough`
 
 - **Conducted by**: `rocky`.
-- **Tools used**: `gh_run`, `journal_append`, `journal_read`, `journal_search`.
-- **Contract**: dryRun-first for write commands. Read commands run immediately; environment-affecting and high-impact commands are denied at the tool level (see `gh_run`).
+- **Tools used**: `unstable_gh_run`, `journal_append`, `journal_read`, `journal_search`.
+- **Contract**: dryRun-first for write commands. Read commands run immediately; environment-affecting and high-impact commands are denied at the tool level (see `unstable_gh_run`).
 
 ## Agents
 

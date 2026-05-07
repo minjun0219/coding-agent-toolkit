@@ -48,6 +48,7 @@ export interface NotionPageResult {
   entry: NotionCacheEntry;
   markdown: string;
   fromCache: boolean;
+  diff?: import("./notion-diff").NotionMarkdownDiff;
 }
 
 export interface RawNotionPage {
@@ -159,7 +160,7 @@ export function notionToMarkdown(page: RawNotionPage): string {
 /**
  * 파일시스템 기반 Notion 페이지 캐시.
  *
- * 외부에 노출되는 메서드는 read / write / status / invalidate 4가지.
+ * 외부에 노출되는 메서드는 read / readAny / write / status / invalidate.
  *
  * read 와 status 둘 다 `.json` 과 `.md` 가 모두 존재해야 hit 으로 간주한다 —
  * 한 쪽만 남아있으면 손상 상태로 보고 cache miss 처리.
@@ -181,20 +182,28 @@ export class NotionCache {
   async read(
     input: string,
   ): Promise<{ entry: NotionCacheEntry; markdown: string } | null> {
+    const cached = await this.readAny(input);
+    if (!cached || this.isExpired(cached.entry)) return null;
+    return cached;
+  }
+
+  /** ttl 만료 여부와 무관하게 캐시 파일이 있으면 읽는다. refresh diff 계산용. */
+  async readAny(
+    input: string,
+  ): Promise<{ entry: NotionCacheEntry; markdown: string } | null> {
     const { key } = resolveCacheKey(input);
     const jsonPath = join(this.dir, `${key}.json`);
     const mdPath = join(this.dir, `${key}.md`);
     if (!existsSync(jsonPath) || !existsSync(mdPath)) return null;
-    let entry: NotionCacheEntry;
-    let markdown: string;
     try {
-      entry = JSON.parse(await readFile(jsonPath, "utf8")) as NotionCacheEntry;
-      markdown = await readFile(mdPath, "utf8");
+      const entry = JSON.parse(
+        await readFile(jsonPath, "utf8"),
+      ) as NotionCacheEntry;
+      const markdown = await readFile(mdPath, "utf8");
+      return { entry, markdown };
     } catch {
       return null;
     }
-    if (this.isExpired(entry)) return null;
-    return { entry, markdown };
   }
 
   /**

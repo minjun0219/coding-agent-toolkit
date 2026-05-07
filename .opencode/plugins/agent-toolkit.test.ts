@@ -58,6 +58,7 @@ let server: ReturnType<typeof Bun.serve>;
 let calls: number;
 let respondWithWrongId: boolean;
 let mcpOmitIdentifier: boolean;
+let responseMarkdown: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "plugin-"));
@@ -65,6 +66,8 @@ beforeEach(() => {
   calls = 0;
   respondWithWrongId = false;
   mcpOmitIdentifier = false;
+  responseMarkdown =
+    "# Hello\n\nworld\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n\n## API\n\n- GET /api/orders";
   server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
@@ -75,8 +78,7 @@ beforeEach(() => {
         return Response.json({
           id: respondWithWrongId ? "deadbeefdeadbeefdeadbeefdeadbeef" : PAGE,
           title: "Hello",
-          markdown:
-            "# Hello\n\nworld\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n\n## API\n\n- GET /api/orders",
+          markdown: responseMarkdown,
         });
       }
       if (url.pathname === "/mcp" && req.method === "POST") {
@@ -155,13 +157,21 @@ describe("plugin handlers", () => {
     expect(calls).toBe(1);
   });
 
-  it("notion_refresh: ignores cache and re-fetches", async () => {
+  it("notion_refresh: ignores cache, re-fetches, and returns section diff", async () => {
     await handleNotionGet(cache, PAGE);
     expect(calls).toBe(1);
 
+    responseMarkdown =
+      "# Hello\n\nworld changed\n\n## TODO\n\n- [ ] 주문 목록 API 연동\n- [ ] 결제 API 연동\n\n## API\n\n- GET /api/orders";
     const r = await handleNotionRefresh(cache, PAGE);
     expect(r.fromCache).toBe(false);
     expect(calls).toBe(2);
+    expect(r.diff?.changed).toBe(true);
+    expect(r.diff?.sections.map((section) => section.path)).toEqual([
+      "Hello",
+      "Hello > TODO",
+    ]);
+    expect(r.diff?.sections[1]?.preview).toContain("+ - [ ] 결제 API 연동");
   });
 
   it("notion_status: reflects cache state", async () => {
@@ -637,7 +647,7 @@ describe("pr-watch handlers", () => {
     prJournal = new AgentJournal({ baseDir: prDir });
   });
 
-  it("pr_watch_start: writes a pr_watch_start entry and returns active state", async () => {
+  it("unstable_pr_watch_start: writes a pr_watch_start entry and returns active state", async () => {
     const r = await handlePrWatchStart(prJournal, {
       handle: HANDLE,
       note: "review 1차",
@@ -649,13 +659,13 @@ describe("pr-watch handlers", () => {
     expect(r.state.handle.canonical).toBe("minjun0219/agent-toolkit#42");
   });
 
-  it("pr_watch_start: rejects malformed handles", async () => {
+  it("unstable_pr_watch_start: rejects malformed handles", async () => {
     await expect(
       handlePrWatchStart(prJournal, { handle: "not-a-pr" }),
     ).rejects.toThrow(/cannot parse/);
   });
 
-  it("pr_watch_status: aggregates active watches and pending counts", async () => {
+  it("unstable_pr_watch_status: aggregates active watches and pending counts", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     await handlePrEventRecord(prJournal, {
       handle: HANDLE,
@@ -683,7 +693,7 @@ describe("pr-watch handlers", () => {
     expect(status.active[0]?.handle.canonical).toBe(HANDLE);
   });
 
-  it("pr_watch_stop: flips state to inactive and removes from status", async () => {
+  it("unstable_pr_watch_stop: flips state to inactive and removes from status", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     const stop = await handlePrWatchStop(prJournal, {
       handle: HANDLE,
@@ -696,7 +706,7 @@ describe("pr-watch handlers", () => {
     expect(status.totals.active).toBe(0);
   });
 
-  it("pr_watch_stop: rejects reason outside merged / closed / manual", async () => {
+  it("unstable_pr_watch_stop: rejects reason outside merged / closed / manual", async () => {
     // 자유 문자열을 막아야 `journal_read({ tag: "reason:merged" })` 같은 회수 / 집계가
     // 안정적으로 동작한다 — handler 단에서 enum 으로 끊는다.
     await handlePrWatchStart(prJournal, { handle: HANDLE });
@@ -708,7 +718,7 @@ describe("pr-watch handlers", () => {
     expect(status.totals.active).toBe(1);
   });
 
-  it("pr_watch_stop: accepts the three valid stop reasons", async () => {
+  it("unstable_pr_watch_stop: accepts the three valid stop reasons", async () => {
     for (const reason of ["merged", "closed", "manual"] as const) {
       await handlePrWatchStart(prJournal, { handle: HANDLE });
       const stop = await handlePrWatchStop(prJournal, {
@@ -719,7 +729,7 @@ describe("pr-watch handlers", () => {
     }
   });
 
-  it("pr_watch_status: tolerates a journal padded with non-pr-watch entries (tag-filtered read)", async () => {
+  it("unstable_pr_watch_status: tolerates a journal padded with non-pr-watch entries (tag-filtered read)", async () => {
     // 이전엔 readAllJournalEntries() 가 모든 종류 entry 를 5000 까지만 읽어 PR 항목이
     // 다른 도메인 (decision/blocker/spec_anchor 등) 에 밀려 잘려 나갈 수 있었다 — 이제는
     // tag: "pr-watch" 로 좁혀 읽으므로 다른 도메인 entry 가 아무리 많아도 PR 라이프사이클
@@ -738,7 +748,7 @@ describe("pr-watch handlers", () => {
     expect(status.active[0]?.handle.canonical).toBe(HANDLE);
   });
 
-  it("pr_event_record: marks alreadySeen=true on duplicate (handle, type, externalId)", async () => {
+  it("unstable_pr_event_record: marks alreadySeen=true on duplicate (handle, type, externalId)", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     const first = await handlePrEventRecord(prJournal, {
       handle: HANDLE,
@@ -760,7 +770,7 @@ describe("pr-watch handlers", () => {
     expect(pending.length).toBe(1);
   });
 
-  it("pr_event_record: still alreadySeen=true after the event was resolved (re-poll guard)", async () => {
+  it("unstable_pr_event_record: still alreadySeen=true after the event was resolved (re-poll guard)", async () => {
     // GitHub list-comments 류는 과거 항목을 매 호출마다 반환한다 — pending 만 보면 resolve 된
     // 코멘트가 다시 새 이벤트처럼 보이고 mindy 가 같은 답글을 두 번 달 위험. alreadySeen 은
     // resolved 여부와 무관하게 "과거 inbound 의 존재" 로 판정해야 한다.
@@ -791,7 +801,7 @@ describe("pr-watch handlers", () => {
     expect(pending).toEqual([]);
   });
 
-  it("pr_event_record: rejects unsupported type", async () => {
+  it("unstable_pr_event_record: rejects unsupported type", async () => {
     await expect(
       handlePrEventRecord(prJournal, {
         handle: HANDLE,
@@ -802,7 +812,7 @@ describe("pr-watch handlers", () => {
     ).rejects.toThrow(/unsupported type/);
   });
 
-  it("pr_event_pending: returns pending events in time-ascending order", async () => {
+  it("unstable_pr_event_pending: returns pending events in time-ascending order", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     await handlePrEventRecord(prJournal, {
       handle: HANDLE,
@@ -822,7 +832,7 @@ describe("pr-watch handlers", () => {
     expect(pending[1]?.ref.toolkitKey).toBe("rc:9");
   });
 
-  it("pr_event_resolve: removes the event from pending after acceptance", async () => {
+  it("unstable_pr_event_resolve: removes the event from pending after acceptance", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     await handlePrEventRecord(prJournal, {
       handle: HANDLE,
@@ -842,7 +852,7 @@ describe("pr-watch handlers", () => {
     expect(pending).toEqual([]);
   });
 
-  it("pr_event_resolve: rejects unknown decision", async () => {
+  it("unstable_pr_event_resolve: rejects unknown decision", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     await handlePrEventRecord(prJournal, {
       handle: HANDLE,
@@ -861,7 +871,7 @@ describe("pr-watch handlers", () => {
     ).rejects.toThrow(/decision/);
   });
 
-  it("pr_event_resolve: rejects orphan resolve (no prior inbound)", async () => {
+  it("unstable_pr_event_resolve: rejects orphan resolve (no prior inbound)", async () => {
     // orphan resolve 가 박히면 reducePendingEvents 의 resolvedKeys 가 그 toolkitKey 를
     // 포함해서, 이후 진짜 inbound 가 들어와도 영구 제외 (큐 유실). handler 단에서 throw 로
     // 끊어 caller 가 pending 목록을 다시 보고 정확한 toolkitKey 로 재호출하게 한다.
@@ -888,7 +898,7 @@ describe("pr-watch handlers", () => {
     expect(pending[0]?.ref.toolkitKey).toBe("c:999");
   });
 
-  it("pr_watch_start: rejects mergeMode outside the merge / squash / rebase enum", async () => {
+  it("unstable_pr_watch_start: rejects mergeMode outside the merge / squash / rebase enum", async () => {
     await expect(
       handlePrWatchStart(prJournal, {
         handle: HANDLE,
@@ -897,7 +907,7 @@ describe("pr-watch handlers", () => {
     ).rejects.toThrow(/mergeMode/);
   });
 
-  it("pr_watch_start: accepts the three valid mergeMode values", async () => {
+  it("unstable_pr_watch_start: accepts the three valid mergeMode values", async () => {
     for (const mode of ["merge", "squash", "rebase"] as const) {
       const r = await handlePrWatchStart(prJournal, {
         handle: HANDLE,
@@ -907,7 +917,7 @@ describe("pr-watch handlers", () => {
     }
   });
 
-  it("pr_watch_start: trims mergeMode before enum check (LLM-input robustness)", async () => {
+  it("unstable_pr_watch_start: trims mergeMode before enum check (LLM-input robustness)", async () => {
     // 공백이 섞인 정상 값은 trim 후 통과. buildAppend 의 .trim() 동작과 일관.
     const r = await handlePrWatchStart(prJournal, {
       handle: HANDLE,
@@ -916,7 +926,7 @@ describe("pr-watch handlers", () => {
     expect(r.entry.tags).toContain("mergeMode:squash");
   });
 
-  it("pr_watch_start: empty / whitespace-only mergeMode normalizes to no tag", async () => {
+  it("unstable_pr_watch_start: empty / whitespace-only mergeMode normalizes to no tag", async () => {
     // 빈 문자열은 undefined 로 정규화 — mergeMode 권고 미설정 의도.
     const r = await handlePrWatchStart(prJournal, {
       handle: HANDLE,
@@ -925,7 +935,7 @@ describe("pr-watch handlers", () => {
     expect(r.entry.tags.some((t) => t.startsWith("mergeMode:"))).toBe(false);
   });
 
-  it("pr_watch_stop: trims reason before enum check", async () => {
+  it("unstable_pr_watch_stop: trims reason before enum check", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     const stop = await handlePrWatchStop(prJournal, {
       handle: HANDLE,
@@ -934,7 +944,7 @@ describe("pr-watch handlers", () => {
     expect(stop.entry.tags).toContain("reason:merged");
   });
 
-  it("pr_event_resolve: trims decision before enum check", async () => {
+  it("unstable_pr_event_resolve: trims decision before enum check", async () => {
     await handlePrWatchStart(prJournal, { handle: HANDLE });
     await handlePrEventRecord(prJournal, {
       handle: HANDLE,
@@ -997,16 +1007,16 @@ describe("plugin config hook", () => {
     "mysql_tables",
     "mysql_schema",
     "mysql_query",
-    "pr_watch_start",
-    "pr_watch_stop",
-    "pr_watch_status",
-    "pr_event_record",
-    "pr_event_pending",
-    "pr_event_resolve",
+    "unstable_pr_watch_start",
+    "unstable_pr_watch_stop",
+    "unstable_pr_watch_status",
+    "unstable_pr_event_record",
+    "unstable_pr_event_pending",
+    "unstable_pr_event_resolve",
     "spec_pact_fragment",
-    "issue_create_from_spec",
-    "issue_status",
-    "gh_run",
+    "unstable_issue_create_from_spec",
+    "unstable_issue_status",
+    "unstable_gh_run",
   ];
 
   it("registers skills path and concrete agents idempotently", async () => {

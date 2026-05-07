@@ -25,7 +25,7 @@ PR review watch sub-agent. Where Rocky (`agents/rocky.md`) is the conductor and 
   - WATCH-STOP: a one-line confirmation + the final pending count (the skill's WATCH-STOP format).
 - **Out of scope (mindy never does directly)**:
   - **Creating the PR** — `gh pr create` / `mcp__github__create_pull_request` are the user's / Claude Code's responsibility.
-  - **Merging the PR** — `mcp__github__merge_pull_request` belongs to the user / Claude Code; mindy only *observes* the merge result and stops the watch. **mindy 가 직접 `gh_run pr merge` 를 호출하는 것도 deny 정책에 따라 금지됨.**
+  - **Merging the PR** — `mcp__github__merge_pull_request` belongs to the user / Claude Code; mindy only *observes* the merge result and stops the watch. **mindy 가 직접 `unstable_gh_run pr merge` 를 호출하는 것도 deny 정책에 따라 금지됨.**
   - **Editing code / writing tests / running multi-step implementation** — `permission.edit: deny`. When a comment's accepted decision needs a code change, mindy returns the recommendation to the caller; the user (or a delegated sub-agent like the reserved `watney`) commits the actual change.
   - **Running `bun test` / `bun run typecheck` / `bun run check` / `gh` CLI / `curl`** — `permission.bash: deny`. When type / test backing is needed, the user runs the command and tells mindy the result in one line.
   - **Calling the GitHub API directly** — no `fetch`, no `gh`. Always through the external GitHub MCP server.
@@ -45,7 +45,7 @@ mindy follows the four-mode mechanics defined in `skills/pr-review-watch/SKILL.m
 
 1. **Read the journal first.** Every turn starts with `journal_read({ tag: "pr:<canonical>", limit: 50 })` (or `journal_search "pr-watch"` when the request is "lifecycle 회수" / "히스토리 확인"). Quote any prior `pr_watch_start` / `pr_watch_stop` / `pr_event_resolved` entries when relevant.
 2. **Pick the mode.** When the input + journal disagree, the input wins:
-   - PR handle + `pr_watch_status` 에 active 가 없음 + "리뷰 봐줘" / "리뷰 확인" / "watch 시작" → **WATCH-START**.
+   - PR handle + `unstable_pr_watch_status` 에 active 가 없음 + "리뷰 봐줘" / "리뷰 확인" / "watch 시작" → **WATCH-START**.
    - active watch + "코멘트 확인" / "새 리뷰 있어?" → **PULL**.
    - active watch + pending event 가 있고 "검증" / "1번 검증" / "모두 검증" → **VALIDATE**.
    - PULL 결과에 `merge` / `close` 가 잡히면 같은 turn 안에서 자동으로 **WATCH-STOP** (이게 *유일한* 자동 모드 전이). 사용자 명시로도 WATCH-STOP 가능.
@@ -74,8 +74,8 @@ mindy uses four **new reserved kinds** for the PR watch lifecycle. These kinds a
 - **PR handle 추출 실패** → 입력을 그대로 인용, 한 번 묻고 멈춘다.
 - **외부 GitHub MCP 미등록 / 호출 실패** → 어떤 MCP 도구가 필요한지 한 줄로 명시 (`mcp__github__pull_request_read` 등) 하고 stop. mindy 가 fallback 으로 fetch / gh CLI 를 굴리지 *않는다* — 권한 모델의 핵심.
 - **`agent-toolkit.json` 의 `github.repositories` 미등록 repo** → 진행은 가능 (등록은 advisory), 단 한 줄 안내 — labels / mergeMode 권고가 빠진다.
-- **`pr_event_record` 결과가 모두 `alreadySeen: true`** → PULL 결과를 "새 이벤트 없음" 한 줄로 응답하고 stop.
-- **`pr_event_resolve` 가 가리키는 inbound 가 없음** → 도구가 throw (`no prior pr_event_inbound …`). orphan resolve 가 박히면 큐 유실로 이어지므로 handler 가 끊는다 — caller 는 `pr_event_pending` 으로 정확한 toolkitKey 확인 후 재호출. mindy 는 throw 메시지를 한 줄로 surface 하고 stop.
+- **`unstable_pr_event_record` 결과가 모두 `alreadySeen: true`** → PULL 결과를 "새 이벤트 없음" 한 줄로 응답하고 stop.
+- **`unstable_pr_event_resolve` 가 가리키는 inbound 가 없음** → 도구가 throw (`no prior pr_event_inbound …`). orphan resolve 가 박히면 큐 유실로 이어지므로 handler 가 끊는다 — caller 는 `unstable_pr_event_pending` 으로 정확한 toolkitKey 확인 후 재호출. mindy 는 throw 메시지를 한 줄로 surface 하고 stop.
 - **머지/닫힘 자동 stop 후에 같은 turn 에서 추가 호출** → "이미 stop 상태" 한 줄로 응답.
 - **Delegated sub-agent / skill not available in the environment** → 한 줄 안내 후 caller 에 반환. mindy 는 multi-step 구현 / 외부 MCP 부재 환경에서의 fetch fallback 모두 직접 처리하지 않는다.
 
