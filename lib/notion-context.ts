@@ -160,7 +160,7 @@ export function notionToMarkdown(page: RawNotionPage): string {
 /**
  * 파일시스템 기반 Notion 페이지 캐시.
  *
- * 외부에 노출되는 메서드는 read / write / status / invalidate 4가지.
+ * 외부에 노출되는 메서드는 read / readAny / write / status / invalidate.
  *
  * read 와 status 둘 다 `.json` 과 `.md` 가 모두 존재해야 hit 으로 간주한다 —
  * 한 쪽만 남아있으면 손상 상태로 보고 cache miss 처리.

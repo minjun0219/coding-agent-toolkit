@@ -2,6 +2,8 @@ import { contentHash } from "./notion-context";
 
 const MAX_PREVIEW_CHARS = 1200;
 const MAX_SECTIONS = 40;
+const MAX_PREVIEW_DIFF_CELLS = 20_000;
+const MAX_PREVIEW_DIFF_CHARS = 40_000;
 
 export type NotionDiffSectionStatus = "added" | "removed" | "modified";
 
@@ -28,6 +30,7 @@ interface MarkdownSection {
   path: string;
   basePath: string;
   content: string;
+  index: number;
   lineCount: number;
   hash: string;
 }
@@ -43,8 +46,18 @@ function trimPreview(text: string): string {
   return `${trimmed.slice(0, MAX_PREVIEW_CHARS).trimEnd()}\n…`;
 }
 
-function isFenceBoundary(line: string): boolean {
-  return /^\s*(```|~~~)/.test(line);
+function parseFenceMarker(line: string): string | null {
+  const match = line.match(/^\s*(`{3,}|~{3,})/);
+  return match?.[1] ?? null;
+}
+
+function isClosingFence(line: string, fenceMarker: string): boolean {
+  const marker = parseFenceMarker(line);
+  return (
+    !!marker &&
+    marker[0] === fenceMarker[0] &&
+    marker.length >= fenceMarker.length
+  );
 }
 
 function assignStableDuplicatePaths(
@@ -79,7 +92,7 @@ export function splitMarkdownSections(markdown: string): MarkdownSection[] {
   const headingStack: string[] = [];
   let currentPath = "(preamble)";
   let currentLines: string[] = [];
-  let inFence = false;
+  let fenceMarker: string | null = null;
 
   const flush = () => {
     const content = currentLines.join("\n").trim();
@@ -88,19 +101,27 @@ export function splitMarkdownSections(markdown: string): MarkdownSection[] {
       path: currentPath,
       basePath: currentPath,
       content,
+      index: sections.length,
       lineCount: lineCount(content),
       hash: contentHash(content),
     });
   };
 
   for (const line of lines) {
-    if (isFenceBoundary(line)) {
-      inFence = !inFence;
+    if (fenceMarker) {
+      if (isClosingFence(line, fenceMarker)) fenceMarker = null;
       currentLines.push(line);
       continue;
     }
 
-    const match = inFence ? null : line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    const openingFence = parseFenceMarker(line);
+    if (openingFence) {
+      fenceMarker = openingFence;
+      currentLines.push(line);
+      continue;
+    }
+
+    const match = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
     if (match) {
       flush();
       const level = match[1]!.length;
@@ -118,6 +139,21 @@ export function splitMarkdownSections(markdown: string): MarkdownSection[] {
   return assignStableDuplicatePaths(sections);
 }
 
+function fallbackPreview(
+  previousContent: string,
+  currentContent: string,
+): string {
+  const previousLines = lineCount(previousContent);
+  const currentLines = lineCount(currentContent);
+  const lineDelta = currentLines - previousLines;
+  return trimPreview(
+    [
+      `Diff preview skipped: section is too large (${previousLines} → ${currentLines} lines, delta ${lineDelta >= 0 ? "+" : ""}${lineDelta}).`,
+      currentContent || previousContent,
+    ].join("\n\n"),
+  );
+}
+
 function lineDiffPreview(
   previousContent: string,
   currentContent: string,
@@ -126,6 +162,13 @@ function lineDiffPreview(
   const currentLines = currentContent.split(/\r?\n/);
   const rows = previousLines.length + 1;
   const cols = currentLines.length + 1;
+  if (
+    rows * cols > MAX_PREVIEW_DIFF_CELLS ||
+    previousContent.length + currentContent.length > MAX_PREVIEW_DIFF_CHARS
+  ) {
+    return fallbackPreview(previousContent, currentContent);
+  }
+
   const lengths = Array.from({ length: rows }, () =>
     Array<number>(cols).fill(0),
   );
@@ -190,19 +233,22 @@ export function diffMarkdownBySection(
     };
   }
 
+  const previousSections = splitMarkdownSections(previousMarkdown);
+  const currentSections = splitMarkdownSections(currentMarkdown);
   const previous = new Map(
-    splitMarkdownSections(previousMarkdown).map((section) => [
-      section.path,
-      section,
-    ]),
+    previousSections.map((section) => [section.path, section]),
   );
   const current = new Map(
-    splitMarkdownSections(currentMarkdown).map((section) => [
-      section.path,
-      section,
-    ]),
+    currentSections.map((section) => [section.path, section]),
   );
-  const paths = [...new Set([...previous.keys(), ...current.keys()])];
+  const pathOrder = new Map<string, number>();
+  for (const section of previousSections)
+    pathOrder.set(section.path, section.index);
+  for (const section of currentSections)
+    pathOrder.set(section.path, section.index);
+  const paths = [...new Set([...previous.keys(), ...current.keys()])].sort(
+    (a, b) => (pathOrder.get(a) ?? 0) - (pathOrder.get(b) ?? 0),
+  );
   const sections: NotionDiffSection[] = [];
 
   for (const path of paths) {

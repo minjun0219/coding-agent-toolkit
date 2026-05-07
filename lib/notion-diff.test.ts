@@ -9,7 +9,7 @@ describe("splitMarkdownSections", () => {
 
   it("does not treat headings inside fenced code blocks as sections", () => {
     const sections = splitMarkdownSections(
-      "# A\n\n```md\n# not a heading\n```\n\n## B\n\ntwo",
+      "# A\n\n````md\n``` nested text\n# not a heading\n````\n\n## B\n\ntwo",
     );
     expect(sections.map((section) => section.path)).toEqual(["A", "A > B"]);
     expect(sections[0]?.content).toContain("# not a heading");
@@ -60,5 +60,23 @@ describe("diffMarkdownBySection", () => {
     expect(diff.sections).toHaveLength(1);
     expect(diff.sections[0]?.status).toBe("added");
     expect(diff.sections[0]?.preview).toContain("+ new");
+  });
+
+  it("returns changed sections in document order", () => {
+    const before = "# A\n\none\n\n# C\n\nthree";
+    const after = "# A\n\none\n\n# B\n\ntwo\n\n# C\n\nthree changed";
+
+    const diff = diffMarkdownBySection(before, after);
+
+    expect(diff.sections.map((section) => section.path)).toEqual(["B", "C"]);
+  });
+
+  it("skips expensive line previews for very large sections", () => {
+    const before = `# A\n\n${Array.from({ length: 150 }, (_, i) => `old ${i}`).join("\n")}`;
+    const after = `# A\n\n${Array.from({ length: 150 }, (_, i) => `new ${i}`).join("\n")}`;
+
+    const diff = diffMarkdownBySection(before, after);
+
+    expect(diff.sections[0]?.preview).toContain("Diff preview skipped");
   });
 });
