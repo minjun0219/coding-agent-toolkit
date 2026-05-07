@@ -37,6 +37,7 @@ import agentToolkitPlugin, {
   handlePrWatchStart,
   handlePrWatchStatus,
   handlePrWatchStop,
+  handleSeoValidate,
   handleSwaggerEnvs,
   handleSwaggerGet,
   handleSwaggerRefresh,
@@ -1007,6 +1008,7 @@ describe("plugin config hook", () => {
     "issue_create_from_spec",
     "issue_status",
     "gh_run",
+    "seo_validate",
   ];
 
   it("registers skills path and concrete agents idempotently", async () => {
@@ -1031,10 +1033,10 @@ describe("plugin config hook", () => {
     expect(cfg.agent.mindy.prompt).toContain("# mindy");
   });
 
-  it("registers exactly the 28 expected tools", async () => {
+  it("registers exactly the 29 expected tools", async () => {
     const plugin = await agentToolkitPlugin({});
     const actualToolNames = Object.keys(plugin.tool).sort();
-    expect(actualToolNames).toHaveLength(28);
+    expect(actualToolNames).toHaveLength(29);
     expect(actualToolNames).toEqual([...expectedToolNames].sort());
   });
 
@@ -1643,5 +1645,57 @@ describe("handleIssueStatus", () => {
     } finally {
       process.chdir(cwdBefore);
     }
+  });
+});
+
+describe("handleSeoValidate", () => {
+  let seoServer: ReturnType<typeof Bun.serve>;
+  let seoBaseUrl: string;
+
+  beforeEach(() => {
+    seoServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch() {
+        return new Response(
+          `<!doctype html><html prefix="og: https://ogp.me/ns#"><head>
+            <title>Hi</title>
+            <meta property="og:title" content="From Config" />
+            <meta property="og:type" content="website" />
+            <meta property="og:image" content="https://example.com/cover.png" />
+            <meta property="og:url" content="https://example.com/" />
+          </head><body></body></html>`,
+          { headers: { "content-type": "text/html; charset=utf-8" } },
+        );
+      },
+    });
+    seoBaseUrl = `http://${seoServer.hostname}:${seoServer.port}/`;
+  });
+
+  afterEach(() => {
+    seoServer.stop(true);
+  });
+
+  it("threads agent-toolkit.json seo.allowPrivateHosts default into runSeoValidate", async () => {
+    const result = await handleSeoValidate(
+      { seo: { allowPrivateHosts: true } } as ToolkitConfig,
+      { url: seoBaseUrl },
+    );
+    expect(result.summary.ogTitle).toBe("From Config");
+    expect(result.summary.errors).toEqual([]);
+  });
+
+  it("call argument allowPrivateHosts overrides config (false → true)", async () => {
+    const result = await handleSeoValidate(
+      { seo: { allowPrivateHosts: false } } as ToolkitConfig,
+      { url: seoBaseUrl, allowPrivateHosts: true },
+    );
+    expect(result.summary.ogTitle).toBe("From Config");
+  });
+
+  it("blocks when neither config nor call argument allows private hosts", async () => {
+    await expect(
+      handleSeoValidate({} as ToolkitConfig, { url: seoBaseUrl }),
+    ).rejects.toThrow(/Refusing to fetch private/);
   });
 });

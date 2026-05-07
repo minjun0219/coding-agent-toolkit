@@ -104,6 +104,11 @@ import {
   type PrWatchState,
   type ResolveDecision,
 } from "../../lib/pr-watch";
+import {
+  runSeoValidate,
+  type SeoValidateOptions,
+  type SeoValidateResult,
+} from "../../lib/seo-validate";
 
 type LegacyToolParam = {
   type?: string;
@@ -1355,6 +1360,30 @@ export async function handleGhRun(
 }
 
 /**
+ * `seo_validate` 도구 핸들러. 도구 호출 인자가 있으면 그것이 우선이고, 없으면
+ * `agent-toolkit.json` 의 `seo` 섹션 기본값으로 채운다. 그 외 동작은 `runSeoValidate`
+ * 에 전부 위임 — fetch / parse / SSRF 가드 / timeout clamp 까지.
+ */
+export async function handleSeoValidate(
+  config: ToolkitConfig,
+  args: {
+    url: string;
+    timeoutMs?: number;
+    allowPrivateHosts?: boolean;
+  },
+  injectFetch?: SeoValidateOptions["fetch"],
+): Promise<SeoValidateResult> {
+  const seoCfg = config.seo ?? {};
+  return runSeoValidate({
+    url: args.url,
+    timeoutMs: args.timeoutMs ?? seoCfg.timeoutMs,
+    allowPrivateHosts:
+      args.allowPrivateHosts ?? seoCfg.allowPrivateHosts ?? false,
+    fetch: injectFetch,
+  });
+}
+
+/**
  * opencode plugin default export.
  * `directory` 는 opencode 가 plugin 을 로드한 cwd. 우리는 import.meta 기반으로
  * 자기 저장소의 skills/ 를 절대 경로로 잡는다.
@@ -1839,6 +1868,22 @@ export default async function agentToolkitPlugin(_input: unknown) {
         async handler({ mode }: { mode: string }): Promise<SpecPactFragment> {
           const validated: SpecPactMode = assertSpecPactMode(mode);
           return loadSpecPactFragment(SKILLS_DIR, validated);
+        },
+      },
+      seo_validate: {
+        description:
+          "단일 URL 의 OG / Twitter Card / JSON-LD / favicon 메타를 ogpeek 으로 fetch + parse 해서 검증한다. summary (finalUrl / redirects / og:title / og:description / og:image / og:type / og:url / canonical / errors / warnings / info / hasJsonLd / hasFavicon / iconCount) + raw OgDebugResult 둘 다 반환. errors 는 ogpeek warnings 중 severity=error (`OG_TITLE_MISSING` / `OG_TYPE_MISSING` / `OG_IMAGE_MISSING` / `OG_URL_MISSING`) 만 추린 것. 기본 SSRF 가드는 private / loopback / link-local / IPv6 ULA 호스트 차단 — `agent-toolkit.json` 의 `seo.allowPrivateHosts:true` 또는 도구 호출 인자 `allowPrivateHosts:true` 로 끈다. (url: 검증할 http/https URL, timeoutMs?: fetch timeout (1..30000, 기본 8000), allowPrivateHosts?: SSRF 가드 비활성, 기본 config.seo.allowPrivateHosts ?? false)",
+        parameters: {
+          url: { type: "string", required: true },
+          timeoutMs: { type: "number", required: false },
+          allowPrivateHosts: { type: "boolean", required: false },
+        },
+        async handler(args: {
+          url: string;
+          timeoutMs?: number;
+          allowPrivateHosts?: boolean;
+        }) {
+          return handleSeoValidate(toolkitConfig, args);
         },
       },
     }),

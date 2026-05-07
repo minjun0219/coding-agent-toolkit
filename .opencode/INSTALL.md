@@ -84,7 +84,7 @@ Once opencode is running:
 > use skill tool to list skills
 ```
 
-If `notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, and `pr-review-watch` all show up, skills are loaded.
+If `notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, and `seo-validation` all show up, skills are loaded.
 
 Then verify the tools are registered:
 
@@ -100,6 +100,7 @@ Then verify the tools are registered:
 > use spec_pact_fragment tool with mode "draft"   # Phase 6.A — returns the DRAFT mode body from the plugin's absolute path
 > use gh_run tool with args ["auth", "status"]    # Phase 2 후속 — read 명령은 즉시 실행
 > use gh_run tool with args ["issue", "list", "--repo", "<owner/repo>"]  # read
+> use seo_validate tool with url "https://ogp.me"  # OG / SEO 메타 점검 (외부 URL — SSRF 가드 통과)
 ```
 
 Optional PR review watch smoke (works without external GitHub MCP — the toolkit's six `pr_*` tools never call GitHub; mindy reads PR meta / comments through whichever GitHub MCP server you have registered separately):

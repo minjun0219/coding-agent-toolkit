@@ -515,6 +515,46 @@ describe("validateConfig — github", () => {
   });
 });
 
+describe("validateConfig — seo", () => {
+  it("accepts a valid seo object", () => {
+    const cfg = validateConfig(
+      { seo: { allowPrivateHosts: true, timeoutMs: 5000 } },
+      "p",
+    );
+    expect(cfg.seo?.allowPrivateHosts).toBe(true);
+    expect(cfg.seo?.timeoutMs).toBe(5000);
+  });
+
+  it("accepts an empty seo object (all keys optional)", () => {
+    const cfg = validateConfig({ seo: {} }, "p");
+    expect(cfg.seo).toEqual({});
+  });
+
+  it("rejects unsupported seo keys (typo guard)", () => {
+    expect(() =>
+      validateConfig({ seo: { allowAll: true } } as any, "p"),
+    ).toThrow(/unknown key "allowAll"/);
+  });
+
+  it("rejects non-boolean allowPrivateHosts", () => {
+    expect(() =>
+      validateConfig({ seo: { allowPrivateHosts: "yes" } } as any, "p"),
+    ).toThrow(/allowPrivateHosts must be a boolean/);
+  });
+
+  it("rejects out-of-range timeoutMs", () => {
+    expect(() => validateConfig({ seo: { timeoutMs: 0 } } as any, "p")).toThrow(
+      /timeoutMs must be an integer in \[1, 30000\]/,
+    );
+    expect(() =>
+      validateConfig({ seo: { timeoutMs: 60000 } } as any, "p"),
+    ).toThrow(/timeoutMs must be an integer in \[1, 30000\]/);
+    expect(() =>
+      validateConfig({ seo: { timeoutMs: 1.5 } } as any, "p"),
+    ).toThrow(/timeoutMs must be an integer in \[1, 30000\]/);
+  });
+});
+
 describe("mergeConfigs — github", () => {
   it("project overrides user at the github leaf (defaultLabels replaces wholly)", () => {
     const user: ToolkitConfig = {

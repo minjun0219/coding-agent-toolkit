@@ -122,6 +122,16 @@ export interface GithubConfig {
   defaultLabels?: string[];
 }
 
+export interface SeoConfig {
+  /**
+   * true 면 private / loopback / link-local 호스트 fetch 를 허용. 기본 false.
+   * `seo_validate` 도구 호출 인자 (`allowPrivateHosts`) 가 우선.
+   */
+  allowPrivateHosts?: boolean;
+  /** fetch timeout (ms). 1..30000. 도구 호출 인자 (`timeoutMs`) 가 우선. */
+  timeoutMs?: number;
+}
+
 export interface ToolkitConfig {
   $schema?: string;
   openapi?: {
@@ -132,6 +142,7 @@ export interface ToolkitConfig {
   mysql?: {
     connections?: MysqlConnections;
   };
+  seo?: SeoConfig;
 }
 
 export interface LoadConfigOptions {
@@ -257,7 +268,45 @@ export function validateConfig(input: unknown, source: string): ToolkitConfig {
   if (config.github !== undefined) {
     validateGithub(config.github, source);
   }
+  if (config.seo !== undefined) {
+    validateSeo(config.seo, source);
+  }
   return config as ToolkitConfig;
+}
+
+/**
+ * `seo` 객체 모양 검증. `seo_validate` 도구 기본값을 받는다 — 미지원 key 는 reject.
+ */
+const ALLOWED_SEO_KEYS = new Set(["allowPrivateHosts", "timeoutMs"]);
+
+function validateSeo(seo: unknown, source: string): void {
+  if (seo === null || typeof seo !== "object" || Array.isArray(seo)) {
+    throw new Error(`${source}: seo must be an object`);
+  }
+  const obj = seo as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    if (!ALLOWED_SEO_KEYS.has(key)) {
+      throw new Error(`${source}: seo: unknown key "${key}"`);
+    }
+  }
+  if (
+    obj.allowPrivateHosts !== undefined &&
+    typeof obj.allowPrivateHosts !== "boolean"
+  ) {
+    throw new Error(`${source}: seo.allowPrivateHosts must be a boolean`);
+  }
+  if (obj.timeoutMs !== undefined) {
+    if (
+      typeof obj.timeoutMs !== "number" ||
+      !Number.isInteger(obj.timeoutMs) ||
+      obj.timeoutMs < 1 ||
+      obj.timeoutMs > 30_000
+    ) {
+      throw new Error(
+        `${source}: seo.timeoutMs must be an integer in [1, 30000]`,
+      );
+    }
+  }
 }
 
 /**
@@ -715,6 +764,18 @@ export function mergeConfigs(
     }
     if (project.github.defaultLabels !== undefined) {
       out.github.defaultLabels = project.github.defaultLabels;
+    }
+  }
+  if (project.seo) {
+    out.seo ??= {};
+    for (const [key, value] of Object.entries(project.seo) as [
+      keyof SeoConfig,
+      SeoConfig[keyof SeoConfig],
+    ][]) {
+      if (value !== undefined) {
+        // 각 key 는 leaf — project 가 user 를 통째로 덮어쓴다.
+        (out.seo as Record<string, unknown>)[key] = value;
+      }
     }
   }
   return out;

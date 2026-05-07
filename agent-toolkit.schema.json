@@ -192,6 +192,25 @@
         }
       },
       "additionalProperties": false
+    },
+    "seo": {
+      "type": "object",
+      "description": "SEO / Open Graph 검증 도구 (`seo_validate`) 기본값. 임의 URL 을 fetch 하므로 SSRF 가드를 명시적으로 통제한다.",
+      "properties": {
+        "allowPrivateHosts": {
+          "type": "boolean",
+          "default": false,
+          "description": "true 면 localhost / 127.0.0.0/8 / 10.0.0.0/8 / 172.16.0.0/12 / 192.168.0.0/16 / 169.254.0.0/16 / IPv6 ::1 / fc00::/7 / fe80::/10 같은 private / loopback / link-local 호스트 fetch 를 허용. 사내망 검증이나 로컬 dev server 점검에만 켠다. 기본 false (외부 URL 만 허용)."
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30000,
+          "default": 8000,
+          "description": "fetch timeout (ms). ogpeek `fetchHtml` 의 동명 옵션과 1:1. 도구 호출 인자가 우선."
+        }
+      },
+      "additionalProperties": false
     }
   }
 }
