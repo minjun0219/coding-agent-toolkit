@@ -1008,6 +1008,7 @@ describe("plugin config hook", () => {
     "issue_create_from_spec",
     "issue_status",
     "gh_run",
+    "seo_validate",
   ];
 
   it("registers skills path and concrete agents idempotently", async () => {
@@ -1032,10 +1033,10 @@ describe("plugin config hook", () => {
     expect(cfg.agent.mindy.prompt).toContain("# mindy");
   });
 
-  it("registers exactly the 28 expected tools", async () => {
+  it("registers exactly the 29 expected tools", async () => {
     const plugin = await agentToolkitPlugin({});
     const actualToolNames = Object.keys(plugin.tool).sort();
-    expect(actualToolNames).toHaveLength(28);
+    expect(actualToolNames).toHaveLength(29);
     expect(actualToolNames).toEqual([...expectedToolNames].sort());
   });
 
