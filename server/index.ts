@@ -9,7 +9,7 @@
  *   - mysql_envs / mysql_status / mysql_tables / mysql_schema / mysql_query  (5)
  *   - spec_pact_fragment  (1)
  *
- * Excluded — tracked in REMOVAL_CANDIDATES.md (코드는 보존, surface 만 좁힘):
+ * Excluded — tracked in AGENTS.md "MVP scope → Removal candidates" (코드는 보존, surface 만 좁힘):
  *   - notion_* (4) — opencode OAuth cache 의존, Claude Code 전용 인증 경로 부재
  *   - pr_watch_* / pr_event_* (6) — pr-watch 도메인 제거 후보
  *   - gh_run (1) — gh-passthrough 도메인 제거 후보
