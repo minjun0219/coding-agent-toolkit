@@ -2,8 +2,7 @@
  * Smoke tests for the Claude Code MCP server entrypoint. Connects an
  * in-memory `Client` to a real `buildServer()` instance and asserts:
  *
- *  - the expected 15 tools are registered (no notion / pr-watch /
- *    gh-passthrough / spec-to-issues leakage)
+ *  - the expected 15 tools are registered (no notion / pr-watch leakage)
  *  - their input schemas advertise the right required fields
  *  - `spec_pact_fragment` round-trips via the lib helper
  *
