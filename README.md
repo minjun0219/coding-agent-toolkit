@@ -14,9 +14,9 @@ Claude Code (1차) + opencode (2차) 듀얼 host MCP / 플러그인 toolkit. **O
 1. 저장소 root 에서 `bun install`.
 2. Claude Code 가 `.mcp.json` 의 `agent-toolkit` (스토디오 MCP, `bun run server/index.ts`) + `context7` 두 서버를 처음 로드할 때 trust prompt 가 한 번씩 뜬다 — 둘 다 승인.
 3. `CLAUDE.md` 가 자동 로드되어 `AGENTS.md` 로 위임된다.
-4. 첫 호출 — `swagger_envs`, `mysql_envs`, `journal_status`, `spec_pact_fragment` 중 아무거나.
+4. 첫 호출 — `openapi_envs`, `mysql_envs`, `journal_status`, `spec_pact_fragment` 중 아무거나.
 
-Claude Code 진입점은 15 tool 만 노출 — `swagger_*` ×5 + `journal_*` ×4 + `mysql_*` ×5 + `spec_pact_fragment` ×1. 빠진 13 tool (`notion_*` ×4, `pr_*` ×6, `gh_run`, `issue_*` ×2) 은 [`AGENTS.md`](./AGENTS.md) 의 *MVP scope → Removal candidates* 절에 추적된다.
+Claude Code 진입점은 15 tool 만 노출 — `openapi_*` ×5 + `journal_*` ×4 + `mysql_*` ×5 + `spec_pact_fragment` ×1. 빠진 13 tool (`notion_*` ×4, `pr_*` ×6, `gh_run`, `issue_*` ×2) 은 [`AGENTS.md`](./AGENTS.md) 의 *MVP scope → Removal candidates* 절에 추적된다.
 
 ### opencode (2차 host)
 

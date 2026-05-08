@@ -34,7 +34,7 @@
 | 4 | Notion 캐싱 + TTL | ✅ MVP | — | `notion_get` / `notion_status` / `notion_refresh`, `lib/notion-context.ts` |
 | 5 | Notion → 개발 스펙 분해 | ✅ MVP+합의 lifecycle | — | `skills/notion-context/SKILL.md` spec mode (단발성) + `skills/spec-pact/SKILL.md` 4 모드 (`grace` sub-agent 가 conduct, INDEX·SPEC·journal 4 종 kind 로 lock / drift / amend 까지 추적) |
 | 6 | 스펙 → GitHub Issue 추적 | ✅ MVP+gh-cli | [#4](https://github.com/minjun0219/agent-toolkit/issues/4) | `issue_create_from_spec` / `issue_status` 2 도구 + `lib/gh-cli.ts` (Bun.spawn 위 fakeable executor) + `lib/github-issue-sync.ts` (marker 기반 idempotent plan/apply) + `skills/spec-to-issues/SKILL.md` (Rocky 가 conduct, Grace 책임 외) — 인증 / repo / GHE / scope 는 `gh` CLI 가 처리, 의존성 추가 0 |
-| 7 | OpenAPI 캐시 + client 작성 | ✅ MVP+registry | [#6](https://github.com/minjun0219/agent-toolkit/issues/6) | `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` / `swagger_envs`, `lib/openapi-context.ts`, `lib/openapi-registry.ts`, `lib/toolkit-config.ts` + `agent-toolkit.schema.json`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet, host:env:spec 핸들 + scope 검색) |
+| 7 | OpenAPI 캐시 + client 작성 | ✅ MVP+registry | [#6](https://github.com/minjun0219/agent-toolkit/issues/6) | `openapi_get` / `openapi_refresh` / `openapi_status` / `openapi_search` / `openapi_envs`, `lib/openapi-context.ts`, `lib/openapi-registry.ts`, `lib/toolkit-config.ts` + `agent-toolkit.schema.json`, `skills/openapi-client/SKILL.md` (JSON-only, 단일 endpoint 단위 snippet, host:env:spec 핸들 + scope 검색) |
 | 8 | PR review watch | 🛠 Phase 5.5 진입 | — | `pr_watch_start` / `pr_watch_stop` / `pr_watch_status` / `pr_event_record` / `pr_event_pending` / `pr_event_resolve`, `lib/pr-watch.ts` (reducer + handle/event 정규화 — agent-journal 위에 얹는다, GitHub fetch 없음), `skills/pr-review-watch/SKILL.md` 4 모드, `agents/mindy.md` (`mode: subagent`, `permission.edit: deny`, `permission.bash: deny`), `agent-toolkit.json` `github.repositories` (토큰 / 비밀 미저장 — 외부 GitHub MCP 위임). Phase 2 (SPEC → GitHub Issue) 와는 분리된 1차 wedge — *기존* PR 의 코멘트 watch / 답글까지만 |
 
 ## 제안 단계
@@ -66,11 +66,11 @@
   - 시간순 + `kind` / `tag` / `pageId` / `since` 필터 + substring 검색
   - Rocky 본문에 "read 먼저 → append 마지막" 인용 규칙 박힘 (`agents/rocky.md` Memory 절)
 - **Phase 4 — OpenAPI 캐시 + client 작성 — 완료** *(memo #7, issue [#6](https://github.com/minjun0219/agent-toolkit/issues/6))*
-  - `swagger_get` / `swagger_refresh` / `swagger_status` / `swagger_search` 4 도구 + `lib/openapi-context.ts` TTL 파일 캐시 + `skills/openapi-client/SKILL.md`
+  - `openapi_get` / `openapi_refresh` / `openapi_status` / `openapi_search` 4 도구 + `lib/openapi-context.ts` TTL 파일 캐시 + `skills/openapi-client/SKILL.md`
   - JSON-only (YAML 미지원), 단일 endpoint → `fetch` / `axios` snippet 한 덩어리
 - **Phase 4.5 — OpenAPI environment registry — 완료** *(memo #7 확장)*
   - `agent-toolkit.json` (project / user 두 위치, project 우선) 으로 host → env → spec 트리 선언
-  - `host:env:spec` 핸들 / `swagger_search` `scope` (host / host:env / host:env:spec) / `swagger_envs` 도구
+  - `host:env:spec` 핸들 / `openapi_search` `scope` (host / host:env / host:env:spec) / `openapi_envs` 도구
   - `agent-toolkit.schema.json` JSON Schema (IDE 자동완성) + `lib/toolkit-config.ts` 런타임 검증 (외부 의존성 0)
 - **Phase 5 — 기획문서 ↔ SPEC wiki lifecycle (`grace` + `spec-pact`)** *(memo #5 확장)*
   - `skills/spec-pact/SKILL.md` 4 모드 — DRAFT (Notion → 합의 → SPEC write + INDEX 갱신) / VERIFY (SPEC TODO·API 의존성 체크리스트화) / DRIFT-CHECK (`source_content_hash` 비교) / AMEND (drift 항목별 keep/update/reject + version bump)
@@ -196,4 +196,4 @@
 - **Phase 7 의 composition router 자동 vs 수동** — manifest 기반 라우팅이 description-driven routing 을 자동 대체할지, Rocky 가 명시적으로 manifest 를 lookup 할지. 자동화는 token 절감이 크지만 디버그 가능성 / 사용자 control 이 떨어진다. 첫 도입 시점에 결정.
 - **Phase 8 의 외부 primary 충돌 해소 정책** — agent-toolkit 의 키워드와 외부 primary 의 키워드가 겹칠 때, 어느 쪽이 양보할지의 기본 원칙 (트리거 빈도 vs 해당 surface 책임 vs 사용자 선택권). 첫 충돌 사례가 등장하면 해당 규약을 `COEXISTENCE.md` 에 박는다.
 - **Phase 9 의 license / publish 전략** — npm 공개 vs git+ 내부만, scoped vs unscoped, MIT 유지 vs 회사 정책 대응. Phase 9 진입 시 결정.
-- **표면별 출력 cap 정책의 공통화 여부** — `mysql_query` 의 자동 LIMIT, `swagger_search` 의 endpoint 단위 매칭 등 표면별로 큰 응답을 자르는 정책이 박혀 있다. 새 surface 가 늘 때마다 임의 결정하기보다 공통 규칙 (응답 size threshold 넘으면 호출자 intent 로 substring 필터 + 후속 검색용 vocab 노출 같은 패턴) 을 `lib/` 한 곳에 모을지의 결정. 트리거: 새 surface (e.g., GitHub Issue 조회) 가 추가되며 표면별 임의 정책이 두 종 이상 더 늘 때.
+- **표면별 출력 cap 정책의 공통화 여부** — `mysql_query` 의 자동 LIMIT, `openapi_search` 의 endpoint 단위 매칭 등 표면별로 큰 응답을 자르는 정책이 박혀 있다. 새 surface 가 늘 때마다 임의 결정하기보다 공통 규칙 (응답 size threshold 넘으면 호출자 intent 로 substring 필터 + 후속 검색용 vocab 노출 같은 패턴) 을 `lib/` 한 곳에 모을지의 결정. 트리거: 새 surface (e.g., GitHub Issue 조회) 가 추가되며 표면별 임의 정책이 두 종 이상 더 늘 때.
