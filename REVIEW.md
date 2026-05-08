@@ -12,9 +12,9 @@ This file is the highest-priority instruction block for Claude Code Code Review 
 Reserve Important for the categories below. Everything else is Nit at most.
 
 - **MVP scope violation**: a change that pulls in anything listed under *Out* in `AGENTS.md` "MVP scope" — YAML OpenAPI parsing, multi-spec merge, mock servers, multi-host plugin layouts, OAuth, Notion child pages, journal TTL / summarization / embeddings, Rocky running multi-step implementation directly, and so on.
-- **Public contract break**: input/output shape of any of the twelve plugin tools (`notion_*` / `swagger_*` / `journal_*`), `rocky` routing, or the usage rules of the two skills (`notion-context`, `openapi-client`).
+- **Public contract break**: input/output shape of any of the 28 plugin tools (Claude Code surface 15: `swagger_*` / `mysql_*` / `journal_*` / `spec_pact_fragment`; opencode-only 13: `notion_*` / `pr_*` / `gh_run` / `issue_*`), the routing rules of `rocky` / `grace` / `mindy`, or the usage rules of the seven skills (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`).
 - **Lockstep drift**: `agent-toolkit.json` shape changed but `agent-toolkit.schema.json` and `lib/toolkit-config.ts` are not both updated in sync.
-- **Doc-sync miss**: a user-facing surface (tools / env vars / handle format) changed but `README.md` / `.opencode/INSTALL.md` did not follow; a new env var that was not added to the plugin's `readEnv()`; a plugin tool contract change without the matching update in the relevant skill or `agents/rocky.md`.
+- **Doc-sync miss**: a user-facing surface (tools / env vars / handle format) changed but the **two single sources** — `FEATURES.md` (humans, Korean) and `AGENTS.md` (agents, English: *Project in one line* + *Layout* + *Removal candidates*) — were not both updated, or the entry pages (`README.md` always; `.opencode/INSTALL.md` for opencode-side changes; `.claude-plugin/plugin.json` for Claude Code surface changes) did not follow; a new env var that was not added to `readEnv()` in `server/index.ts` (Claude Code) and `.opencode/plugins/agent-toolkit-server.ts` (opencode); a plugin tool contract change without the matching update in the relevant skill or `agents/{rocky,grace,mindy}.md`.
 - **Runtime safety violation**: `__dirname` (forbidden under ESM — use `import.meta.url` / `import.meta.dir`), `.js` / `.ts` extensions on imports, or any Node-only API that breaks the Bun-only runtime assumption.
 - **Errors and secrets**: secrets / tokens / Notion auth-flow data leaking into logs; error messages missing identifying context (input value, timeout, status code, pageId mismatch, …); fs paths built from external input without normalization / sanitization.
 - **Journal integrity**: any change that breaks the append-only / corruption-tolerant contract — read throwing on a malformed line, mutating existing lines, introducing TTL, etc.
@@ -35,7 +35,7 @@ Style, naming, minor JSDoc gaps, test-file location (`*.test.ts` must sit next t
 - Each item in `AGENTS.md` "Change checklist" is satisfied for the surfaces this PR touches.
 - New exported functions / classes carry JSDoc.
 - Error messages include identifying context.
-- User-facing text (`README.md`, `.opencode/INSTALL.md`, `skills/*/SKILL.md`, `agents/rocky.md`) matches the changed tools / env vars / handle formats.
+- User-facing text (`README.md`, `FEATURES.md`, `.opencode/INSTALL.md`, `skills/*/SKILL.md`, `agents/{rocky,grace,mindy}.md`) matches the changed tools / env vars / handle formats.
 
 ## Citation bar
 
