@@ -1,14 +1,26 @@
 # Removal Candidates
 
-이 문서는 추후 PR 에서 실제로 코드를 제거할 후보 도메인을 추적한다. **이 PR 에서는 어떤 파일도 삭제하지 않는다** — opencode 진입점에서는 28 tool 모두 그대로 동작하고, Claude Code MCP 서버 (`server/index.ts`) 만 19 tool 로 좁힌 surface 를 노출한다. 실제 제거 시점·범위는 별도 PR 로 결정한다.
+이 문서는 추후 PR 에서 실제로 코드를 제거할 후보 도메인을 추적한다. **이 PR 에서는 어떤 파일도 삭제하지 않는다** — opencode 진입점에서는 28 tool 모두 그대로 동작하고, Claude Code MCP 서버 (`server/index.ts`) 만 15 tool 로 좁힌 surface 를 노출한다. 실제 제거 시점·범위는 별도 PR 로 결정한다.
 
 원칙:
 
 1. **이 문서에 적힌 모든 파일은 일단 보존한다.** 제거는 사용자 승인을 거친 후속 작업.
 2. 의존성을 함께 적어 둔다 — A 를 지우면 자동으로 깨지는 B 가 있으면 그것도 명시.
-3. 이미 Claude Code surface 에서는 9 개 tool 이 빠져 있다 (`server/index.ts` 미등록). 이 사실은 사용자 노출 면을 이미 줄여 둔 것이지, 코드 보존 결정과 무관.
+3. 이미 Claude Code surface 에서는 13 개 tool 이 빠져 있다 (`server/index.ts` 미등록). 이 사실은 사용자 노출 면을 이미 줄여 둔 것이지, 코드 보존 결정과 무관.
 
 ## 1. 사용자가 명시한 즉시 제거 후보
+
+### `notion-context` (Claude Code surface 비활성화)
+
+| 항목 | 경로 |
+| --- | --- |
+| 코어 모듈 | `lib/notion-context.ts`, `lib/notion-chunking.ts` |
+| 단위 테스트 | `lib/notion-context.test.ts`, `lib/notion-chunking.test.ts` |
+| 스킬 | `skills/notion-context/SKILL.md` (+ 디렉터리 전체) |
+| Plugin tool | `notion_get` / `notion_refresh` / `notion_status` / `notion_extract` (`.opencode/plugins/agent-toolkit.ts`) |
+| `agent-toolkit.json` 키 | (없음 — env 변수만 사용) |
+| 영향 받는 호출자 | `agents/grace.md` 의 `notion_get` / `notion_extract` 사용 (spec-pact DRAFT 모드). spec-pact 도 같이 정리할지 검토 필요. |
+| Claude Code surface | 이미 4 개 tool 모두 미등록. opencode 의 `~/.local/share/opencode/mcp-auth.json` OAuth cache 의존이 Claude Code 환경에서는 전제로 깨져 (cache miss 시 legacy `/getPage` POST 가 실패) Claude Code surface 에서는 빠뜨렸다. opencode 진입점에서는 그대로 동작. |
 
 ### `pr-watch`
 
@@ -93,7 +105,7 @@
 | 진입점 | tool 수 | 비고 |
 | --- | --- | --- |
 | opencode (`.opencode/plugins/agent-toolkit-server.ts`) | 28 | 변경 없음 — 기존 사용자 그대로 동작. |
-| Claude Code (`server/index.ts` via `.mcp.json`) | 19 | `pr_*` ×6 + `gh_run` ×1 + `issue_*` ×2 = 9 미등록. 코드 파일은 모두 살아 있음. |
+| Claude Code (`server/index.ts` via `.mcp.json`) | 15 | `notion_*` ×4 + `pr_*` ×6 + `gh_run` ×1 + `issue_*` ×2 = 13 미등록. 코드 파일은 모두 살아 있음. |
 
 ## 5. 후속 PR 으로 옮길 작업 (제안)
 

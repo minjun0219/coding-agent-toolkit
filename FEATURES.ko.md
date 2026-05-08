@@ -10,7 +10,8 @@
 - **스킬 7 개** (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`)
 - **에이전트 3 명** (`rocky`, `grace`, `mindy`)
 - **설정 파일 1 개** — `agent-toolkit.json` (project 의 `./.opencode/agent-toolkit.json` 이 user 의 `~/.config/opencode/agent-toolkit/agent-toolkit.json` 을 leaf 단위로 덮어쓴다)
-- **런타임**: Bun ≥ 1.0, opencode 전용. 빌드 단계 없음.
+- **런타임**: Bun ≥ 1.0. opencode 가 1차 host (`.opencode/plugins/agent-toolkit-server.ts` 로 28 tool 노출), Claude Code 가 2차 host (`server/index.ts` 가 `.claude-plugin/plugin.json` + `.mcp.json` 으로 15 tool 노출). 빌드 단계 없음.
+- **Claude Code surface (실험)**: 28 tool 중 15 개만 노출 — `openapi_*` (5) + `journal_*` (4) + `mysql_*` (5) + `spec_pact_fragment` (1). 빠진 13 개 (`notion_*` ×4, `pr_*` ×6, `gh_run` ×1, `issue_*` ×2) 는 [`REMOVAL_CANDIDATES.md`](./REMOVAL_CANDIDATES.md) 에 추적되며, 당분간 opencode 진입점에만 연결된다.
 - **GitHub 전송 정책**: 쓰기는 사용자 `gh` CLI, PR 라이브 상태는 외부 GitHub MCP, `pr_*` 큐는 저널 only. toolkit 은 GitHub 토큰을 저장하지 않으며 PR 코멘트용 GitHub API 도 직접 호출하지 않는다.
 
 각 도구 entry 는 한 블록으로 인용할 수 있도록 6-필드 형식을 따른다:

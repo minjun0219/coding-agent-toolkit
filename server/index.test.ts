@@ -2,18 +2,18 @@
  * Smoke tests for the Claude Code MCP server entrypoint. Connects an
  * in-memory `Client` to a real `buildServer()` instance and asserts:
  *
- *  - the expected 19 tools are registered (no pr-watch / gh-passthrough /
- *    spec-to-issues leakage)
+ *  - the expected 15 tools are registered (no notion / pr-watch /
+ *    gh-passthrough / spec-to-issues leakage)
  *  - their input schemas advertise the right required fields
  *  - `spec_pact_fragment` round-trips via the lib helper
  *
- * No network, no Notion, no MySQL — only the surface that does not require
- * external services is exercised here. The handler logic itself is covered
- * by the lib/*.test.ts and .opencode/plugins/agent-toolkit.test.ts suites.
+ * No network, no MySQL — only the surface that does not require external
+ * services is exercised here. The handler logic itself is covered by the
+ * lib/*.test.ts and .opencode/plugins/agent-toolkit.test.ts suites.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -21,10 +21,6 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "./index";
 
 const EXPECTED_TOOLS = [
-  "notion_get",
-  "notion_refresh",
-  "notion_status",
-  "notion_extract",
   "openapi_get",
   "openapi_refresh",
   "openapi_status",
@@ -42,7 +38,12 @@ const EXPECTED_TOOLS = [
   "spec_pact_fragment",
 ] as const;
 
+/** 제거 후보 + Claude Code 진입점에서 비노출 — surface 누수 금지. */
 const REMOVED_TOOLS = [
+  "notion_get",
+  "notion_refresh",
+  "notion_status",
+  "notion_extract",
   "pr_watch_start",
   "pr_watch_stop",
   "pr_watch_status",
@@ -56,16 +57,28 @@ const REMOVED_TOOLS = [
 
 const FRAGMENT_BODY = "# DRAFT mode\n\nfixture body for in-memory test.\n";
 
+/** beforeAll 에서 덮어쓰는 env 키 — afterAll 에서 정확히 같은 셋만 원복한다. */
+const ENV_KEYS_TO_RESTORE = [
+  "AGENT_TOOLKIT_JOURNAL_DIR",
+  "AGENT_TOOLKIT_OPENAPI_CACHE_DIR",
+] as const;
+
 let client: Client;
 let tmpHome: string;
 let skillsDir: string;
+const savedEnv: Record<string, string | undefined> = {};
 
 beforeAll(async () => {
-  // Isolate the journal / cache so the test doesn't touch a real `~/.config`
-  // tree on the developer's machine.
+  // Isolate the journal / openapi cache so the test doesn't touch a real
+  // `~/.config/...` tree on the developer's machine. Mutating env keys must
+  // match the names that the lib helpers actually read — see
+  // `lib/agent-journal.ts` (AGENT_TOOLKIT_JOURNAL_DIR) and
+  // `lib/openapi-context.ts` (AGENT_TOOLKIT_OPENAPI_CACHE_DIR).
   tmpHome = mkdtempSync(join(tmpdir(), "agent-toolkit-server-test-"));
-  process.env.AGENT_TOOLKIT_JOURNAL_PATH = join(tmpHome, "journal.jsonl");
-  process.env.AGENT_TOOLKIT_NOTION_CACHE_DIR = join(tmpHome, "notion-cache");
+  for (const key of ENV_KEYS_TO_RESTORE) {
+    savedEnv[key] = process.env[key];
+  }
+  process.env.AGENT_TOOLKIT_JOURNAL_DIR = join(tmpHome, "journal");
   process.env.AGENT_TOOLKIT_OPENAPI_CACHE_DIR = join(tmpHome, "openapi-cache");
 
   skillsDir = join(tmpHome, "skills");
@@ -86,10 +99,23 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await client?.close().catch(() => undefined);
+  // Restore env exactly to its pre-test state — keep the rest of the suite
+  // (and any sibling test in the same Bun process) deterministic.
+  for (const key of ENV_KEYS_TO_RESTORE) {
+    const prior = savedEnv[key];
+    if (prior === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = prior;
+    }
+  }
+  if (tmpHome) {
+    rmSync(tmpHome, { recursive: true, force: true });
+  }
 });
 
 describe("agent-toolkit MCP server", () => {
-  test("exposes exactly the 19 in-scope tools", async () => {
+  test("exposes exactly the 15 in-scope tools", async () => {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
     expect(names).toEqual([...EXPECTED_TOOLS].sort());
@@ -114,8 +140,6 @@ describe("agent-toolkit MCP server", () => {
       return [...(schema.required ?? [])].sort();
     };
 
-    expect(requiredFields("notion_get")).toEqual(["input"]);
-    expect(requiredFields("notion_extract")).toEqual(["input"]);
     expect(requiredFields("openapi_search")).toEqual(["query"]);
     expect(requiredFields("journal_append")).toEqual(["content"]);
     expect(requiredFields("journal_search")).toEqual(["query"]);

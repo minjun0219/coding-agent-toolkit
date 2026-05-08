@@ -1,18 +1,19 @@
 /**
  * Claude Code MCP server entrypoint for agent-toolkit (Phase Claude-1).
  *
- * stdio JSON-RPC server that exposes 19 of the 28 tools the opencode plugin
+ * stdio JSON-RPC server that exposes 15 of the 28 tools the opencode plugin
  * provides:
  *
- *   - notion_get / notion_refresh / notion_status / notion_extract  (4)
  *   - openapi_get / openapi_refresh / openapi_status / openapi_search / openapi_envs  (5)
  *   - journal_append / journal_read / journal_search / journal_status  (4)
  *   - mysql_envs / mysql_status / mysql_tables / mysql_schema / mysql_query  (5)
  *   - spec_pact_fragment  (1)
  *
- * Excluded (제거 후보 도메인 — see REMOVAL_CANDIDATES.md):
- *   pr_watch_* / pr_event_* (6, pr-watch), gh_run (1, gh-passthrough),
- *   issue_create_from_spec / issue_status (2, spec-to-issues).
+ * Excluded — tracked in REMOVAL_CANDIDATES.md (코드는 보존, surface 만 좁힘):
+ *   - notion_* (4) — opencode OAuth cache 의존, Claude Code 전용 인증 경로 부재
+ *   - pr_watch_* / pr_event_* (6) — pr-watch 도메인 제거 후보
+ *   - gh_run (1) — gh-passthrough 도메인 제거 후보
+ *   - issue_create_from_spec / issue_status (2) — spec-to-issues 도메인 제거 후보
  *
  * Handlers are imported from the existing opencode plugin entrypoint so business
  * logic stays in one place. The opencode plugin keeps its full 28-tool surface;
@@ -24,8 +25,8 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import pkg from "../package.json" with { type: "json" };
 import { createJournalFromEnv } from "../lib/agent-journal";
-import { createCacheFromEnv } from "../lib/notion-context";
 import { createOpenapiCacheFromEnv } from "../lib/openapi-context";
 import { MysqlExecutorRegistry } from "../lib/mysql-context";
 import {
@@ -44,10 +45,6 @@ import {
   handleMysqlSchema,
   handleMysqlStatus,
   handleMysqlTables,
-  handleNotionExtract,
-  handleNotionGet,
-  handleNotionRefresh,
-  handleNotionStatus,
   handleSwaggerEnvs,
   handleSwaggerGet,
   handleSwaggerRefresh,
@@ -81,13 +78,12 @@ export interface BuildServerOptions {
 }
 
 /**
- * Build the MCP server with all 19 tools wired up. Exported for tests so they
+ * Build the MCP server with all 15 tools wired up. Exported for tests so they
  * can register tools against an in-process server without spawning a child.
  */
 export async function buildServer(options: BuildServerOptions = {}) {
   const skillsDir = options.skillsDir ?? SKILLS_DIR;
 
-  const cache = createCacheFromEnv();
   const openapi = createOpenapiCacheFromEnv();
   const journal = createJournalFromEnv();
 
@@ -110,54 +106,8 @@ export async function buildServer(options: BuildServerOptions = {}) {
 
   const server = new McpServer({
     name: "agent-toolkit",
-    version: "0.2.0",
+    version: pkg.version,
   });
-
-  // ──────────────────────────── Notion (4) ────────────────────────────
-
-  server.registerTool(
-    "notion_get",
-    {
-      description:
-        "Notion 페이지를 캐시 우선 정책으로 읽는다. 캐시 hit 이면 remote 호출 없음. miss 면 remote MCP fetch 후 캐시에 저장. (input: pageId 또는 URL)",
-      inputSchema: { input: z.string() },
-    },
-    async ({ input }) => jsonResult(await handleNotionGet(cache, input)),
-  );
-
-  server.registerTool(
-    "notion_refresh",
-    {
-      description:
-        "캐시를 무시하고 remote Notion MCP 에서 강제로 다시 가져와 캐시를 갱신한다. (input: pageId 또는 URL)",
-      inputSchema: { input: z.string() },
-    },
-    async ({ input }) => jsonResult(await handleNotionRefresh(cache, input)),
-  );
-
-  server.registerTool(
-    "notion_status",
-    {
-      description:
-        "Notion 페이지 캐시 메타(저장 시각, TTL, 만료 여부)만 조회한다. remote 호출 없음. (input: pageId 또는 URL)",
-      inputSchema: { input: z.string() },
-    },
-    async ({ input }) => jsonResult(await handleNotionStatus(cache, input)),
-  );
-
-  server.registerTool(
-    "notion_extract",
-    {
-      description:
-        "긴 Notion 페이지를 캐시 우선 정책으로 읽고 heading 기반 chunk 와 구현 액션 후보(requirements/screens/apis/todos/questions)를 반환한다. remote 호출 정책은 notion_get 과 동일.",
-      inputSchema: {
-        input: z.string(),
-        maxCharsPerChunk: z.number().int().positive().optional(),
-      },
-    },
-    async ({ input, maxCharsPerChunk }) =>
-      jsonResult(await handleNotionExtract(cache, input, { maxCharsPerChunk })),
-  );
 
   // ──────────────────────────── OpenAPI (5) ────────────────────────────
 
