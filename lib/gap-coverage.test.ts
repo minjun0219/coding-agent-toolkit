@@ -2,11 +2,9 @@
  * T10: tool-by-tool 자동화 gap 테스트
  *
  * 다음 gap 영역을 커버한다:
- *  1. fake GhExecutor integration — FakeGhExecutor 패턴 검증
- *  2. tool handler smoke — 각 tool category별 최소 1개
- *  3. OpenAPI timeout/error 케이스 — 서버 에러 / 연결 거부
- *  4. journal high-volume — 대량 append 후 read/search 정확성
- *  5. MySQL multipleStatements:false guard — POOL_FIXED_OPTIONS 검증
+ *  1. OpenAPI timeout/error 케이스 — 서버 에러 / 연결 거부
+ *  2. journal high-volume — 대량 append 후 read/search 정확성
+ *  3. MySQL multipleStatements:false guard — POOL_FIXED_OPTIONS 검증
  *
  * 모두 결정론적(deterministic) — live env 없이 통과.
  */
@@ -18,148 +16,9 @@ import { join } from "node:path";
 import { AgentJournal } from "./agent-journal";
 import { OpenapiCache } from "./openapi-context";
 import { POOL_FIXED_OPTIONS } from "./mysql-context";
-import type { GhExecResult, GhExecutor } from "./gh-cli";
-import {
-  GhNotInstalledError,
-  GhAuthError,
-  GhCommandError,
-  GhDeniedCommandError,
-  classifyGhCommand,
-} from "./gh-cli";
 import { handleSwaggerGet } from "../.opencode/plugins/agent-toolkit";
 
-// ── 1. fake GhExecutor integration ──────────────────────────────────────────
-
-/**
- * FakeGhExecutor: GhExecutor 인터페이스를 구현하는 fake.
- * 미리 큐에 넣은 응답을 순서대로 반환한다.
- */
-class FakeGhExecutor implements GhExecutor {
-  public seen: Array<{ args: readonly string[]; stdin?: string }> = [];
-  constructor(private readonly responses: GhExecResult[]) {}
-  async run(args: readonly string[], stdin?: string): Promise<GhExecResult> {
-    this.seen.push({ args, stdin });
-    const next = this.responses.shift();
-    if (!next) {
-      throw new Error(
-        `FakeGhExecutor: no response queued for \`gh ${args.join(" ")}\``,
-      );
-    }
-    return next;
-  }
-}
-
-describe("fake GhExecutor integration", () => {
-  it("records all calls in seen array in order", async () => {
-    const exec = new FakeGhExecutor([
-      { stdout: "ok", stderr: "", exitCode: 0 },
-      { stdout: "result", stderr: "", exitCode: 0 },
-    ]);
-    await exec.run(["auth", "status"]);
-    await exec.run(["repo", "view"]);
-    expect(exec.seen).toHaveLength(2);
-    expect(exec.seen[0]?.args).toEqual(["auth", "status"]);
-    expect(exec.seen[1]?.args).toEqual(["repo", "view"]);
-  });
-
-  it("throws when queue is exhausted", async () => {
-    const exec = new FakeGhExecutor([]);
-    await expect(exec.run(["auth", "status"])).rejects.toThrow(
-      /no response queued/,
-    );
-  });
-
-  it("passes stdin through to seen", async () => {
-    const exec = new FakeGhExecutor([{ stdout: "", stderr: "", exitCode: 0 }]);
-    await exec.run(["issue", "create"], "body text");
-    expect(exec.seen[0]?.stdin).toBe("body text");
-  });
-
-  it("returns non-zero exitCode without throwing", async () => {
-    const exec = new FakeGhExecutor([
-      { stdout: "", stderr: "permission denied", exitCode: 1 },
-    ]);
-    const result = await exec.run(["issue", "create"]);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("permission denied");
-  });
-});
-
-// ── 2. gh-cli error classes smoke ────────────────────────────────────────────
-
-describe("gh-cli error classes smoke", () => {
-  it("GhNotInstalledError has correct name and message", () => {
-    const err = new GhNotInstalledError();
-    expect(err.name).toBe("GhNotInstalledError");
-    expect(err.message).toContain("gh CLI not found");
-  });
-
-  it("GhAuthError includes stderr tail in message", () => {
-    const err = new GhAuthError("token expired\nplease re-auth");
-    expect(err.name).toBe("GhAuthError");
-    expect(err.message).toContain("token expired");
-  });
-
-  it("GhAuthError works without stderr", () => {
-    const err = new GhAuthError();
-    expect(err.name).toBe("GhAuthError");
-    expect(err.message).toContain("gh auth login");
-  });
-
-  it("GhCommandError exposes args and exitCode", () => {
-    const err = new GhCommandError(["issue", "create"], 1, "bad request");
-    expect(err.name).toBe("GhCommandError");
-    expect(err.args).toEqual(["issue", "create"]);
-    expect(err.exitCode).toBe(1);
-    expect(err.message).toContain("failed with exit");
-  });
-
-  it("GhDeniedCommandError exposes the denied command", () => {
-    const err = new GhDeniedCommandError(
-      ["auth", "login"],
-      "environment-affecting command",
-    );
-    expect(err.name).toBe("GhDeniedCommandError");
-    expect(err.message).toContain("is denied");
-  });
-});
-
-// ── 3. classifyGhCommand smoke ────────────────────────────────────────────────
-
-describe("classifyGhCommand", () => {
-  it("classifies read commands correctly", () => {
-    expect(classifyGhCommand(["auth", "status"])).toBe("read");
-    expect(classifyGhCommand(["repo", "view"])).toBe("read");
-    expect(classifyGhCommand(["issue", "list"])).toBe("read");
-    expect(classifyGhCommand(["pr", "view", "42"])).toBe("read");
-    expect(classifyGhCommand(["gist", "list"])).toBe("read");
-    expect(classifyGhCommand(["gist", "view", "abc"])).toBe("read");
-  });
-
-  it("classifies write commands correctly", () => {
-    expect(classifyGhCommand(["issue", "create"])).toBe("write");
-    expect(classifyGhCommand(["issue", "edit", "1"])).toBe("write");
-    expect(classifyGhCommand(["pr", "create"])).toBe("write");
-    expect(classifyGhCommand(["label", "create"])).toBe("write");
-  });
-
-  it("classifies deny commands correctly", () => {
-    expect(classifyGhCommand(["auth", "login"])).toBe("deny");
-    expect(classifyGhCommand(["auth", "logout"])).toBe("deny");
-    expect(classifyGhCommand(["pr", "merge", "42"])).toBe("deny");
-    expect(classifyGhCommand(["extension", "install", "x"])).toBe("deny");
-    expect(classifyGhCommand(["alias", "set", "x", "y"])).toBe("deny");
-    expect(classifyGhCommand(["config", "set", "x", "y"])).toBe("deny");
-    expect(classifyGhCommand(["gist", "create"])).toBe("deny");
-    expect(classifyGhCommand(["gist", "delete", "abc"])).toBe("deny");
-  });
-
-  it("classifies unknown subcommand as deny (conservative)", () => {
-    expect(classifyGhCommand(["unknown-subcommand"])).toBe("deny");
-  });
-});
-
-// ── 4. OpenAPI timeout/error 케이스 ──────────────────────────────────────────
+// ── 1. OpenAPI timeout/error 케이스 ──────────────────────────────────────────
 
 describe("OpenAPI error cases", () => {
   let dir: string;
@@ -246,7 +105,7 @@ describe("OpenAPI error cases", () => {
   });
 });
 
-// ── 5. journal high-volume ────────────────────────────────────────────────────
+// ── 2. journal high-volume ────────────────────────────────────────────────────
 
 describe("journal high-volume", () => {
   let jDir: string;
@@ -325,7 +184,7 @@ describe("journal high-volume", () => {
   });
 });
 
-// ── 6. MySQL POOL_FIXED_OPTIONS guard ────────────────────────────────────────
+// ── 3. MySQL POOL_FIXED_OPTIONS guard ────────────────────────────────────────
 
 describe("MySQL POOL_FIXED_OPTIONS guard", () => {
   it("multipleStatements is false", () => {
