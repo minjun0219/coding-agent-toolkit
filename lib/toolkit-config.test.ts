@@ -473,69 +473,19 @@ describe("validateConfig", () => {
 });
 
 describe("validateConfig — github", () => {
-  it("accepts a valid github object", () => {
-    const cfg = validateConfig(
-      {
-        github: {
-          repo: "minjun0219/agent-toolkit",
-          defaultLabels: ["spec-pact", "extra"],
-        },
-      },
-      "p",
-    );
-    expect(cfg.github?.repo).toBe("minjun0219/agent-toolkit");
-    expect(cfg.github?.defaultLabels).toEqual(["spec-pact", "extra"]);
-  });
-
   it("rejects unsupported github keys (typo guard)", () => {
     expect(() =>
       validateConfig({ github: { token: "x" } } as any, "p"),
     ).toThrow(/unsupported key "token"/);
   });
 
-  it("rejects malformed repo", () => {
+  it("rejects legacy spec-to-issues keys (`repo` / `defaultLabels`)", () => {
     expect(() =>
-      validateConfig({ github: { repo: "not-a-repo" } }, "p"),
-    ).toThrow(/github\.repo must match/);
-  });
-
-  it("rejects empty defaultLabels array", () => {
+      validateConfig({ github: { repo: "x/y" } } as any, "p"),
+    ).toThrow(/unsupported key "repo"/);
     expect(() =>
-      validateConfig({ github: { defaultLabels: [] } }, "p"),
-    ).toThrow(/non-empty string array/);
-  });
-
-  it("rejects label with spaces or colons", () => {
-    expect(() =>
-      validateConfig({ github: { defaultLabels: ["spec pact"] } } as any, "p"),
-    ).toThrow(/defaultLabels\[0\] must match/);
-    expect(() =>
-      validateConfig({ github: { defaultLabels: ["spec:pact"] } } as any, "p"),
-    ).toThrow(/defaultLabels\[0\] must match/);
-  });
-});
-
-describe("mergeConfigs — github", () => {
-  it("project overrides user at the github leaf (defaultLabels replaces wholly)", () => {
-    const user: ToolkitConfig = {
-      github: { repo: "u/u", defaultLabels: ["spec-pact"] },
-    };
-    const project: ToolkitConfig = {
-      github: { repo: "p/p", defaultLabels: ["spec-pact", "phase2"] },
-    };
-    const merged = mergeConfigs(user, project);
-    expect(merged.github?.repo).toBe("p/p");
-    expect(merged.github?.defaultLabels).toEqual(["spec-pact", "phase2"]);
-  });
-
-  it("project keeps user's keys when project does not set them", () => {
-    const user: ToolkitConfig = {
-      github: { defaultLabels: ["spec-pact"] },
-    };
-    const project: ToolkitConfig = { github: { repo: "p/p" } };
-    const merged = mergeConfigs(user, project);
-    expect(merged.github?.repo).toBe("p/p");
-    expect(merged.github?.defaultLabels).toEqual(["spec-pact"]);
+      validateConfig({ github: { defaultLabels: ["spec-pact"] } } as any, "p"),
+    ).toThrow(/unsupported key "defaultLabels"/);
   });
 });
 

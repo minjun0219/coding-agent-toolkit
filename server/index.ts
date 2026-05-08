@@ -1,7 +1,7 @@
 /**
- * Claude Code MCP server entrypoint for agent-toolkit (Phase Claude-1).
+ * Claude Code MCP server entrypoint for agent-toolkit.
  *
- * stdio JSON-RPC server that exposes 15 of the 28 tools the opencode plugin
+ * stdio JSON-RPC server that exposes 15 of the 25 tools the opencode plugin
  * provides:
  *
  *   - openapi_get / openapi_refresh / openapi_status / openapi_search / openapi_envs  (5)
@@ -12,12 +12,11 @@
  * Excluded — tracked in AGENTS.md "MVP scope → Removal candidates" (코드는 보존, surface 만 좁힘):
  *   - notion_* (4) — opencode OAuth cache 의존, Claude Code 전용 인증 경로 부재
  *   - pr_watch_* / pr_event_* (6) — pr-watch 도메인 제거 후보
- *   - gh_run (1) — gh-passthrough 도메인 제거 후보
- *   - issue_create_from_spec / issue_status (2) — spec-to-issues 도메인 제거 후보
  *
- * Handlers are imported from the existing opencode plugin entrypoint so business
- * logic stays in one place. The opencode plugin keeps its full 28-tool surface;
- * this server is the narrower Claude Code surface.
+ * Handlers are imported from the opencode plugin implementation
+ * (`.opencode/plugins/agent-toolkit.ts`) so business logic stays in one place.
+ * The opencode plugin keeps its full 25-tool surface; this server is the
+ * narrower Claude Code surface.
  */
 
 import { resolve } from "node:path";

@@ -10,9 +10,7 @@ const SKILL_FILES = [
   "skills/openapi-client/SKILL.md",
   "skills/mysql-query/SKILL.md",
   "skills/spec-pact/SKILL.md",
-  "skills/spec-to-issues/SKILL.md",
   "skills/pr-review-watch/SKILL.md",
-  "skills/gh-passthrough/SKILL.md",
 ] as const;
 
 const NATIVE_ALLOWED_TOOLS = new Set(["read", "write", "edit", "glob", "grep"]);
@@ -66,8 +64,7 @@ describe("skill/agent contract inventory", () => {
     expect(prSkill).toContain("mindy");
     expect(prSkill).toContain("a bare PR link must not start watch");
 
-    expect(grace).toContain("GitHub Issue 동기화");
-    expect(grace).toContain("gh-passthrough");
+    expect(grace).toContain("GitHub Issue / PR / 일반 `gh` 호출");
     expect(grace).toContain("finalize/lock authority");
     expect(grace).toContain("SPEC 까지");
   });
