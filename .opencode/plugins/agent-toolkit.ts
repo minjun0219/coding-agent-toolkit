@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { tool as defineTool } from "@opencode-ai/plugin";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -60,19 +59,6 @@ import {
   type SpecPactMode,
   assertSpecPactMode,
 } from "../../lib/spec-pact-fragments";
-import {
-  type GhExecutor,
-  type RunGhResult,
-  assertGhAuthed,
-  createBunGhExecutor,
-  detectRepo,
-  runGhCommand,
-} from "../../lib/gh-cli";
-import {
-  parseSpecFile,
-  syncSpecToIssues,
-  type SyncSpecToIssuesOutput,
-} from "../../lib/github-issue-sync";
 import { assertReadOnlySql } from "../../lib/mysql-readonly";
 import {
   MysqlExecutorRegistry,
@@ -1207,153 +1193,6 @@ export async function handleMysqlQuery(
   return mysqlRunReadonlyQuery(executor, sql, options);
 }
 
-// ── spec-to-issues (Phase 2 — gh CLI delegated) ──────────────────────────────
-
-/** SPEC 경로 결정 — `slug` 가 있으면 `<spec.dir>/<slug>.md`, `path` 가 있으면 그 자체. */
-const resolveSpecPath = (
-  config: ToolkitConfig,
-  slug: string | undefined,
-  path: string | undefined,
-): string => {
-  if (path && slug) {
-    throw new Error(
-      "spec-to-issues: provide exactly one of `slug` or `path`, not both",
-    );
-  }
-  if (path) {
-    return resolve(process.cwd(), path);
-  }
-  if (slug) {
-    const dir = config.spec?.dir ?? ".agent/specs";
-    return resolve(process.cwd(), dir, `${slug}.md`);
-  }
-  throw new Error(
-    'spec-to-issues: one of `slug` or `path` is required (e.g. slug="user-auth" or path=".agent/specs/user-auth.md")',
-  );
-};
-
-/**
- * `issue_create_from_spec` / `issue_status` 의 공통 백엔드. dryRun 만 다름.
- * journal append 는 실제 GitHub issue 변경이 발생한 apply 에서만 남긴다 — status / dry-run 은
- * read-only planning surface 이므로 journal 파일까지 부작용 없이 유지한다.
- */
-export async function handleIssueCreateFromSpec(
-  exec: GhExecutor,
-  journal: AgentJournal,
-  config: ToolkitConfig,
-  args: {
-    slug?: string;
-    path?: string;
-    repo?: string;
-    dryRun?: boolean;
-  },
-): Promise<SyncSpecToIssuesOutput> {
-  const dryRun = args.dryRun !== false; // default true — apply requires explicit dryRun=false
-
-  // input validation 이 auth check 보다 먼저 — 사용자 입력 에러가 더 빨리 surface 되어 디버깅 쉽다.
-  const specPath = resolveSpecPath(config, args.slug, args.path);
-  const raw = await readFile(specPath, "utf8");
-  const spec = parseSpecFile(specPath, raw);
-
-  await assertGhAuthed(exec);
-
-  const repoOverride = args.repo ?? config.github?.repo;
-  const repo = await detectRepo(exec, repoOverride);
-
-  const labels = config.github?.defaultLabels ?? ["spec-pact"];
-  const dedupeLabel = labels[0] ?? "spec-pact";
-
-  const result = await syncSpecToIssues(exec, {
-    spec,
-    repo,
-    dedupeLabel,
-    labels,
-    dryRun,
-  });
-
-  if (!dryRun) {
-    // journal — note kind reuse, tag-shaped recall via "spec-to-issues"
-    const subsCreated = result.applied?.created.subs.length ?? 0;
-    const epicCreated = result.applied?.created.epic ? 1 : 0;
-    await journal.append({
-      kind: "note",
-      content: `${spec.frontmatter.slug} applied: epic+${epicCreated} subs+${subsCreated} patched=${result.applied?.patchedEpic ? 1 : 0}`,
-      tags: ["spec-pact", "spec-to-issues", "applied"],
-      pageId: spec.frontmatter.source_page_id,
-    });
-  }
-
-  return result;
-}
-
-/** `issue_status` — `dryRun=true` alias, plan 만 반환. */
-export async function handleIssueStatus(
-  exec: GhExecutor,
-  journal: AgentJournal,
-  config: ToolkitConfig,
-  args: { slug?: string; path?: string; repo?: string },
-): Promise<SyncSpecToIssuesOutput> {
-  return handleIssueCreateFromSpec(exec, journal, config, {
-    ...args,
-    dryRun: true,
-  });
-}
-
-// ── gh-passthrough (Phase 2 후속 — generic gh runner) ────────────────────────
-
-/**
- * `gh_run` plugin tool 의 백엔드. classify → 정책 적용 (read 즉시 / write +
- * dryRun=true 면 plan / write + dryRun=false 면 실행 / deny throw) → journal
- * append 한 줄.
- *
- * journal tag scheme: `["gh-passthrough", "read"|"dry-run"|"applied"]`. content
- * 는 `gh <head> <verb>` (인자 값은 길어서 생략 — 호출 자체의 흐름만 회수 가능
- * 하게).
- */
-export async function handleGhRun(
-  exec: GhExecutor,
-  journal: AgentJournal,
-  args: string[],
-  dryRun?: boolean,
-): Promise<RunGhResult> {
-  // 입력 검증 — assertGhAuthed 전에 (Copilot 지적): 빈 배열이거나 비-string
-  // 요소가 있는 args 로 불필요한 `gh auth status` 호출이 발생하지 않게 한다.
-  if (!Array.isArray(args)) {
-    throw new Error(
-      `gh_run: args must be an array of strings, got ${typeof args}`,
-    );
-  }
-  if (args.length === 0) {
-    throw new Error(
-      'gh_run: args must be a non-empty array (e.g. ["auth", "status"] or ["issue", "list"])',
-    );
-  }
-  for (const [i, a] of args.entries()) {
-    if (typeof a !== "string") {
-      throw new Error(
-        `gh_run: args[${i}] must be a string, got ${typeof a} (${JSON.stringify(a)})`,
-      );
-    }
-  }
-  // head 가 `auth` 면 인증 verify 를 skip — `auth status` 는 verify 가 곧 본 호출이라 중복
-  // 호출 방지, 그 외 `auth login|logout|...` 은 어차피 `runGhCommand` 안의 deny 분류가 먼저
-  // `GhDeniedCommandError` 로 throw 하므로 verify 가 의미 없음. (Copilot 주석-코드 일치 수정.)
-  const head = args[0];
-  if (head !== "auth") {
-    await assertGhAuthed(exec);
-  }
-  const result = await runGhCommand(exec, args, { dryRun });
-
-  const stage =
-    result.kind === "read" ? "read" : result.dryRun ? "dry-run" : "applied";
-  await journal.append({
-    kind: "note",
-    content: `gh ${head ?? ""}${args[1] ? ` ${args[1]}` : ""} ${stage}`,
-    tags: ["gh-passthrough", stage],
-  });
-  return result;
-}
-
 /**
  * opencode plugin default export.
  * `directory` 는 opencode 가 plugin 을 로드한 cwd. 우리는 import.meta 기반으로
@@ -1378,10 +1217,6 @@ export default async function agentToolkitPlugin(_input: unknown) {
   // MySQL pool 들은 핸들마다 lazy 로 만들어 캐시한다 — 한 turn 안에서 같은 핸들로
   // 여러 도구가 호출돼도 connection 을 재사용한다.
   const mysqlRegistry = new MysqlExecutorRegistry(process.env);
-
-  // gh CLI 위임용 executor — Bun.spawn 백엔드 한 개만 plugin lifetime 동안
-  // 재사용한다. fake 주입은 테스트의 책임.
-  const ghExecutor = createBunGhExecutor();
 
   // 정상 종료 (process 가 자연 exit 시) 에 한해 lazy 로 만든 mysql2 pool 들을 비동기로
   // 닫는다. 실패는 한 줄 로깅 후 무시 (best-effort) — opencode 의 plugin lifecycle 에
@@ -1779,56 +1614,6 @@ export default async function agentToolkitPlugin(_input: unknown) {
           return handleMysqlQuery(mysqlRegistry, toolkitConfig, handle, sql, {
             limit,
           });
-        },
-      },
-      issue_create_from_spec: {
-        description:
-          "잠긴 SPEC (slug 또는 path) 의 `# 합의 TODO` 를 GitHub epic + sub-issue 시리즈로 idempotent 하게 동기화한다. 마커 (<!-- spec-pact:slug=…:kind=epic|sub -->) 기반 — 같은 SPEC 재호출은 no-op, bullet 추가만 새 sub. dryRun=true (기본) 면 plan 만 반환하고 gh 호출은 list 한 번뿐. apply 는 dryRun=false. 인증 / repo 자동 감지는 gh CLI 가 처리 — gh 미설치 / 미인증 시 한 줄 가이드로 throw. (slug?: SPEC slug, path?: SPEC 경로 — 둘 중 하나, repo?: owner/name override (없으면 gh repo view), dryRun?: 기본 true)",
-        parameters: {
-          slug: { type: "string", required: false },
-          path: { type: "string", required: false },
-          repo: { type: "string", required: false },
-          dryRun: { type: "boolean", required: false },
-        },
-        async handler(args: {
-          slug?: string;
-          path?: string;
-          repo?: string;
-          dryRun?: boolean;
-        }) {
-          return handleIssueCreateFromSpec(
-            ghExecutor,
-            journal,
-            toolkitConfig,
-            args,
-          );
-        },
-      },
-      issue_status: {
-        description:
-          "SPEC 의 GitHub 동기화 plan 만 반환한다 (issue_create_from_spec 의 dryRun=true read-only alias). gh 호출은 issue list 한 번뿐. 어떤 epic/sub 가 이미 존재하는지, 새로 만들어질 항목이 무엇인지, orphan (사라진 bullet) 이 있는지 한눈에 본다. (slug?: SPEC slug, path?: SPEC 경로 — 둘 중 하나, repo?: owner/name override)",
-        parameters: {
-          slug: { type: "string", required: false },
-          path: { type: "string", required: false },
-          repo: { type: "string", required: false },
-        },
-        async handler(args: { slug?: string; path?: string; repo?: string }) {
-          return handleIssueStatus(ghExecutor, journal, toolkitConfig, args);
-        },
-      },
-      gh_run: {
-        description:
-          '사용자 환경의 `gh` CLI 를 ad-hoc 호출. read 명령 (auth status / repo view / issue list / pr view / api default GET (body flag 없음) / search / gist list / gist view / ...) 은 즉시 실행. write 명령 (issue create / pr merge / label create / api --method POST / api ... body-bearing flag (-f / -F / --field / --raw-field / --input / -b / --body-file) 가 있으면 default POST → write / ...) 은 dryRun=true (기본) 면 plan 만, dryRun=false 로 명시해야 실행. 환경 변경 위험 명령 (auth login/logout/refresh/setup-git/token, extension *, alias *, config *, gist create|edit|delete|clone) 은 GhDeniedCommandError 로 거부 — gist 의 list/view 는 read 로 허용. (args: gh subcommand 부터 시작하는 문자열 배열 — 예: ["issue", "list", "--repo", "x/y"], dryRun?: write 호출에서만 의미 있음, 기본 true)',
-        parameters: {
-          args: {
-            type: "array",
-            items: { type: "string" },
-            required: true,
-          },
-          dryRun: { type: "boolean", required: false },
-        },
-        async handler({ args, dryRun }: { args: string[]; dryRun?: boolean }) {
-          return handleGhRun(ghExecutor, journal, args, dryRun);
         },
       },
       spec_pact_fragment: {
