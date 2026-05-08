@@ -25,7 +25,7 @@ PR review watch sub-agent. Where Rocky (`agents/rocky.md`) is the conductor and 
   - WATCH-STOP: a one-line confirmation + the final pending count (the skill's WATCH-STOP format).
 - **Out of scope (mindy never does directly)**:
   - **Creating the PR** — `gh pr create` / `mcp__github__create_pull_request` are the user's / Claude Code's responsibility.
-  - **Merging the PR** — `mcp__github__merge_pull_request` belongs to the user / Claude Code; mindy only *observes* the merge result and stops the watch. **mindy 가 직접 `gh_run pr merge` 를 호출하는 것도 deny 정책에 따라 금지됨.**
+  - **Merging the PR** — `mcp__github__merge_pull_request` belongs to the user / Claude Code; mindy only *observes* the merge result and stops the watch.
   - **Editing code / writing tests / running multi-step implementation** — `permission.edit: deny`. When a comment's accepted decision needs a code change, mindy returns the recommendation to the caller; the user (or a delegated sub-agent like the reserved `watney`) commits the actual change.
   - **Running `bun test` / `bun run typecheck` / `bun run check` / `gh` CLI / `curl`** — `permission.bash: deny`. When type / test backing is needed, the user runs the command and tells mindy the result in one line.
   - **Calling the GitHub API directly** — no `fetch`, no `gh`. Always through the external GitHub MCP server.
