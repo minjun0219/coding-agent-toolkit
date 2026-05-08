@@ -6,7 +6,7 @@
 
 ## 한 눈에
 
-- **호스트**: Claude Code 가 1차 host — `server/index.ts` 가 `.claude-plugin/plugin.json` + `.mcp.json` 으로 15 tool 노출. opencode 가 2차 host — `.opencode/plugins/agent-toolkit-server.ts` 가 28 tool 노출. 둘 다 같은 `skills/` + `agents/` 트리를 공유한다.
+- **호스트**: Claude Code 가 1차 host — `server/index.ts` 가 `.claude-plugin/plugin.json` + `.mcp.json` 으로 15 tool 노출. opencode 가 2차 host — `.opencode/plugins/agent-toolkit-server.ts` 가 25 tool 노출. 둘 다 같은 `skills/` + `agents/` 트리를 공유한다.
 - **Claude Code surface (15 tool, 1차)**: `openapi_*` (5) + `journal_*` (4) + `mysql_*` (5) + `spec_pact_fragment` (1).
 - **opencode-only (10 tool, 제거 후보)**: `notion_*` ×4 + `pr_*` ×6. 자세한 매트릭스는 [`AGENTS.md`](./AGENTS.md) 의 *MVP scope → Removal candidates* 절 참고.
 - **스킬 5 개** (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`).

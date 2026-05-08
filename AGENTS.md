@@ -6,7 +6,7 @@ Shared guide for AI coding agents (Claude Code, opencode, codex, etc.) working i
 
 ## Project in one line
 
-Dual-host MCP / plugin toolkit: **Claude Code is the primary host** (15-tool surface via `server/index.ts` registered through `.claude-plugin/plugin.json` + `.mcp.json`), **opencode is the secondary host** (28-tool surface via `.opencode/plugins/agent-toolkit-server.ts`). Both hosts share the same `skills/` and `agents/` trees.
+Dual-host MCP / plugin toolkit: **Claude Code is the primary host** (15-tool surface via `server/index.ts` registered through `.claude-plugin/plugin.json` + `.mcp.json`), **opencode is the secondary host** (25-tool surface via `.opencode/plugins/agent-toolkit-server.ts`). Both hosts share the same `skills/` and `agents/` trees.
 
 - **Claude Code surface (15 tools, primary)**: `openapi_*` (5) + `journal_*` (4) + `mysql_*` (5) + `spec_pact_fragment` (1).
 - **opencode-only (10 tools, removal candidates)**: `notion_*` (4) + `pr_*` (6). Tracked under *MVP scope → Removal candidates* below.
