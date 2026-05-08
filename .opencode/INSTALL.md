@@ -1,5 +1,7 @@
 # opencode install
 
+> Looking for the **Claude Code** entrypoint? It is not opencode-specific — see the "Claude Code 호스트 (실험)" section in the top-level [`README.md`](../README.md). Claude Code uses `.claude-plugin/plugin.json` + the root `.mcp.json` and exposes a narrower 15-tool surface (no `notion_*` / `pr_*` / `gh_run` / `issue_*`). The rest of this file applies only to the opencode host.
+
 Add this repository to the `plugin` array in `opencode.json` and restart opencode.
 
 ```json

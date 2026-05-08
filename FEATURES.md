@@ -10,7 +10,8 @@
 - **7 skills** (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`)
 - **3 agents** (`rocky`, `grace`, `mindy`)
 - **One config file** — `agent-toolkit.json` (project `./.opencode/agent-toolkit.json` overrides user `~/.config/opencode/agent-toolkit/agent-toolkit.json`)
-- **Runtime**: Bun ≥ 1.0, opencode-only. No build step.
+- **Runtime**: Bun ≥ 1.0. opencode is the primary host (28-tool surface via `.opencode/plugins/agent-toolkit-server.ts`); Claude Code is a secondary host (15-tool surface via `server/index.ts` registered through `.claude-plugin/plugin.json` + `.mcp.json`). No build step.
+- **Claude Code surface (experimental)**: 15 of the 28 tools — `openapi_*` (5) + `journal_*` (4) + `mysql_*` (5) + `spec_pact_fragment` (1). The other 13 (`notion_*` ×4, `pr_*` ×6, `gh_run` ×1, `issue_*` ×2) are tracked in [`REMOVAL_CANDIDATES.md`](./REMOVAL_CANDIDATES.md) and stay wired up only to the opencode entrypoint for now.
 - **GitHub transport policy**: gh CLI for write, external GitHub MCP for live PR state, journal-only for `pr_*` queueing. The toolkit never stores GitHub tokens and never calls the GitHub API directly for PR comments.
 
 Each tool entry below uses the same six-field shape so it can be quoted as a single block:
