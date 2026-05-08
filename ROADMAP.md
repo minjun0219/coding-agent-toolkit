@@ -8,8 +8,8 @@
 
 세 갈래의 장기 방향:
 
-1. **업무/코딩 파트너로서 단독으로도 충분한 토대.** opencode 의 다섯 종 primitive (agent / skill / command / MCP / tool) 를 적재적소에 섞어 쓰는 composition foundation 을 만든다 — 새 skillset 이나 tool 이 추가되면 자동 discovery + token-cost 기반 라우팅으로 cheapest path 를 고른다. (자세한 단계는 **Phase 7**.)
-2. **외부 primary 와의 시너지.** OmO Sisyphus / Superpowers 같은 외부 primary agent 가 동일 opencode 세션에 있을 때, agent-toolkit 의 description-driven routing 이 깨지지 않고 자연스럽게 위임이 흘러가도록 coexistence 규약을 둔다. agent-toolkit 은 이들과 경쟁하지 않고 (Notion / OpenAPI / SPEC 등) 토킷 고유 surface 를 책임진다. (자세한 단계는 **Phase 8**.)
+1. **업무/코딩 파트너로서 단독으로도 충분한 토대.** agent / skill / command / MCP / tool 다섯 종 primitive (opencode + Claude Code 공통 모델) 를 적재적소에 섞어 쓰는 composition foundation 을 만든다 — 새 skillset 이나 tool 이 추가되면 자동 discovery + token-cost 기반 라우팅으로 cheapest path 를 고른다. (자세한 단계는 **Phase 7**.)
+2. **외부 primary 와의 시너지.** OmO Sisyphus / Superpowers 같은 외부 primary agent 가 동일 호스트 세션 (opencode 든 Claude Code 든) 에 있을 때, agent-toolkit 의 description-driven routing 이 깨지지 않고 자연스럽게 위임이 흘러가도록 coexistence 규약을 둔다. agent-toolkit 은 이들과 경쟁하지 않고 (Notion / OpenAPI / SPEC 등) 토킷 고유 surface 를 책임진다. (자세한 단계는 **Phase 8**.)
 3. **회사 맞춤 토킷의 base.** 회사 / 팀이 agent-toolkit 을 의존성으로 들고 자기네 tool / skill / agent 를 얹는 커스텀 토킷을 만들 수 있도록 plugin (현재 형태) + library (`lib/*` exports) 두 형태로 패키징한다. 의존하는 쪽은 Notion 캐시 / OpenAPI / 저널 / SPEC lifecycle 같은 공통 인프라를 재사용하고, 회사 고유 surface 만 추가한다. (자세한 단계는 **Phase 9**.)
 
 ## 능력 목표
