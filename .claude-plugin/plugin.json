@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "agent-toolkit",
+  "version": "0.2.0",
+  "description": "Notion / OpenAPI / MySQL cache-first toolkit + agent journal + spec-pact lifecycle (Claude Code plugin, Bun runtime)",
+  "author": {
+    "name": "Minjun Kim"
+  },
+  "license": "MIT",
+  "keywords": ["notion", "openapi", "mysql", "journal", "spec-pact", "bun"]
+}
