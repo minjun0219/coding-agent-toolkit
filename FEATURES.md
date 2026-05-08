@@ -1,446 +1,445 @@
 # Agent Toolkit — Features
 
-> Single source of truth for what the toolkit exposes.
-> Audience: humans browsing GitHub, and agents (opencode / Claude Code / codex / …) reading via grep or anchor.
-> A Korean mirror lives at [`FEATURES.ko.md`](./FEATURES.ko.md). This English file is the canonical version — when surfaces change, update this file first, then mirror to the Korean one.
+> 이 toolkit 이 노출하는 표면을 한 페이지로 정리한 사람용 카탈로그.
+> 대상: GitHub 에서 훑어 보는 사람, 그리고 grep / anchor 로 인용하는 에이전트 (Claude Code / opencode / codex / …).
+> 이 파일이 **사람용 단일 source of truth** 다 (한국어). 에이전트용 단일 source 는 [`AGENTS.md`](./AGENTS.md) (영문). 표면이 바뀌면 두 파일을 같이 갱신한다.
 
-## At a glance
+## 한 눈에
 
-- **28 tools** across 8 categories
-- **7 skills** (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`)
-- **3 agents** (`rocky`, `grace`, `mindy`)
-- **One config file** — `agent-toolkit.json` (project `./.opencode/agent-toolkit.json` overrides user `~/.config/opencode/agent-toolkit/agent-toolkit.json`)
-- **Runtime**: Bun ≥ 1.0. opencode is the primary host (28-tool surface via `.opencode/plugins/agent-toolkit-server.ts`); Claude Code is a secondary host (15-tool surface via `server/index.ts` registered through `.claude-plugin/plugin.json` + `.mcp.json`). No build step.
-- **Claude Code surface (experimental)**: 15 of the 28 tools — `openapi_*` (5) + `journal_*` (4) + `mysql_*` (5) + `spec_pact_fragment` (1). The other 13 (`notion_*` ×4, `pr_*` ×6, `gh_run` ×1, `issue_*` ×2) are tracked in [`REMOVAL_CANDIDATES.md`](./REMOVAL_CANDIDATES.md) and stay wired up only to the opencode entrypoint for now.
-- **GitHub transport policy**: gh CLI for write, external GitHub MCP for live PR state, journal-only for `pr_*` queueing. The toolkit never stores GitHub tokens and never calls the GitHub API directly for PR comments.
+- **호스트**: Claude Code 가 1차 host — `server/index.ts` 가 `.claude-plugin/plugin.json` + `.mcp.json` 으로 15 tool 노출. opencode 가 2차 host — `.opencode/plugins/agent-toolkit-server.ts` 가 28 tool 노출. 둘 다 같은 `skills/` + `agents/` 트리를 공유한다.
+- **Claude Code surface (15 tool, 1차)**: `swagger_*` (5) + `journal_*` (4) + `mysql_*` (5) + `spec_pact_fragment` (1).
+- **opencode-only (13 tool, 제거 후보)**: `notion_*` ×4 + `pr_*` ×6 + `gh_run` ×1 + `issue_*` ×2. 자세한 매트릭스는 [`AGENTS.md`](./AGENTS.md) 의 *MVP scope → Removal candidates* 절 참고.
+- **스킬 7 개** (`notion-context`, `openapi-client`, `mysql-query`, `spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`).
+- **에이전트 3 명** (`rocky` / `grace` / `mindy`).
+- **설정 파일 1 개** — `agent-toolkit.json` (project 의 `./.opencode/agent-toolkit.json` 이 user 의 `~/.config/opencode/agent-toolkit/agent-toolkit.json` 을 leaf 단위로 덮어쓴다).
+- **런타임**: Bun ≥ 1.0. 빌드 단계 없음 (Bun 이 TS 직접 실행).
+- **GitHub 전송 정책**: 쓰기는 사용자 `gh` CLI, PR 라이브 상태는 외부 GitHub MCP, `pr_*` 큐는 저널 only. toolkit 은 GitHub 토큰을 저장하지 않으며 PR 코멘트용 GitHub API 도 직접 호출하지 않는다.
 
-Each tool entry below uses the same six-field shape so it can be quoted as a single block:
+각 도구 entry 는 한 블록으로 인용할 수 있도록 6-필드 형식을 따른다:
 
 ```
-What           — one or two lines on behavior
-Input          — required + optional parameters
-Output         — top-level shape of the return value
-Owner          — skill / agent that conducts this tool
-Side effects   — disk / network actions (or "none")
-Related config — env vars and agent-toolkit.json keys it reads
+What           — 동작 한두 줄
+Input          — 필수 + 선택 파라미터
+Output         — 반환값의 최상위 shape
+Owner          — 이 도구를 conduct 하는 스킬 / 에이전트
+Side effects   — 디스크 / 네트워크 영향 (없으면 "none")
+Related config — 이 도구가 읽는 env 변수 + agent-toolkit.json 키
 ```
 
-## Tools
+## 도구
 
-### Notion cache (`notion_*`)
+### Notion 캐시 (`notion_*`)
 
-Single-page, cache-first reads against the user's Notion via the Notion remote MCP (OAuth handles auth). Database queries and child-page traversal are out of scope.
+사용자의 Notion 을 Notion remote MCP (OAuth 인증) 통해 단일 페이지·캐시 우선으로 읽는다. 데이터베이스 쿼리와 child-page 순회는 MVP 범위 밖.
 
 #### `notion_get`
 
-- **What**: Cache-first read of a single Notion page. Hit returns immediately; miss calls the remote MCP, validates the page id, and writes the cache.
-- **Input**: `input` — Notion page id or page URL.
-- **Output**: `NotionPageResult` — `{ entry: { pageId, url, cachedAt, ttlSeconds, contentHash, title }, markdown, fromCache }`. (`fromCache: true` on hit, `false` on miss.)
-- **Owner**: `notion-context` skill, conducted by `rocky`. Also called by `spec-pact` (DRAFT / DRIFT-CHECK).
-- **Side effects**: writes `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}` on miss.
+- **What**: Notion 단일 페이지 캐시 우선 read. hit 면 즉시 반환, miss 면 remote MCP 호출 → page id 검증 → 캐시 저장.
+- **Input**: `input` — Notion page id 또는 페이지 URL.
+- **Output**: `NotionPageResult` — `{ entry: { pageId, url, cachedAt, ttlSeconds, contentHash, title }, markdown, fromCache }`. (`fromCache: true` 면 hit, `false` 면 miss.)
+- **Owner**: `notion-context` 스킬 (rocky 가 conduct). `spec-pact` 의 DRAFT / DRIFT-CHECK 도 호출.
+- **Side effects**: miss 시 `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}` 작성.
 - **Related config**: `AGENT_TOOLKIT_NOTION_MCP_URL`, `AGENT_TOOLKIT_NOTION_MCP_TIMEOUT_MS`, `AGENT_TOOLKIT_CACHE_DIR`, `AGENT_TOOLKIT_CACHE_TTL`.
 
 #### `notion_refresh`
 
-- **What**: Force-fetch a Notion page from the remote MCP (ignore cache), validate the id, and rewrite the cache.
-- **Input**: `input` — Notion page id or page URL.
-- **Output**: same `NotionPageResult` shape as `notion_get`, always with `fromCache: false`.
-- **Owner**: `notion-context` skill.
-- **Side effects**: rewrites `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}`.
-- **Related config**: same as `notion_get`.
+- **What**: 캐시 무시하고 remote MCP 에서 강제 재다운로드 → page id 검증 → 캐시 갱신.
+- **Input**: `input` — Notion page id 또는 페이지 URL.
+- **Output**: `notion_get` 과 같은 `NotionPageResult` shape, 항상 `fromCache: false`.
+- **Owner**: `notion-context` 스킬.
+- **Side effects**: `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}` 재작성.
+- **Related config**: `notion_get` 와 동일.
 
 #### `notion_status`
 
-- **What**: Inspect cache metadata for a single page. No remote call.
-- **Input**: `input` — Notion page id or page URL.
-- **Output**: `NotionCacheStatus` — `{ pageId, exists, expired, cachedAt?, ttlSeconds?, ageSeconds?, title? }`. The optional fields are populated only when the cache file exists.
-- **Owner**: `notion-context` skill.
-- **Side effects**: none.
+- **What**: 단일 페이지 캐시 메타만 조회. remote 호출 없음.
+- **Input**: `input` — Notion page id 또는 페이지 URL.
+- **Output**: `NotionCacheStatus` — `{ pageId, exists, expired, cachedAt?, ttlSeconds?, ageSeconds?, title? }`. 옵셔널 필드는 캐시 파일이 존재할 때만 채워진다.
+- **Owner**: `notion-context` 스킬.
+- **Side effects**: 없음.
 - **Related config**: `AGENT_TOOLKIT_CACHE_DIR`.
 
 #### `notion_extract`
 
-- **What**: Cache-first read, then split the Notion markdown into heading-based chunks and emit implementation-action candidates (`requirements` / `screens` / `apis` / `todos` / `questions`).
-- **Input**: `input` — Notion page id or page URL. Optional `maxCharsPerChunk: number` (default 1400).
-- **Output**: `NotionExtractResult` — `{ entry, fromCache, chunkCount, chunks, extracted: { requirements, screens, apis, todos, questions } }`. Note the field name is `extracted`, not `candidates`.
-- **Owner**: `notion-context` skill (Korean spec mode), and `spec-pact` (DRAFT mode).
-- **Side effects**: same cache write as `notion_get` on miss; otherwise none.
-- **Related config**: same as `notion_get`.
+- **What**: 캐시 우선 read 후 Notion markdown 을 heading 기반으로 chunk 화하고 구현 액션 후보 (`requirements` / `screens` / `apis` / `todos` / `questions`) 를 추출.
+- **Input**: `input` — Notion page id 또는 페이지 URL. 옵셔널 `maxCharsPerChunk: number` (기본 1400).
+- **Output**: `NotionExtractResult` — `{ entry, fromCache, chunkCount, chunks, extracted: { requirements, screens, apis, todos, questions } }`. 키 이름은 `candidates` 가 아니라 **`extracted`** 다.
+- **Owner**: `notion-context` 스킬 (한국어 스펙 모드), `spec-pact` 의 DRAFT 모드.
+- **Side effects**: miss 시 `notion_get` 과 같은 캐시 작성, 그 외 없음.
+- **Related config**: `notion_get` 와 동일.
 
-### OpenAPI cache (`openapi_*`)
+### OpenAPI 캐시 (`openapi_*`)
 
-Cache-first reads of OpenAPI / Swagger JSON specs, plus a cross-spec endpoint search and the `host:env:spec` registry. YAML specs are out of scope.
+OpenAPI / Swagger JSON spec 의 캐시 우선 read, 크로스-spec endpoint 검색, `host:env:spec` 레지스트리. YAML spec 은 MVP 범위 밖.
 
 #### `openapi_get`
 
-- **What**: Cache-first read of an OpenAPI / Swagger JSON spec. Hit returns immediately; miss downloads the spec by URL, validates JSON shape, and writes the cache.
-- **Input**: `input` — spec URL (`https://…` / `file://…`), a 16-hex disk key, or a `host:env:spec` handle declared in `agent-toolkit.json`.
-- **Output**: `OpenapiSpecResult` — `{ entry: { key, specUrl, cachedAt, ttlSeconds, specHash, title, version, openapi, endpointCount }, spec, fromCache }`. `spec` is the full parsed OpenAPI document.
-- **Owner**: `openapi-client` skill, conducted by `rocky`.
-- **Side effects**: writes `<AGENT_TOOLKIT_OPENAPI_CACHE_DIR>/<key>.{json,spec.json}` on miss (`key = sha256(specUrl)[:16]`).
-- **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `AGENT_TOOLKIT_OPENAPI_CACHE_TTL`, `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS`, `openapi.registry` in `agent-toolkit.json`.
+- **What**: OpenAPI / Swagger JSON spec 캐시 우선 read. hit 면 즉시 반환, miss 면 spec URL 다운로드 → JSON / shape 검증 → 캐시 저장.
+- **Input**: `input` — spec URL (`https://…` / `file://…`), 16-hex 디스크 key, 또는 `agent-toolkit.json` 에 등록된 `host:env:spec` 핸들.
+- **Output**: `OpenapiSpecResult` — `{ entry: { key, specUrl, cachedAt, ttlSeconds, specHash, title, version, openapi, endpointCount }, spec, fromCache }`. `spec` 은 파싱된 OpenAPI 문서 전체.
+- **Owner**: `openapi-client` 스킬 (rocky 가 conduct).
+- **Side effects**: miss 시 `<AGENT_TOOLKIT_OPENAPI_CACHE_DIR>/<key>.{json,spec.json}` 작성 (`key = sha256(specUrl)[:16]`).
+- **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `AGENT_TOOLKIT_OPENAPI_CACHE_TTL`, `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS`, `agent-toolkit.json` 의 `openapi.registry`.
 
 #### `openapi_refresh`
 
-- **What**: Force-download an OpenAPI / Swagger JSON spec (ignore cache), validate, and rewrite the cache.
-- **Input**: `input` — same accepted shapes as `openapi_get`.
-- **Output**: same `OpenapiSpecResult` shape, always with `fromCache: false`.
-- **Owner**: `openapi-client` skill.
-- **Side effects**: rewrites the two cache files.
-- **Related config**: same as `openapi_get`.
+- **What**: 캐시 무시하고 spec URL 강제 재다운로드 → 검증 → 캐시 갱신.
+- **Input**: `input` — `openapi_get` 과 동일.
+- **Output**: `openapi_get` 과 같은 `OpenapiSpecResult` shape, 항상 `fromCache: false`.
+- **Owner**: `openapi-client` 스킬.
+- **Side effects**: 두 캐시 파일 재작성.
+- **Related config**: `openapi_get` 와 동일.
 
 #### `openapi_status`
 
-- **What**: Inspect cache metadata for one spec. No network call.
-- **Input**: `input` — same accepted shapes as `openapi_get`.
-- **Output**: `OpenapiCacheStatus` — `{ key, exists, expired, cachedAt?, ttlSeconds?, ageSeconds?, title?, specUrl?, endpointCount? }`. The optional fields are populated only on cache hit.
-- **Owner**: `openapi-client` skill.
-- **Side effects**: none.
+- **What**: 단일 spec 의 캐시 메타만 조회. 네트워크 호출 없음.
+- **Input**: `input` — `openapi_get` 과 동일.
+- **Output**: `OpenapiCacheStatus` — `{ key, exists, expired, cachedAt?, ttlSeconds?, ageSeconds?, title?, specUrl?, endpointCount? }`. 옵셔널 필드는 캐시 hit 일 때만 채워진다.
+- **Owner**: `openapi-client` 스킬.
+- **Side effects**: 없음.
 - **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `openapi.registry`.
 
 #### `openapi_search`
 
-- **What**: Substring search across cached specs over `path` / `method` / `tag` / `operationId` / `summary`. Optional `scope` narrows to host / `host:env` / `host:env:spec`. No network call.
-- **Input**: `query: string`, `limit?: number` (default 20), `scope?: string`.
-- **Output**: bare `OpenapiEndpointMatch[]` — `[{ specKey, specUrl, specTitle, method, path, operationId?, summary?, tags? }]`. No wrapper object; `tags` is plural.
-- **Owner**: `openapi-client` skill.
-- **Side effects**: none (reads cache only).
+- **What**: 캐시된 spec 들을 가로질러 `path` / `method` / `tag` / `operationId` / `summary` 를 substring 으로 검색. `scope` 로 host / `host:env` / `host:env:spec` 범위 제한 가능. 네트워크 호출 없음.
+- **Input**: `query: string`, `limit?: number` (기본 20), `scope?: string`.
+- **Output**: bare `OpenapiEndpointMatch[]` — `[{ specKey, specUrl, specTitle, method, path, operationId?, summary?, tags? }]`. 래퍼 객체 없음, `tags` 는 복수.
+- **Owner**: `openapi-client` 스킬.
+- **Side effects**: 없음 (캐시만 read).
 - **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `openapi.registry`.
 
 #### `openapi_envs`
 
-- **What**: Flatten the `openapi.registry` tree from `agent-toolkit.json` into a list of registry entries. No network call.
-- **Input**: none.
-- **Output**: bare `OpenapiRegistryEntry[]` — `[{ host, env, spec, url }]`. No wrapper object. Empty array when the registry is unconfigured.
-- **Owner**: `openapi-client` skill.
-- **Side effects**: none.
-- **Related config**: `openapi.registry` in `agent-toolkit.json`.
+- **What**: `agent-toolkit.json` 의 `openapi.registry` 트리를 평면화. 네트워크 호출 없음.
+- **Input**: 없음.
+- **Output**: bare `OpenapiRegistryEntry[]` — `[{ host, env, spec, url }]`. 래퍼 객체 없음. registry 가 비어 있으면 빈 배열.
+- **Owner**: `openapi-client` 스킬.
+- **Side effects**: 없음.
+- **Related config**: `agent-toolkit.json` 의 `openapi.registry`.
 
+### 저널 (`journal_*`)
 
-### Journal (`journal_*`)
-
-Turn-spanning agent memory. Append-only JSONL, no TTL. Use it to record decisions, blockers, user answers, and notes that the next turn must cite. Corrupted lines are skipped on read.
+turn 경계를 넘는 에이전트 메모. JSONL append-only, TTL 없음. "다음 turn 에 인용해야 할 결정 / blocker / 사용자 답변" 을 기록한다. read 단계에서 손상 라인은 자동 skip.
 
 #### `journal_append`
 
-- **What**: Append one entry to the journal.
-- **Input**: `content: string` (required), `kind?: string` (e.g. `decision` / `blocker` / `answer` / `note` — free string, defaults to `note`), `tags?: string[]`, `pageId?: string` (Notion page id or URL — normalised to `8-4-4-4-12` on save).
-- **Output**: the appended `JournalEntry` — `{ id, timestamp, kind, content, tags, pageId? }`.
-- **Owner**: `rocky` (general use), and every skill that records lifecycle events (`spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`).
-- **Side effects**: appends one line to `<AGENT_TOOLKIT_JOURNAL_DIR>/journal.jsonl`.
+- **What**: 한 항목 append.
+- **Input**: `content: string` (필수), `kind?: string` (`decision` / `blocker` / `answer` / `note` 등 자유 문자열, 기본 `note`), `tags?: string[]`, `pageId?: string` (Notion page id 또는 URL — 입력 시 `8-4-4-4-12` 형식으로 정규화 후 저장).
+- **Output**: append 된 `JournalEntry` — `{ id, timestamp, kind, content, tags, pageId? }`.
+- **Owner**: `rocky` (일반 사용), 그리고 lifecycle 이벤트를 기록하는 모든 스킬 (`spec-pact`, `pr-review-watch`, `spec-to-issues`, `gh-passthrough`).
+- **Side effects**: `<AGENT_TOOLKIT_JOURNAL_DIR>/journal.jsonl` 에 한 줄 append.
 - **Related config**: `AGENT_TOOLKIT_JOURNAL_DIR`.
 
 #### `journal_read`
 
-- **What**: Return recent entries, newest first, with optional filters and limit.
-- **Input**: `limit?: number` (default 20), `kind?: string`, `tag?: string`, `pageId?: string` (page-key lookup), `since?: string` (ISO 8601 — only entries after that instant).
-- **Output**: bare `JournalEntry[]` — no wrapper object.
-- **Owner**: any agent / skill that needs to recover prior context.
-- **Side effects**: none.
+- **What**: 최근 항목부터 필터 / limit 적용해 반환.
+- **Input**: `limit?: number` (기본 20), `kind?: string`, `tag?: string`, `pageId?: string` (page-key lookup), `since?: string` (ISO 8601 — 이후 항목만).
+- **Output**: bare `JournalEntry[]` — 래퍼 객체 없음.
+- **Owner**: 이전 컨텍스트 회수가 필요한 모든 에이전트 / 스킬.
+- **Side effects**: 없음.
 - **Related config**: `AGENT_TOOLKIT_JOURNAL_DIR`.
 
 #### `journal_search`
 
-- **What**: Substring search (case-insensitive) over `content`, `kind`, `tags`, and `pageId`.
+- **What**: `content` / `kind` / `tags` / `pageId` 를 substring (case-insensitive) 으로 매칭.
 - **Input**: `query: string`, `limit?: number`, `kind?: string`.
-- **Output**: bare `JournalEntry[]` — no wrapper object.
-- **Owner**: lifecycle recovery for `spec-pact` (`journal_search "spec-pact"`) and `pr-review-watch` (`journal_search "pr-watch"`), plus general agent use.
-- **Side effects**: none.
+- **Output**: bare `JournalEntry[]` — 래퍼 객체 없음.
+- **Owner**: `spec-pact` 의 lifecycle 회수 (`journal_search "spec-pact"`), `pr-review-watch` 의 lifecycle 회수 (`journal_search "pr-watch"`), 그리고 일반 에이전트 사용.
+- **Side effects**: 없음.
 - **Related config**: `AGENT_TOOLKIT_JOURNAL_DIR`.
 
 #### `journal_status`
 
-- **What**: Report file path, existence, valid entry count (corrupted lines excluded), byte size, and last-entry timestamp.
-- **Input**: none.
+- **What**: 파일 경로 / 존재 여부 / 유효 항목 수 (손상 라인 제외) / 바이트 / 마지막 항목 시각만 조회.
+- **Input**: 없음.
 - **Output**: `JournalStatus` — `{ path, exists, totalEntries, sizeBytes, lastEntryAt? }`.
-- **Owner**: any.
-- **Side effects**: none.
+- **Owner**: 누구나.
+- **Side effects**: 없음.
 - **Related config**: `AGENT_TOOLKIT_JOURNAL_DIR`.
 
 ### MySQL read-only (`mysql_*`)
 
-Read-only inspection of MySQL via `host:env:db` handles declared in `agent-toolkit.json`. Writes / DDL / multi-statement / `SET` / `CALL` / `LOAD` / `INTO OUTFILE` are all rejected. Always pair with a database account that only has `GRANT SELECT` as the first line of defence.
+`agent-toolkit.json` 의 `host:env:db` 핸들 기반 MySQL read-only 검사. INSERT / UPDATE / DELETE / DDL / `SET` / `CALL` / `LOAD` / `INTO OUTFILE` / multi-statement 는 모두 거부. **DB 계정 자체에 `GRANT SELECT` 만 주는 것이 1차 방어선이다.**
 
 #### `mysql_envs`
 
-- **What**: Flatten the `mysql.connections` tree into registry entries. **Credential values are never returned — only the env-var names.**
-- **Input**: none.
-- **Output**: bare `MysqlRegistryEntry[]` — `[{ host, env, db, handle, authMode, authEnv, hostName, port, user, database }]`. No wrapper object. Empty array when no connections are configured.
-- **Owner**: `mysql-query` skill, conducted by `rocky`.
-- **Side effects**: none (no DB connection).
-- **Related config**: `mysql.connections` in `agent-toolkit.json`.
+- **What**: `mysql.connections` 트리를 평면화. **자격증명 *값* 은 노출하지 않고 env 변수 이름만 보여 준다.**
+- **Input**: 없음.
+- **Output**: bare `MysqlRegistryEntry[]` — `[{ host, env, db, handle, authMode, authEnv, hostName, port, user, database }]`. 래퍼 객체 없음. connections 미구성 시 빈 배열.
+- **Owner**: `mysql-query` 스킬 (rocky 가 conduct).
+- **Side effects**: 없음 (DB 호출 없음).
+- **Related config**: `agent-toolkit.json` 의 `mysql.connections`.
 
 #### `mysql_status`
 
-- **What**: Resolve a handle, build a connection from `passwordEnv` / `dsnEnv`, and run a single `SELECT 1` ping.
+- **What**: 핸들 해석 → `passwordEnv` / `dsnEnv` 로 connection 구성 → `SELECT 1` ping 한 번.
 - **Input**: `handle: string` (`host:env:db`).
-- **Output**: `MysqlRegistryEntry & { ok: boolean }` — the registry entry described above plus a single `ok` field from the ping.
-- **Owner**: `mysql-query` skill.
-- **Side effects**: opens a short-lived connection to the target server.
-- **Related config**: `mysql.connections`; the env var named by `passwordEnv` or `dsnEnv`.
+- **Output**: `MysqlRegistryEntry & { ok: boolean }` — 위의 `mysql_envs` row 와 같은 메타 + ping 결과 `ok`.
+- **Owner**: `mysql-query` 스킬.
+- **Side effects**: 대상 서버에 잠시 connection 1 개 오픈.
+- **Related config**: `mysql.connections`; `passwordEnv` / `dsnEnv` 가 가리키는 env 변수.
 
 #### `mysql_tables`
 
-- **What**: `SHOW FULL TABLES` against the resolved database — list of tables and views.
+- **What**: 해석된 DB 에서 `SHOW FULL TABLES` 실행 — 테이블 / 뷰 목록.
 - **Input**: `handle: string`.
-- **Output**: bare `Array<{ name: string; type: string }>`. No wrapper object. `type` is the raw `SHOW FULL TABLES` value (e.g. `BASE TABLE` / `VIEW`).
-- **Owner**: `mysql-query` skill.
-- **Side effects**: opens one connection and runs one read query.
+- **Output**: bare `Array<{ name: string; type: string }>`. 래퍼 객체 없음. `type` 은 `SHOW FULL TABLES` 가 돌려주는 raw 값 (예: `BASE TABLE` / `VIEW`).
+- **Owner**: `mysql-query` 스킬.
+- **Side effects**: connection 1 개 오픈 + read 쿼리 1 회.
 - **Related config**: `mysql.connections`.
 
 #### `mysql_schema`
 
-- **What**: Without `table`, return an `INFORMATION_SCHEMA.COLUMNS` summary for the current DB. With `table`, return the combined output of `SHOW CREATE TABLE` + `SHOW INDEX FROM`.
+- **What**: `table` 미지정 시 현재 DB 의 `INFORMATION_SCHEMA.COLUMNS` 요약. `table` 지정 시 `SHOW CREATE TABLE` + `SHOW INDEX FROM` 합본.
 - **Input**: `handle: string`, `table?: string`.
-- **Output**: discriminated union by `mode`. Summary mode (no `table`): `{ mode: "summary", columns: [{ table, column, type, nullable, key, default, extra }] }`. Detail mode (with `table`): `{ mode: "detail", createTable: string, indexes: [{ keyName, column, nonUnique, type }] }`.
-- **Owner**: `mysql-query` skill.
-- **Side effects**: opens one connection and runs one or two read queries.
+- **Output**: `mode` 로 분기되는 discriminated union. summary 모드 (`table` 없음): `{ mode: "summary", columns: [{ table, column, type, nullable, key, default, extra }] }`. detail 모드 (`table` 지정): `{ mode: "detail", createTable: string, indexes: [{ keyName, column, nonUnique, type }] }`.
+- **Owner**: `mysql-query` 스킬.
+- **Side effects**: connection 1 개 오픈 + read 쿼리 1~2 회.
 - **Related config**: `mysql.connections`.
 
 #### `mysql_query`
 
-- **What**: Run a single read-only SQL statement. Pipeline: `assertReadOnlySql(sql)` → `enforceLimit(sql, { limit })` → execute. The first keyword must be one of `SELECT` / `SHOW` / `DESCRIBE` / `DESC` / `EXPLAIN` / `WITH`. `LIMIT` is auto-applied (default 100, hard cap 1000) on row-returning statements.
+- **What**: 단일 read-only SQL 실행. 파이프라인: `assertReadOnlySql(sql)` → `enforceLimit(sql, { limit })` → 실행. 첫 키워드는 `SELECT` / `SHOW` / `DESCRIBE` / `DESC` / `EXPLAIN` / `WITH` 만 허용. row 반환 statement 에는 `LIMIT` 자동 부착 (기본 100, 절대 상한 1000).
 - **Input**: `handle: string`, `sql: string`, `limit?: number`.
-- **Output**: `MysqlQueryResult` — `{ sql, rows, columns, rowCount, truncated, effectiveLimit }`. `effectiveLimit` is `null` for `SHOW` / `DESCRIBE` / `EXPLAIN`.
-- **Owner**: `mysql-query` skill.
-- **Side effects**: opens one connection and runs one read query.
+- **Output**: `MysqlQueryResult` — `{ sql, rows, columns, rowCount, truncated, effectiveLimit }`. `effectiveLimit` 은 `SHOW` / `DESCRIBE` / `EXPLAIN` 일 때 `null`.
+- **Owner**: `mysql-query` 스킬.
+- **Side effects**: connection 1 개 오픈 + read 쿼리 1 회.
 - **Related config**: `mysql.connections`.
 
 ### PR review watch (`pr_*`)
 
-Polling-only PR lifecycle. The toolkit never calls the GitHub API directly for PR comments — the external GitHub MCP server (registered separately in the user's opencode session) handles PR meta / comments / replies / merge-state queries. These tools own the local queue and lifecycle state only.
+polling-only PR lifecycle. toolkit 은 PR 코멘트용 GitHub API 를 *직접 호출하지 않는다* — PR 메타 / 코멘트 / 답글 / 머지 상태 조회는 사용자 opencode 세션에 별도로 등록된 외부 GitHub MCP 서버 책임. 이 도구들은 로컬 큐와 lifecycle state 만 가진다.
 
 #### `pr_watch_start`
 
-- **What**: Register a PR handle as an active watch, persist a `pr_watch_start` journal entry, and return the updated watch state.
-- **Input**: `handle: string` (`owner/repo#NUMBER` or a github.com PR URL), `note?: string`, `labels?: string[]`, `mergeMode?: "merge" | "squash" | "rebase"`. `mergeMode` is enum-validated; values outside the enum throw.
+- **What**: PR 핸들을 active watch 로 등록 + `pr_watch_start` 저널 entry 박음 + 갱신된 watch state 반환.
+- **Input**: `handle: string` (`owner/repo#NUMBER` 또는 github.com PR URL), `note?: string`, `labels?: string[]`, `mergeMode?: "merge" | "squash" | "rebase"`. `mergeMode` 는 enum 검증 — 외부 값은 throw.
 - **Output**: `{ entry: JournalEntry, state: PrWatchState }`. `state` = `{ handle, active, startedAt?, stoppedAt?, note? }`.
-- **Owner**: `pr-review-watch` skill, conducted by `mindy`.
-- **Side effects**: appends a `pr_watch_start` entry to the journal.
-- **Related config**: `github.repositories` in `agent-toolkit.json`.
+- **Owner**: `pr-review-watch` 스킬 (mindy 가 conduct).
+- **Side effects**: 저널에 `pr_watch_start` entry append.
+- **Related config**: `agent-toolkit.json` 의 `github.repositories`.
 
 #### `pr_watch_stop`
 
-- **What**: Stop a watch, append a `pr_watch_stop` journal entry, and return the final state.
-- **Input**: `handle: string`, `reason?: "merged" | "closed" | "manual"`. `reason` is enum-validated; free strings are rejected so the journal `reason:<value>` tag stays consistent for recovery / aggregation.
-- **Output**: `{ entry: JournalEntry, state: PrWatchState }` (with `active: false` and `stoppedAt` set).
-- **Owner**: `pr-review-watch` skill.
-- **Side effects**: appends a `pr_watch_stop` entry.
+- **What**: watch 종료 + `pr_watch_stop` 저널 entry append + final state 반환.
+- **Input**: `handle: string`, `reason?: "merged" | "closed" | "manual"`. `reason` 은 enum 검증 — 자유 문자열은 거부 (저널 `reason:<value>` 태그가 항상 같은 enum 으로만 박혀 회수 / 집계 안정).
+- **Output**: `{ entry: JournalEntry, state: PrWatchState }` (`active: false`, `stoppedAt` 채워짐).
+- **Owner**: `pr-review-watch` 스킬.
+- **Side effects**: 저널에 `pr_watch_stop` entry append.
 - **Related config**: `github.repositories`.
 
 #### `pr_watch_status`
 
-- **What**: Reduce the journal once and return every active watch plus the per-handle pending event total.
-- **Input**: none.
-- **Output**: `{ active: PrWatchState[], totals: { active: number, pending: number } }`. `pending` is the sum across all active watches.
-- **Owner**: `pr-review-watch` skill.
-- **Side effects**: none.
+- **What**: 저널을 한 번 reduce 해 모든 active watch 와 핸들 별 미처리 이벤트 합계를 반환.
+- **Input**: 없음.
+- **Output**: `{ active: PrWatchState[], totals: { active: number, pending: number } }`. `pending` 은 모든 active watch 에 걸친 합.
+- **Owner**: `pr-review-watch` 스킬.
+- **Side effects**: 없음.
 - **Related config**: `github.repositories`.
 
 #### `pr_event_record`
 
-- **What**: Enqueue a single inbound PR event (comment / review / review comment / check / status / merge / close) fetched by the external GitHub MCP. Same `(handle, type, externalId)` reappends on disk (append-only) but responds with `alreadySeen: true`.
-- **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | "pr_review_comment" | "check_run" | "status" | "merge" | "close"`, `externalId: string`, `summary: string` (one-line digest from the caller — author + short excerpt; the full external MCP payload is not stored here).
+- **What**: 외부 GitHub MCP 가 가져온 inbound 이벤트 1 건 (코멘트 / 리뷰 / 리뷰 코멘트 / 체크 / 머지 / 닫힘) 을 큐에 등록. 같은 `(handle, type, externalId)` 가 다시 들어와도 디스크에는 append 되지만 (append-only 원칙), 응답에 `alreadySeen: true` 표시.
+- **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | "pr_review_comment" | "check_run" | "status" | "merge" | "close"`, `externalId: string`, `summary: string` (caller 가 정제한 한 줄 요약 — author + 짧은 발췌. 외부 MCP 의 raw payload 는 여기에 저장되지 않는다).
 - **Output**: `{ entry: JournalEntry, ref: { type, externalId, toolkitKey }, alreadySeen }`.
-- **Owner**: `pr-review-watch` skill.
-- **Side effects**: appends a `pr_event_inbound` entry.
+- **Owner**: `pr-review-watch` 스킬.
+- **Side effects**: 저널에 `pr_event_inbound` entry append.
 - **Related config**: `github.repositories`.
 
 #### `pr_event_pending`
 
-- **What**: List inbound events for a handle that have no corresponding `pr_event_resolved` entry, ordered by timestamp ascending.
+- **What**: 한 핸들의 미처리 이벤트 (inbound 가 있고 같은 toolkitKey 의 resolved 가 없는 것) 를 시간 오름차순으로 반환.
 - **Input**: `handle: string`.
-- **Output**: bare `PendingPrEvent[]` — `[{ handle, ref, receivedAt, summary, inboundEntryId }]`. No wrapper object.
-- **Owner**: `pr-review-watch` skill.
-- **Side effects**: none.
+- **Output**: bare `PendingPrEvent[]` — `[{ handle, ref, receivedAt, summary, inboundEntryId }]`. 래퍼 객체 없음.
+- **Owner**: `pr-review-watch` 스킬.
+- **Side effects**: 없음.
 - **Related config**: `github.repositories`.
 
 #### `pr_event_resolve`
 
-- **What**: Record `mindy`'s validation outcome for one inbound event. Track the reply id from the external GitHub MCP via `replyExternalId` so future polls can correlate.
-- **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | …` (same enum as `pr_event_record`), `externalId: string`, `decision: "accepted" | "rejected" | "deferred"`, `reasoning: string`, `replyExternalId?: string`. The handler resolves the `toolkitKey` internally from `(type, externalId)`. Throws if no matching `pr_event_inbound` exists yet (orphan-resolve guard).
+- **What**: 한 inbound 이벤트에 대한 mindy 의 검증 결과를 박음. 외부 GitHub MCP 의 reply id 를 `replyExternalId` 로 함께 박아 다음 polling 의 correlation 에 사용.
+- **Input**: `handle: string`, `type: "issue_comment" | "pr_review" | …` (`pr_event_record` 와 같은 enum), `externalId: string`, `decision: "accepted" | "rejected" | "deferred"`, `reasoning: string`, `replyExternalId?: string`. `toolkitKey` 는 핸들러가 `(type, externalId)` 로부터 내부에서 합성한다. 같은 (handle, toolkitKey) 의 `pr_event_inbound` 가 없으면 throw (orphan-resolve 가드).
 - **Output**: `{ entry: JournalEntry, resolved: { type, externalId, toolkitKey } }`.
-- **Owner**: `pr-review-watch` skill — `mindy` is the sole authority over `pr_event_resolved` entries.
-- **Side effects**: appends a `pr_event_resolved` entry.
+- **Owner**: `pr-review-watch` 스킬 — `pr_event_resolved` entry 의 단독 권한자는 `mindy`.
+- **Side effects**: 저널에 `pr_event_resolved` entry append.
 - **Related config**: `github.repositories`.
 
 ### spec-pact (`spec_pact_fragment`)
 
-The four `spec-pact` mode bodies live as separate files under `<plugin>/skills/spec-pact/fragments/`. This single tool exists so `grace` can pull the right body in one call without inlining all four into the SKILL.
+`spec-pact` 의 4 모드 본문은 SKILL.md 안에 인라인이 아니라 `<plugin>/skills/spec-pact/fragments/<mode>.md` 별도 파일들로 분리되어 있다. grace 가 모드를 결정한 뒤 한 turn 에 정확히 한 번 호출.
 
 #### `spec_pact_fragment`
 
-- **What**: Read the markdown fragment for one mode (`draft` / `verify` / `drift-check` / `amend`) from the plugin's absolute install path (resolved via `import.meta.url`), so it works under `agent-toolkit@git+…` installs regardless of the user's cwd.
+- **What**: 한 모드 (`draft` / `verify` / `drift-check` / `amend`) 에 해당하는 fragment markdown 을 plugin 절대경로 (`import.meta.url` 기반) 에서 read. 외부 설치 (`agent-toolkit@git+…`) 환경에서도 사용자 cwd 와 무관하게 동작.
 - **Input**: `mode: "draft" | "verify" | "drift-check" | "amend"`.
 - **Output**: `{ mode, path, content }`.
-- **Owner**: `spec-pact` skill, conducted by `grace`. Designed to be called exactly once per turn (a second call defeats the fragment-loading saving).
-- **Side effects**: none (file read inside the plugin install).
-- **Related config**: none.
+- **Owner**: `spec-pact` 스킬 (grace 가 conduct). turn 당 정확히 한 번 호출하도록 설계됨 (두 번째 호출은 fragment 절감 효과 무효).
+- **Side effects**: 없음 (plugin install 디렉터리 내부 read).
+- **Related config**: 없음.
 
 ### spec-to-issues (`issue_*`)
 
-One-way sync from a locked SPEC (`<spec.dir>/<slug>.md` or `**/SPEC.md`) into a GitHub epic + sub-issue series. Auth, repo detection, GHE hosting, and scope are all delegated to the user's `gh` CLI — the toolkit adds no new env vars and no octokit / raw-fetch dependency.
+잠긴 SPEC (`<spec.dir>/<slug>.md` 또는 `**/SPEC.md`) 에서 GitHub epic + sub-issue 시리즈로 한 방향 동기화. 인증 / 저장소 감지 / GHE / scope 는 모두 사용자 `gh` CLI 가 처리 — 새 env 변수도, octokit / raw fetch 의존성도 추가하지 않는다.
 
 #### `issue_create_from_spec`
 
-- **What**: Reconcile the SPEC's `# 합의 TODO` flat bullets into a GitHub epic plus one sub-issue per bullet. Marker-based dedupe (`<!-- spec-pact:slug=…:kind=epic|sub:index=N -->`) makes it idempotent — re-runs are no-ops, only newly added bullets create new sub-issues. dryRun-first contract: the default `dryRun: true` returns the plan only, `dryRun: false` actually invokes `gh`.
-- **Input**: `slug?: string` xor `path?: string`, `repo?: string` (`owner/name` override), `dryRun?: boolean` (default `true`).
-- **Output**: a sync report containing the epic, the sub-issue plan (created / existing / orphans), and — when `dryRun: false` — the applied result. Exact field shape lives in `lib/github-issue-sync.ts`.
-- **Owner**: `spec-to-issues` skill, conducted by `rocky`. `grace`'s authority stops at the SPEC — GitHub state is rocky's surface.
-- **Side effects**: when `dryRun: false`, calls `gh issue create` / `gh issue edit` and appends a journal entry.
-- **Related config**: `github.repo`, `github.defaultLabels` (default `["spec-pact"]`, index 0 is the dedupe filter), `spec.dir`, `spec.scanDirectorySpec`, `spec.indexFile`.
+- **What**: SPEC 의 `# 합의 TODO` flat bullet 들을 GitHub epic 1 개 + bullet 당 sub-issue 1 개로 reconcile. marker (`<!-- spec-pact:slug=…:kind=epic|sub:index=N -->`) 기반 dedupe 로 idempotent — 재호출은 no-op, bullet 추가만 새 sub-issue 를 만든다. dryRun-first 계약: 기본 `dryRun: true` 는 plan 만 반환, `dryRun: false` 면 실제 `gh` 호출.
+- **Input**: `slug?: string` xor `path?: string`, `repo?: string` (`owner/name` override), `dryRun?: boolean` (기본 `true`).
+- **Output**: epic / sub-issue plan (생성 / 기존 / orphan) + `dryRun: false` 일 때만 applied 결과를 담는 sync report. 정확한 필드 shape 는 `lib/github-issue-sync.ts`.
+- **Owner**: `spec-to-issues` 스킬 (rocky 가 conduct). grace 의 권한은 SPEC 까지 — GitHub 측은 rocky 의 표면.
+- **Side effects**: `dryRun: false` 일 때 `gh issue create` / `gh issue edit` 호출 + 저널 entry append.
+- **Related config**: `github.repo`, `github.defaultLabels` (기본 `["spec-pact"]`, index 0 이 dedupe 필터), `spec.dir`, `spec.scanDirectorySpec`, `spec.indexFile`.
 
 #### `issue_status`
 
-- **What**: Read-only alias of `dryRun: true`. Calls `gh issue list` once, surfaces what would be created, what already exists, and any orphaned sub-issues whose source bullet was removed from the SPEC.
-- **Input**: same as `issue_create_from_spec` minus `dryRun`.
-- **Output**: same plan shape as `issue_create_from_spec` with no applied section (read-only).
-- **Owner**: `spec-to-issues` skill.
-- **Side effects**: one `gh issue list` call. **No journal entry** — read-only.
-- **Related config**: same as `issue_create_from_spec`.
+- **What**: `dryRun: true` 의 read-only alias. `gh issue list` 한 번 호출, 무엇이 새로 만들어질지 / 무엇이 이미 있는지 / SPEC bullet 이 사라진 orphan 까지 surface.
+- **Input**: `issue_create_from_spec` 와 동일하되 `dryRun` 없음.
+- **Output**: `issue_create_from_spec` 와 같은 plan shape (applied 섹션 없음, read-only).
+- **Owner**: `spec-to-issues` 스킬.
+- **Side effects**: `gh issue list` 1 회. **저널 entry 없음** — read-only.
+- **Related config**: `issue_create_from_spec` 와 동일.
 
 ### gh-passthrough (`gh_run`)
 
-Generic ad-hoc passthrough to the user's `gh` CLI for anything that doesn't fit the high-level `spec-to-issues` flow.
+`spec-to-issues` 의 high-level 흐름에 안 맞는 ad-hoc gh 호출 (이슈 검색, label 관리, PR 머지, release 보기, GitHub API 호출 등) 을 위한 단일 generic tool.
 
 #### `gh_run`
 
-- **What**: Take an `args` array starting with a `gh` subcommand, classify it as `read` / `write` / `deny`, then enforce policy.
-  - **read** (`auth status` / `repo view` / `issue list` / `pr view` / `api` default GET / `search` / `gist list|view` / …) — runs immediately.
-  - **write** (`issue create` / `label create` / `api --method POST` / …) — `dryRun: true` (default) returns a plan-only result; `dryRun: false` actually runs.
-  - **deny** (`pr merge` / `repo edit|delete` / `release delete` / `workflow run|enable|disable` / `run rerun|cancel` / `auth login|logout|refresh|setup-git|token` / `extension *` / `alias *` / `config *` / `gist create|edit|delete|clone` / unknown subcommand) — throws `GhDeniedCommandError` immediately. `gist list|view` is allowed as read.
-- **Input**: `args: string[]`, `dryRun?: boolean` (default `true`).
-- **Output**: `RunGhResult` — `{ args, kind, executed, dryRun, stdout, stderr, exitCode }`. For a write + `dryRun: true` call, `executed` is `false` and `stdout` carries a `(dry-run, not executed) gh …` line. Non-zero `exitCode` from `gh` throws `GhCommandError` instead of returning.
-- **Owner**: `gh-passthrough` skill, conducted by `rocky`.
-- **Side effects**: every call (read / dry-run / applied) appends a journal entry tagged `["gh-passthrough", "read" | "dry-run" | "applied"]`. Read calls and applied write calls also invoke `gh` on the user's machine.
-- **Related config**: none directly (the `gh` CLI handles its own auth and `~/.config/gh/`).
+- **What**: `gh` subcommand 부터 시작하는 `args` 배열을 받아 `read` / `write` / `deny` 로 분류 후 정책 적용.
+  - **read** (`auth status` / `repo view` / `issue list` / `pr view` / `api` 의 default GET / `search` / `gist list|view` / …) — 즉시 실행.
+  - **write** (`issue create` / `label create` / `api --method POST` / …) — `dryRun: true` (기본) 면 plan-only 결과, `dryRun: false` 로 명시해야 실행.
+  - **deny** (`pr merge` / `repo edit|delete` / `release delete` / `workflow run|enable|disable` / `run rerun|cancel` / `auth login|logout|refresh|setup-git|token` / `extension *` / `alias *` / `config *` / `gist create|edit|delete|clone` / 알 수 없는 subcommand) — `GhDeniedCommandError` 로 즉시 throw. `gist list|view` 는 read 로 허용.
+- **Input**: `args: string[]`, `dryRun?: boolean` (기본 `true`).
+- **Output**: `RunGhResult` — `{ args, kind, executed, dryRun, stdout, stderr, exitCode }`. write + `dryRun: true` 호출에서는 `executed: false` 이고 `stdout` 에 `(dry-run, not executed) gh …` 한 줄이 박힌다. `gh` 의 non-zero `exitCode` 는 반환 대신 `GhCommandError` 로 throw.
+- **Owner**: `gh-passthrough` 스킬 (rocky 가 conduct).
+- **Side effects**: 모든 호출(read / dry-run / applied)에 저널 entry 자동 append (tags `["gh-passthrough", "read" | "dry-run" | "applied"]`). read 호출과 applied write 호출은 사용자 머신의 `gh` 도 함께 호출.
+- **Related config**: 없음 (인증과 `~/.config/gh/` 는 `gh` 자체가 관리).
 
-## Skills
+## 스킬
 
-Each skill bundles a small surface of tools into a step-by-step prompt. Skills live under `skills/<name>/SKILL.md`.
+각 스킬은 작은 도구 묶음을 단계별 prompt 로 감싼다. `skills/<name>/SKILL.md` 에 위치.
 
 ### `notion-context`
 
 - **Conducted by**: `rocky`.
-- **Tools used**: `notion_get`, `notion_status`, `notion_refresh`, `notion_extract`.
-- **Purpose**: Cache-first Notion read with two output styles — pass the markdown through as raw LLM context, or extract a structured Korean-language spec. Default for Notion URLs.
+- **사용 도구**: `notion_get`, `notion_status`, `notion_refresh`, `notion_extract`.
+- **목적**: 캐시 우선 Notion read 를 두 가지 출력 스타일로 제공 — markdown 그대로 LLM 컨텍스트로 넘기거나, 한국어 스펙으로 구조화. Notion URL 입력의 기본값.
 
 ### `openapi-client`
 
 - **Conducted by**: `rocky`.
-- **Tools used**: `openapi_get`, `openapi_status`, `openapi_refresh`, `openapi_search`, `openapi_envs`.
-- **Purpose**: Locate one endpoint inside a cached OpenAPI / Swagger JSON spec and emit a `fetch` (default) or `axios` TypeScript call snippet.
+- **사용 도구**: `openapi_get`, `openapi_status`, `openapi_refresh`, `openapi_search`, `openapi_envs`.
+- **목적**: 캐시된 OpenAPI / Swagger JSON spec 에서 endpoint 1 개를 찾아 `fetch` (기본) 또는 `axios` TypeScript 호출 snippet 을 생성.
 
 ### `mysql-query`
 
 - **Conducted by**: `rocky`.
-- **Tools used**: `mysql_envs`, `mysql_status`, `mysql_tables`, `mysql_schema`, `mysql_query`.
-- **Purpose**: Read-only MySQL inspection — list envs, ping, list tables, inspect schema, run a single allowed `SELECT` / `SHOW` / `DESCRIBE` / `EXPLAIN` / `WITH`.
+- **사용 도구**: `mysql_envs`, `mysql_status`, `mysql_tables`, `mysql_schema`, `mysql_query`.
+- **목적**: read-only MySQL 검사 — env 목록, ping, 테이블 목록, schema 점검, 허용된 `SELECT` / `SHOW` / `DESCRIBE` / `EXPLAIN` / `WITH` 한 줄 실행.
 
 ### `spec-pact`
 
-- **Conducted by**: `grace` (sole finalize / lock authority).
-- **Modes**: `DRAFT` (Notion → 합의 → write SPEC + refresh INDEX), `VERIFY` (turn the SPEC's 합의 TODO + API dependencies into a checklist), `DRIFT-CHECK` (compare the SPEC's `source_content_hash` with `notion_get(pageId).entry.contentHash`), `AMEND` (per-drift keep / update / reject → patch SPEC + bump version).
-- **Tools used**: `notion_get`, `notion_extract`, `journal_append`, `journal_read`, `journal_search`, `spec_pact_fragment`, plus opencode's `read` / `write` / `edit` / `glob`.
-- **Storage**: `<spec.dir>/<spec.indexFile>` (default `.agent/specs/INDEX.md`) as the wiki-style entry point, plus `<spec.dir>/<slug>.md` (default `.agent/specs/<slug>.md`) and/or `**/SPEC.md`.
-- **Lifecycle journal kinds**: `spec_anchor`, `spec_drift`, `spec_amendment`, `spec_verify_result`. The DRIFT-CHECK clean case reuses the `note` kind with the tag pair `["spec-pact", "drift-clear"]`. Recover history with the tag-shaped query `journal_search "spec-pact"`.
+- **Conducted by**: `grace` (단일 finalize / lock 권한자).
+- **모드**: `DRAFT` (Notion → 합의 → SPEC write + INDEX 갱신), `VERIFY` (SPEC 의 합의 TODO + API 의존성을 체크리스트화), `DRIFT-CHECK` (SPEC 의 `source_content_hash` vs `notion_get(pageId).entry.contentHash` 비교), `AMEND` (drift 항목별 keep / update / reject → SPEC patch + version bump).
+- **사용 도구**: `notion_get`, `notion_extract`, `journal_append`, `journal_read`, `journal_search`, `spec_pact_fragment`, 그리고 opencode 의 `read` / `write` / `edit` / `glob`.
+- **저장소**: `<spec.dir>/<spec.indexFile>` (기본 `.agent/specs/INDEX.md`) wiki-style entry point + `<spec.dir>/<slug>.md` (기본 `.agent/specs/<slug>.md`) 그리고/또는 `**/SPEC.md`.
+- **lifecycle 저널 kind**: `spec_anchor`, `spec_drift`, `spec_amendment`, `spec_verify_result`. DRIFT-CHECK clean 케이스는 `note` kind 를 재사용 (`tags: ["spec-pact", "drift-clear"]`). 회수는 tag-shaped query `journal_search "spec-pact"` 로.
 
 ### `pr-review-watch`
 
-- **Conducted by**: `mindy` (sole authority over `pr_event_resolved`). Trigger only when the user explicitly asks to review/check/watch; a PR URL/handle alone is not enough.
-- **Modes**: `WATCH-START`, `PULL`, `VALIDATE`, `WATCH-STOP`.
-- **Tools used**: `pr_watch_start`, `pr_watch_stop`, `pr_watch_status`, `pr_event_record`, `pr_event_pending`, `pr_event_resolve`, `journal_append`, `journal_read`, `journal_search`, opencode's `read` / `glob` / `grep`. **External GitHub MCP must be registered in the opencode session** so `mindy` can fetch PR meta, comments, replies, and merge state.
-- **PR handle**: `owner/repo#NUMBER` or a github.com PR URL. Journal-side handle is the tag `pr:<canonical>`; the `pageId` slot is intentionally unused (Notion id pattern doesn't match).
-- **Lifecycle journal kinds**: `pr_watch_start`, `pr_watch_stop`, `pr_event_inbound`, `pr_event_resolved`. Recover history with `journal_search "pr-watch"`.
+- **Conducted by**: `mindy` (`pr_event_resolved` 단일 권한자). PR URL/handle 만으로는 시작하지 않고, 사용자가 리뷰 확인/코멘트 확인/watch 를 명시한 경우에만 트리거한다.
+- **모드**: `WATCH-START`, `PULL`, `VALIDATE`, `WATCH-STOP`.
+- **사용 도구**: `pr_watch_start`, `pr_watch_stop`, `pr_watch_status`, `pr_event_record`, `pr_event_pending`, `pr_event_resolve`, `journal_append`, `journal_read`, `journal_search`, opencode 의 `read` / `glob` / `grep`. **외부 GitHub MCP 가 opencode 세션에 등록되어 있어야** mindy 가 PR 메타·코멘트·답글·머지 상태를 가져올 수 있다.
+- **PR 핸들**: `owner/repo#NUMBER` 또는 github.com PR URL. 저널 측 핸들은 tag `pr:<canonical>`. `pageId` 슬롯은 의도적으로 사용 안 함 (Notion id 패턴이 아니므로).
+- **lifecycle 저널 kind**: `pr_watch_start`, `pr_watch_stop`, `pr_event_inbound`, `pr_event_resolved`. 회수는 `journal_search "pr-watch"` 로.
 
 ### `spec-to-issues`
 
-- **Conducted by**: `rocky`. `grace` does not call this skill — finalize / lock authority stops at the SPEC.
-- **Tools used**: `issue_create_from_spec`, `issue_status`, `journal_append`, `journal_read`, `journal_search`, opencode's `read`.
-- **Contract**: dryRun-first. Always run `issue_status` (or `issue_create_from_spec` with `dryRun: true`) first, surface the plan to the user, then re-run with `dryRun: false`.
-- **Auth**: delegated to the user's `gh` CLI. Throws a one-line guidance error if `gh` is missing or unauthenticated.
+- **Conducted by**: `rocky`. `grace` 는 이 스킬을 호출하지 않는다 — finalize / lock 권한이 SPEC 까지.
+- **사용 도구**: `issue_create_from_spec`, `issue_status`, `journal_append`, `journal_read`, `journal_search`, opencode 의 `read`.
+- **계약**: dryRun-first. 항상 `issue_status` (또는 `issue_create_from_spec` with `dryRun: true`) 부터 호출해 plan 을 사용자에게 surface 한 뒤, `dryRun: false` 로 재호출.
+- **인증**: 사용자 `gh` CLI 위임. `gh` 미설치 / 미인증 시 한 줄 가이드 에러로 throw.
 
 ### `gh-passthrough`
 
 - **Conducted by**: `rocky`.
-- **Tools used**: `gh_run`, `journal_append`, `journal_read`, `journal_search`.
-- **Contract**: dryRun-first for write commands. Read commands run immediately; environment-affecting and high-impact commands are denied at the tool level (see `gh_run`).
+- **사용 도구**: `gh_run`, `journal_append`, `journal_read`, `journal_search`.
+- **계약**: write 명령은 dryRun-first. read 는 즉시 실행, 환경 변경 / 고-임팩트 명령은 도구 수준에서 거부 (자세한 분류는 `gh_run` 참고).
 
-## Agents
+## 에이전트
 
-Each agent's full prompt and exact tool / permission frontmatter live under `agents/<name>.md`. The summary below covers mode, permissions, and routing rules.
+각 에이전트의 풀 prompt 와 정확한 도구 / 권한 frontmatter 는 `agents/<name>.md` 에 있다. 아래는 mode / 권한 / 라우팅 룰 요약.
 
 ### `rocky`
 
-- **Mode**: `all` (callable as primary or as a sub-agent of an external primary like OmO Sisyphus or Superpowers).
-- **Permissions**: `edit: deny`, `bash: deny` — rocky does not write code or run shell commands directly.
-- **Specialty**: frontend, with full-stack reach.
-- **Conducts**: `notion-context`, `openapi-client`, `mysql-query`, `spec-to-issues`, `gh-passthrough`, plus journal usage.
-- **Routes**:
-  - SPEC lifecycle keywords ("스펙 합의", "SPEC 작성", "SPEC 검증", "SPEC drift", "기획문서 변경 반영") → `@grace`.
-  - Explicit PR review watch keywords ("PR review", "리뷰 봐줘", "리뷰 확인", "코멘트 확인", "머지까지 watch", "리뷰 답글", "PR drift") + PR handle → `@mindy`. A bare PR link / reference mention does not start watch.
-  - Multi-step implementation (writing code, refactor, multi-file changes) → external sub-agent / skill, or returns the work to the caller. Rocky never implements directly.
-- **Hard refusals**: MySQL writes / DDL (the SQL guard rejects them), direct GitHub API calls (delegated to the external GitHub MCP).
+- **Mode**: `all` (사용자 직접 호출 = primary, 외부 primary 의 위임 = subagent 둘 다 가능).
+- **권한**: `edit: deny`, `bash: deny` — rocky 는 코드를 직접 쓰지도, 셸 명령을 직접 실행하지도 않는다.
+- **전문**: 프론트엔드 (풀스택 reach).
+- **Conducts**: `notion-context`, `openapi-client`, `mysql-query`, `spec-to-issues`, `gh-passthrough`, 그리고 저널 사용.
+- **라우팅**:
+  - SPEC 합의 lifecycle 키워드 ("스펙 합의" / "SPEC 작성" / "SPEC 검증" / "SPEC drift" / "기획문서 변경 반영") → `@grace`.
+  - PR review watch 명시 키워드 ("PR review" / "리뷰 봐줘" / "리뷰 확인" / "코멘트 확인" / "머지까지 watch" / "리뷰 답글" / "PR drift") + PR 핸들 → `@mindy`. 단순 PR 링크/참고 언급은 watch 를 시작하지 않는다.
+  - 다단계 구현 (코드 작성 / 리팩터 / 다파일 변경) → 외부 sub-agent / skill 위임 또는 caller 에게 반환. rocky 가 직접 구현하지 않음.
+- **하드 거부**: MySQL 쓰기 / DDL (SQL guard 가 거부), GitHub API 직접 호출 (외부 GitHub MCP 책임).
 
 ### `grace`
 
-- **Mode**: `subagent` (invoked via `@grace` or rocky's routing).
-- **Permissions**: `edit: allow`, `bash: deny`.
+- **Mode**: `subagent` (`@grace` 직접 호출 또는 rocky 라우팅).
+- **권한**: `edit: allow`, `bash: deny`.
 - **Conducts**: `spec-pact` end-to-end (DRAFT / VERIFY / DRIFT-CHECK / AMEND).
-- **Authority**: sole finalize / lock authority over `<spec.dir>/<spec.indexFile>` and SPEC files. Even when an external agent participates in 합의, only `grace` writes the SPEC frontmatter and the INDEX.
-- **Out of scope**: `spec-to-issues` and `gh-passthrough` (rocky's surface), code implementation.
+- **권한**: `<spec.dir>/<spec.indexFile>` 와 SPEC 파일들의 단일 finalize / lock 권한자. 외부 에이전트가 합의에 참여해도 SPEC frontmatter 와 INDEX 는 grace 만 쓴다.
+- **범위 밖**: `spec-to-issues` 와 `gh-passthrough` (rocky 의 표면), 코드 구현.
 
 ### `mindy`
 
-- **Mode**: `subagent` (invoked via `@mindy` or rocky's routing).
-- **Permissions**: `edit: deny`, `bash: deny` — mindy never edits code, never runs `gh` / `bun test` / `tsc` / `curl` directly.
+- **Mode**: `subagent` (`@mindy` 직접 호출 또는 rocky 라우팅).
+- **권한**: `edit: deny`, `bash: deny` — mindy 는 코드를 편집하지 않고 `gh` / `bun test` / `tsc` / `curl` 도 직접 실행하지 않는다.
 - **Conducts**: `pr-review-watch` end-to-end (WATCH-START / PULL / VALIDATE / WATCH-STOP).
-- **Authority**: sole authority over `pr_event_resolved` journal entries.
-- **Out of scope**: PR creation, PR merge, code commits, running tests / typecheck / lint during VALIDATE (the user runs these and tells mindy the result in one line).
-- **External dependency**: the GitHub MCP server must be registered in the opencode session for mindy to fetch PR meta and comments. The toolkit ships no GitHub HTTP client of its own.
+- **권한**: `pr_event_resolved` 저널 entry 의 단일 권한자.
+- **범위 밖**: PR 생성, PR 머지, 코드 commit, VALIDATE 도중 typecheck / test / lint 실행 (사용자가 실행하고 결과를 한 줄로 mindy 에게 알려 준다).
+- **외부 의존성**: 외부 GitHub MCP 서버가 opencode 세션에 등록되어 있어야 PR 메타·코멘트를 가져올 수 있다. toolkit 자체 GitHub HTTP client 는 없다.
 
 ## Config (`agent-toolkit.json`)
 
-Project (`./.opencode/agent-toolkit.json`) overrides user (`~/.config/opencode/agent-toolkit/agent-toolkit.json` or `$AGENT_TOOLKIT_CONFIG`) on a per-leaf basis. The full grammar is in [`agent-toolkit.schema.json`](./agent-toolkit.schema.json) — point your editor's JSON Schema settings at the schema to get autocomplete and validation.
+project (`./.opencode/agent-toolkit.json`) 가 user (`~/.config/opencode/agent-toolkit/agent-toolkit.json` 또는 `$AGENT_TOOLKIT_CONFIG`) 를 leaf 단위로 덮어쓴다. 전체 grammar 는 [`agent-toolkit.schema.json`](./agent-toolkit.schema.json) 에 정의되어 있다 — 에디터 JSON Schema 설정에 이 스키마를 가리키면 자동완성과 검증이 붙는다.
 
-| Key | Purpose | Leaf shape | Notes |
+| 키 | 용도 | leaf shape | 비고 |
 | --- | --- | --- | --- |
-| `openapi.registry` | `host:env:spec` handle → spec URL | `{ [host]: { [env]: { [spec]: "https://…" } } }` | Identifiers match `^[a-zA-Z0-9_-]+$`. URL must be non-empty. YAML specs are out of scope. |
-| `spec.dir` / `spec.scanDirectorySpec` / `spec.indexFile` | SPEC layout for `spec-pact` | `string` / `boolean` / `string` | Defaults `.agent/specs` / `true` / `INDEX.md`. |
-| `mysql.connections` | `host:env:db` handle → MySQL profile | `{ [host]: { [env]: { [db]: { passwordEnv } | { dsnEnv } } } }` | **Plaintext passwords / DSNs in this file are rejected by the loader.** Use `passwordEnv` (with `host` / `user` / `database` / optional `port`) or `dsnEnv` (single `mysql://user:pass@host:port/db` env var) — exactly one of the two. |
-| `github.repositories` | `owner/repo` allow-list for PR review watch | `{ [owner/repo]: { alias?, labels?, defaultBranch?, mergeMode? } }` | Keys must match `^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$` (exactly one slash, e.g. `minjun0219/agent-toolkit`) — different from the colon-separated `host:env:spec` / `host:env:db` handles. Token / secret leaves are rejected — auth lives with the external GitHub MCP. `mergeMode ∈ {"merge", "squash", "rebase"}`. |
-| `github.repo` / `github.defaultLabels` | Default repo and dedupe labels for `spec-to-issues` | `string` / `string[]` | `defaultLabels` defaults to `["spec-pact"]`; index 0 is the dedupe filter. Repo precedence: tool param > config > `gh` auto-detect. |
+| `openapi.registry` | `host:env:spec` 핸들 → spec URL | `{ [host]: { [env]: { [spec]: "https://…" } } }` | 식별자는 `^[a-zA-Z0-9_-]+$`, URL 은 비어 있지 않은 문자열. YAML 미지원. |
+| `spec.dir` / `spec.scanDirectorySpec` / `spec.indexFile` | `spec-pact` 의 SPEC 레이아웃 | `string` / `boolean` / `string` | 기본 `.agent/specs` / `true` / `INDEX.md`. |
+| `mysql.connections` | `host:env:db` 핸들 → MySQL 프로파일 | `{ [host]: { [env]: { [db]: { passwordEnv } | { dsnEnv } } } }` | **이 파일에 평문 비밀번호 / DSN 을 박는 것은 loader 가 거부한다.** `passwordEnv` (`host` / `user` / `database` / 선택 `port` 와 함께) 또는 `dsnEnv` (한 줄짜리 `mysql://user:pass@host:port/db` env 변수) 중 정확히 하나만 사용. |
+| `github.repositories` | PR review watch 의 `owner/repo` allow-list | `{ [owner/repo]: { alias?, labels?, defaultBranch?, mergeMode? } }` | 키는 `^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$` (정확히 슬래시 1 개, 예: `minjun0219/agent-toolkit`) — `host:env:spec` / `host:env:db` 의 콜론 핸들과 다른 형식. 토큰 / 시크릿 leaf 는 거부 — 인증은 외부 GitHub MCP. `mergeMode ∈ {"merge", "squash", "rebase"}`. |
+| `github.repo` / `github.defaultLabels` | `spec-to-issues` 의 default repo / dedupe 라벨 | `string` / `string[]` | `defaultLabels` 기본 `["spec-pact"]`, index 0 이 dedupe 필터. repo 우선순위: tool param > config > `gh` 자동 감지. |
 
-## Storage layout
+## 저장소 레이아웃
 
-| Surface | Path | TTL | Notes |
+| 표면 | 경로 | TTL | 비고 |
 | --- | --- | --- | --- |
-| Notion cache | `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}` | `AGENT_TOOLKIT_CACHE_TTL` (default 86400 s) | Both files must exist; missing one is treated as cache miss. |
-| OpenAPI cache | `<AGENT_TOOLKIT_OPENAPI_CACHE_DIR>/<key>.{json,spec.json}` | `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` | `key = sha256(specUrl)[:16]`. Same dual-file rule. |
-| Journal | `<AGENT_TOOLKIT_JOURNAL_DIR>/journal.jsonl` | none | Append-only, no expiry. Corrupted lines are skipped on read. |
-| SPEC | `<spec.dir>/<spec.indexFile>` + `<spec.dir>/<slug>.md` and/or `**/SPEC.md` | none | `grace` is the sole writer. |
+| Notion 캐시 | `<AGENT_TOOLKIT_CACHE_DIR>/<pageId>.{json,md}` | `AGENT_TOOLKIT_CACHE_TTL` (기본 86400 초) | 두 파일 모두 있어야 hit. 한쪽 누락 시 cache miss 처리. |
+| OpenAPI 캐시 | `<AGENT_TOOLKIT_OPENAPI_CACHE_DIR>/<key>.{json,spec.json}` | `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` | `key = sha256(specUrl)[:16]`. 같은 dual-file 룰. |
+| 저널 | `<AGENT_TOOLKIT_JOURNAL_DIR>/journal.jsonl` | 없음 | append-only, 만료 없음. read 단계에서 손상 라인은 skip. |
+| SPEC | `<spec.dir>/<spec.indexFile>` + `<spec.dir>/<slug>.md` 그리고/또는 `**/SPEC.md` | 없음 | `grace` 가 단일 writer. |
 
-## Out of scope (MVP)
+## 범위 밖 (MVP)
 
-- **Notion database queries** and child-page traversal (single-page only).
-- **MySQL writes / DDL / multi-statement / stored procs / `SET` / `LOAD` / `INTO OUTFILE` / `INTO DUMPFILE`**, MySQL TLS / SSH-tunnel options, and OS keychain integration.
-- Other DBMSs (Postgres / SQLite / Oracle / MSSQL) and MySQL result disk caching.
-- OpenAPI YAML parsing, runtime base-URL override (use `spec.servers`), full SDK code generation, multi-spec merge, mock servers.
-- Multi-host plugin layouts (`.claude-plugin/`, `.cursor-plugin/`, …) — opencode-only for MVP.
-- **GitHub webhook reception / event subscription** — `pr-review-watch` is polling-only and turn-bound, no scheduler.
-- **Direct GitHub API calls or `gh` CLI execution from `rocky` or `mindy`** outside the `gh-passthrough` / `spec-to-issues` skills.
-- **PR creation / merge by `mindy`** — those return to the caller.
-- **Typecheck / test / lint runs from `mindy` during VALIDATE** — `mindy` is `bash: deny`; the user runs the command and tells `mindy` the result in one line.
-- Cross-machine journal / SPEC sync, embedding-based search, journal compaction or summarisation.
-- Automatic drift polling, automatic INDEX commit / push, automatic re-arm of a stopped PR watch.
-- Alias-prefixed PR handle parsing (`<alias>#<num>`) — registered in config but parsing is deferred.
-- **Direct multi-step implementation by `rocky` / `grace` / `mindy`** (writing code, refactor, multi-file changes) — all three may delegate or return work, never run it themselves.
+- **Notion 데이터베이스 쿼리** 와 child-page 순회 (단일 페이지 only).
+- **MySQL 쓰기 / DDL / multi-statement / 저장 프로시저 호출 / `SET` / `LOAD` / `INTO OUTFILE` / `INTO DUMPFILE`**, MySQL TLS / SSH 터널 옵션, OS keychain 통합.
+- 다른 DBMS (Postgres / SQLite / Oracle / MSSQL), MySQL 결과 디스크 캐시.
+- OpenAPI YAML 파싱, runtime base-URL override (대신 `spec.servers` 사용), 풀 SDK 코드 생성, multi-spec merge, mock 서버.
+- 추가 host 통합 (`.cursor-plugin/`, codex 등) — MVP 는 Claude Code (1차) + opencode (2차) 두 host 만.
+- **GitHub webhook 수신 / 이벤트 구독** — `pr-review-watch` 는 polling-only, turn-bound, 스케줄러 없음.
+- **`rocky` 또는 `mindy` 의 GitHub API 직접 호출 / `gh` CLI 직접 실행** (`gh-passthrough` / `spec-to-issues` 스킬 외).
+- **`mindy` 의 PR 생성 / 머지** — caller 책임으로 반환.
+- **VALIDATE 중 `mindy` 의 typecheck / test / lint 실행** — `mindy` 는 `bash: deny`, 사용자가 명령을 실행하고 한 줄 결과만 mindy 에게 전달.
+- 머신 간 저널 / SPEC sync, embedding 기반 검색, 저널 압축 / 요약.
+- 자동 drift polling, INDEX 자동 commit / push, 멈춘 PR watch 의 자동 re-arm.
+- alias-prefix PR 핸들 파싱 (`<alias>#<num>`) — config 에 등록은 되지만 파싱은 보류.
+- **`rocky` / `grace` / `mindy` 의 직접 다단계 구현** (코드 작성 / 리팩터 / 다파일 변경) — 셋 모두 위임 / 반환만 가능, 직접 실행은 안 함.
 
-## See also
+## 같이 보기
 
-- [`README.md`](./README.md) — narrative entry point and Quick start (Korean)
-- [`AGENTS.md`](./AGENTS.md) — agent contract, MVP scope, and the change checklist
-- [`.opencode/INSTALL.md`](./.opencode/INSTALL.md) — install verification, agent fallback, smoke tests
-- [`agent-toolkit.schema.json`](./agent-toolkit.schema.json) — JSON Schema for `agent-toolkit.json`
-- [`ROADMAP.md`](./ROADMAP.md) — post-MVP phases
-- [`FEATURES.ko.md`](./FEATURES.ko.md) — Korean mirror of this file
+- [`README.md`](./README.md) — 1 페이지 진입점 (Claude Code 우선)
+- [`AGENTS.md`](./AGENTS.md) — 에이전트용 단일 source (영문, MVP 범위 / change checklist / removal candidates)
+- [`.opencode/INSTALL.md`](./.opencode/INSTALL.md) — opencode 호스트 설치 가이드
+- [`agent-toolkit.schema.json`](./agent-toolkit.schema.json) — `agent-toolkit.json` 의 JSON Schema
+- [`ROADMAP.md`](./ROADMAP.md) — post-MVP phase 들
