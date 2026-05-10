@@ -1,10 +1,11 @@
 /**
  * Claude Code MCP server entrypoint for agent-toolkit.
  *
- * stdio JSON-RPC server that exposes 15 of the 25 tools the opencode plugin
+ * stdio JSON-RPC server that exposes 17 of the 27 tools the opencode plugin
  * provides:
  *
- *   - openapi_get / openapi_refresh / openapi_status / openapi_search / openapi_envs  (5)
+ *   - openapi_get / openapi_refresh / openapi_status / openapi_search / openapi_envs
+ *     / openapi_endpoint / openapi_tags  (7)
  *   - journal_append / journal_read / journal_search / journal_status  (4)
  *   - mysql_envs / mysql_status / mysql_tables / mysql_schema / mysql_query  (5)
  *   - spec_pact_fragment  (1)
@@ -15,7 +16,7 @@
  *
  * Handlers are imported from the opencode plugin implementation
  * (`.opencode/plugins/agent-toolkit.ts`) so business logic stays in one place.
- * The opencode plugin keeps its full 25-tool surface; this server is the
+ * The opencode plugin keeps its full 27-tool surface; this server is the
  * narrower Claude Code surface.
  */
 
@@ -26,7 +27,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import pkg from "../package.json" with { type: "json" };
 import { createJournalFromEnv } from "../lib/agent-journal";
-import { createOpenapiCacheFromEnv } from "../lib/openapi-context";
+import { createAgentToolkitRegistry } from "../lib/openapi/adapter";
+import { HTTP_METHODS } from "../lib/openapi/indexer";
 import { MysqlExecutorRegistry } from "../lib/mysql-context";
 import {
   loadSpecPactFragment,
@@ -44,11 +46,13 @@ import {
   handleMysqlSchema,
   handleMysqlStatus,
   handleMysqlTables,
+  handleSwaggerEndpoint,
   handleSwaggerEnvs,
   handleSwaggerGet,
   handleSwaggerRefresh,
   handleSwaggerSearch,
   handleSwaggerStatus,
+  handleSwaggerTags,
 } from "../.opencode/plugins/agent-toolkit";
 
 const HERE = resolve(fileURLToPath(import.meta.url), "..");
@@ -77,13 +81,12 @@ export interface BuildServerOptions {
 }
 
 /**
- * Build the MCP server with all 15 tools wired up. Exported for tests so they
+ * Build the MCP server with all 17 tools wired up. Exported for tests so they
  * can register tools against an in-process server without spawning a child.
  */
 export async function buildServer(options: BuildServerOptions = {}) {
   const skillsDir = options.skillsDir ?? SKILLS_DIR;
 
-  const openapi = createOpenapiCacheFromEnv();
   const journal = createJournalFromEnv();
 
   const { config: toolkitConfig, errors: configErrors } = await loadConfig();
@@ -93,6 +96,9 @@ export async function buildServer(options: BuildServerOptions = {}) {
     );
   }
   const registry = toolkitConfig.openapi?.registry;
+  const openapiRegistry = createAgentToolkitRegistry({
+    ...(registry !== undefined ? { registry } : {}),
+  });
 
   const mysqlRegistry = new MysqlExecutorRegistry(process.env);
   process.once("beforeExit", () => {
@@ -108,46 +114,46 @@ export async function buildServer(options: BuildServerOptions = {}) {
     version: pkg.version,
   });
 
-  // ──────────────────────────── OpenAPI (5) ────────────────────────────
+  // ──────────────────────────── OpenAPI (7) ────────────────────────────
 
   server.registerTool(
     "openapi_get",
     {
       description:
-        "OpenAPI / Swagger JSON spec 을 캐시 우선 정책으로 가져온다. 캐시 hit 이면 remote 호출 없음. miss 면 spec URL 을 GET 으로 받아 형식 검증 후 캐시에 저장. (input: spec URL, agent-toolkit.json 의 host:env:spec handle, 또는 이미 캐시된 16-hex key)",
+        "OpenAPI / Swagger spec 을 캐시 우선 정책으로 가져온다. swagger 2.0 은 자동으로 OpenAPI 3.0 으로 변환되고 $ref 는 모두 deref 된다. fresh hit 은 remote 호출 없음. stale hit (TTL 경과) 은 즉시 stale 데이터로 응답하고 백그라운드 conditional GET (If-None-Match / If-Modified-Since) 으로 재검증. miss 면 fetch + parse + index. (input: spec URL 또는 agent-toolkit.json 의 host:env:spec handle)",
       inputSchema: { input: z.string() },
     },
     async ({ input }) =>
-      jsonResult(await handleSwaggerGet(openapi, input, registry)),
+      jsonResult(await handleSwaggerGet(openapiRegistry, input, registry)),
   );
 
   server.registerTool(
     "openapi_refresh",
     {
       description:
-        "캐시를 무시하고 OpenAPI spec URL 에서 강제로 다시 가져와 캐시를 갱신한다.",
+        "캐시 (메모리 + 디스크) 를 무시하고 OpenAPI spec 을 강제 재다운로드한다.",
       inputSchema: { input: z.string() },
     },
     async ({ input }) =>
-      jsonResult(await handleSwaggerRefresh(openapi, input, registry)),
+      jsonResult(await handleSwaggerRefresh(openapiRegistry, input, registry)),
   );
 
   server.registerTool(
     "openapi_status",
     {
       description:
-        "캐시된 OpenAPI spec 의 메타(저장 시각, TTL, 만료 여부, title, endpointCount)만 조회. remote 호출 없음.",
+        "캐시된 OpenAPI spec 의 메타 (cached / fetchedAt / ttlSeconds / environments) 만 조회. remote 호출 없음.",
       inputSchema: { input: z.string() },
     },
     async ({ input }) =>
-      jsonResult(await handleSwaggerStatus(openapi, input, registry)),
+      jsonResult(await handleSwaggerStatus(openapiRegistry, input, registry)),
   );
 
   server.registerTool(
     "openapi_search",
     {
       description:
-        "캐시된 OpenAPI spec 들을 가로질러 path / method / tag / operationId / summary 를 substring 으로 검색한다. remote 호출 없음.",
+        "캐시 (메모리 또는 디스크) 에 있는 OpenAPI spec 들을 가로질러 endpoint 를 점수화 검색한다 (operationId>path>summary>description). remote 호출 없음 — 미캐시 spec 은 결과에 포함되지 않으니 먼저 `openapi_get` 으로 받아둬야 한다.",
       inputSchema: {
         query: z.string(),
         limit: z.number().int().positive().optional(),
@@ -156,7 +162,12 @@ export async function buildServer(options: BuildServerOptions = {}) {
     },
     async ({ query, limit, scope }) =>
       jsonResult(
-        await handleSwaggerSearch(openapi, query, { limit, scope }, registry),
+        await handleSwaggerSearch(
+          openapiRegistry,
+          query,
+          { limit, scope },
+          registry,
+        ),
       ),
   );
 
@@ -164,10 +175,44 @@ export async function buildServer(options: BuildServerOptions = {}) {
     "openapi_envs",
     {
       description:
-        "agent-toolkit.json 의 openapi.registry 를 host:env:spec 평면 리스트로 반환한다. remote 호출 없음.",
+        "agent-toolkit.json 의 openapi.registry 를 host:env:spec 평면 리스트로 반환한다. baseUrl / format 이 있으면 함께 반환. remote 호출 없음.",
       inputSchema: {},
     },
     async () => jsonResult(handleSwaggerEnvs(toolkitConfig)),
+  );
+
+  server.registerTool(
+    "openapi_endpoint",
+    {
+      description:
+        "단일 endpoint 의 풍부한 정보 (parameters / requestBody / responses / examples / fullUrl) 를 반환한다. baseUrl 합성된 fullUrl 은 leaf 의 baseUrl 이 비어 있으면 path 자체.",
+      inputSchema: {
+        input: z.string(),
+        operationId: z.string().optional(),
+        method: z.enum(HTTP_METHODS).optional(),
+        path: z.string().optional(),
+      },
+    },
+    async ({ input, operationId, method, path }) =>
+      jsonResult(
+        await handleSwaggerEndpoint(
+          openapiRegistry,
+          input,
+          { operationId, method, path },
+          registry,
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "openapi_tags",
+    {
+      description:
+        "spec 의 OpenAPI tag 목록 + 각 tag 의 endpoint 개수를 반환한다.",
+      inputSchema: { input: z.string() },
+    },
+    async ({ input }) =>
+      jsonResult(await handleSwaggerTags(openapiRegistry, input, registry)),
   );
 
   // ──────────────────────────── Journal (4) ────────────────────────────

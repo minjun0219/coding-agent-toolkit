@@ -25,6 +25,8 @@ const EXPECTED_TOOLS = [
   "openapi_status",
   "openapi_search",
   "openapi_envs",
+  "openapi_endpoint",
+  "openapi_tags",
   "journal_append",
   "journal_read",
   "journal_search",
@@ -114,7 +116,7 @@ afterAll(async () => {
 });
 
 describe("agent-toolkit MCP server", () => {
-  test("exposes exactly the 15 in-scope tools", async () => {
+  test("exposes exactly the 17 in-scope tools", async () => {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
     expect(names).toEqual([...EXPECTED_TOOLS].sort());

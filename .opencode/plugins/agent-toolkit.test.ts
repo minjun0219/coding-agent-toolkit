@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { NotionCache } from "../../lib/notion-context";
-import { OpenapiCache } from "../../lib/openapi-context";
 import type { OpenapiRegistry } from "../../lib/toolkit-config";
 import { AgentJournal } from "../../lib/agent-journal";
+import { createAgentToolkitRegistry } from "../../lib/openapi/adapter";
 import type { FieldPacket, RowDataPacket } from "mysql2/promise";
 import agentToolkitPlugin, {
   handleJournalAppend,
@@ -27,11 +28,13 @@ import agentToolkitPlugin, {
   handlePrWatchStart,
   handlePrWatchStatus,
   handlePrWatchStop,
+  handleSwaggerEndpoint,
   handleSwaggerEnvs,
   handleSwaggerGet,
   handleSwaggerRefresh,
   handleSwaggerSearch,
   handleSwaggerStatus,
+  handleSwaggerTags,
 } from "./agent-toolkit";
 import {
   MysqlExecutorRegistry,
@@ -243,299 +246,163 @@ describe("plugin handlers", () => {
   });
 });
 
-describe("openapi handlers", () => {
-  let oaDir: string;
-  let oaCache: OpenapiCache;
-  let oaServer: ReturnType<typeof Bun.serve>;
-  let oaCalls: number;
-  let respondMalformed: boolean;
+// petstore 3.0 / 2.0 fixture 경로 — 두 단독 진입점 양쪽에서 같이 쓴다.
+const FIXTURE_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "lib",
+  "openapi",
+  "__fixtures__",
+);
+const PETSTORE_3 = `file://${join(FIXTURE_DIR, "petstore-3.0.json")}`;
+const PETSTORE_2 = `file://${join(FIXTURE_DIR, "petstore-2.0.json")}`;
 
-  const SAMPLE_SPEC = {
-    openapi: "3.0.0",
-    info: { title: "Sample", version: "1.0.0" },
-    paths: {
-      "/pets": {
-        get: { operationId: "listPets", summary: "List pets", tags: ["pet"] },
-        post: {
-          operationId: "createPet",
-          summary: "Create pet",
-          tags: ["pet"],
-        },
-      },
-      "/users/{id}": {
-        get: { operationId: "getUser", summary: "Fetch user", tags: ["user"] },
-      },
-    },
-  };
-
-  let baseUrl: string;
-
-  beforeEach(() => {
-    oaDir = mkdtempSync(join(tmpdir(), "plugin-oa-"));
-    oaCache = new OpenapiCache({ baseDir: oaDir, defaultTtlSeconds: 60 });
-    oaCalls = 0;
-    respondMalformed = false;
-    oaServer = Bun.serve({
-      port: 0,
-      hostname: "127.0.0.1",
-      fetch(req) {
-        const url = new URL(req.url);
-        if (url.pathname === "/spec.json" && req.method === "GET") {
-          oaCalls += 1;
-          if (respondMalformed) {
-            return Response.json({ info: {}, paths: {} });
-          }
-          return Response.json(SAMPLE_SPEC);
-        }
-        if (url.pathname === "/other.json" && req.method === "GET") {
-          oaCalls += 1;
-          return Response.json({
-            openapi: "3.0.0",
-            info: { title: "Other", version: "0.1.0" },
-            paths: { "/health": { get: { operationId: "health" } } },
-          });
-        }
-        if (url.pathname === "/spec.yaml" && req.method === "GET") {
-          oaCalls += 1;
-          return new Response("openapi: 3.0.0\ninfo:\n  title: YAML\n", {
-            headers: { "content-type": "application/yaml" },
-          });
-        }
-        return new Response("not found", { status: 404 });
-      },
-    });
-    baseUrl = `http://${oaServer.hostname}:${oaServer.port}`;
-  });
-
-  afterEach(() => {
-    oaServer.stop(true);
-  });
-
-  it("openapi_get: cache miss → write → second call hits cache", async () => {
-    const url = `${baseUrl}/spec.json`;
-    const first = await handleSwaggerGet(oaCache, url);
-    expect(first.fromCache).toBe(false);
-    expect(first.entry.title).toBe("Sample");
-    expect(first.entry.endpointCount).toBe(3);
-
-    const second = await handleSwaggerGet(oaCache, url);
-    expect(second.fromCache).toBe(true);
-    expect(oaCalls).toBe(1);
-  });
-
-  it("openapi_refresh: ignores cache and re-fetches", async () => {
-    const url = `${baseUrl}/spec.json`;
-    await handleSwaggerGet(oaCache, url);
-    expect(oaCalls).toBe(1);
-
-    const r = await handleSwaggerRefresh(oaCache, url);
+describe("openapi handlers — file URL inputs", () => {
+  it("openapi_get: file URL input gets parsed + dereferenced + cached", async () => {
+    const reg = createAgentToolkitRegistry({ diskCacheDisabled: true });
+    const r = await handleSwaggerGet(reg, PETSTORE_3);
     expect(r.fromCache).toBe(false);
-    expect(oaCalls).toBe(2);
+    expect(r.document.openapi?.startsWith("3.")).toBe(true);
+    expect(r.document.info?.title).toBe("Swagger Petstore");
+    // 두 번째 호출은 메모리 캐시 hit.
+    const r2 = await handleSwaggerGet(reg, PETSTORE_3);
+    expect(r2.fromCache).toBe(true);
   });
 
-  it("openapi_status: reflects cache state", async () => {
-    const url = `${baseUrl}/spec.json`;
-    const before = await handleSwaggerStatus(oaCache, url);
-    expect(before.exists).toBe(false);
-
-    await handleSwaggerGet(oaCache, url);
-    const after = await handleSwaggerStatus(oaCache, url);
-    expect(after.exists).toBe(true);
-    expect(after.expired).toBe(false);
-    expect(after.title).toBe("Sample");
+  it("openapi_get: swagger 2.0 fixture is auto-converted to OpenAPI 3", async () => {
+    const reg = createAgentToolkitRegistry({ diskCacheDisabled: true });
+    const r = await handleSwaggerGet(reg, PETSTORE_2);
+    expect(r.document.openapi?.startsWith("3.")).toBe(true);
+    // swagger 본문엔 swagger 필드가 있었지만 변환 후엔 openapi 만 있어야 한다.
+    expect(
+      (r.document as unknown as Record<string, unknown>).swagger,
+    ).toBeUndefined();
   });
 
-  it("rejects spec missing both openapi and swagger fields", async () => {
-    respondMalformed = true;
-    const url = `${baseUrl}/spec.json`;
-    await expect(handleSwaggerGet(oaCache, url)).rejects.toThrow(
-      /openapi.*swagger/i,
-    );
-    const s = await handleSwaggerStatus(oaCache, url);
-    expect(s.exists).toBe(false);
+  it("openapi_status / openapi_refresh: cache lifecycle", async () => {
+    const reg = createAgentToolkitRegistry({ diskCacheDisabled: true });
+    const before = await handleSwaggerStatus(reg, PETSTORE_3);
+    expect(before.cacheStatus.cached).toBe(false);
+
+    await handleSwaggerGet(reg, PETSTORE_3);
+    const after = await handleSwaggerStatus(reg, PETSTORE_3);
+    expect(after.cacheStatus.cached).toBe(true);
+
+    const refreshed = await handleSwaggerRefresh(reg, PETSTORE_3);
+    expect(refreshed.length).toBe(1);
+    expect(refreshed[0]?.success).toBe(true);
   });
 
-  it("rejects YAML specs because only JSON OpenAPI documents are supported", async () => {
-    const url = `${baseUrl}/spec.yaml`;
-    await expect(handleSwaggerGet(oaCache, url)).rejects.toThrow(
-      /non-JSON body/i,
-    );
-    const s = await handleSwaggerStatus(oaCache, url);
-    expect(s.exists).toBe(false);
-  });
+  it("openapi_search: scored keyword across loaded specs", async () => {
+    const reg = createAgentToolkitRegistry({ diskCacheDisabled: true });
+    await handleSwaggerGet(reg, PETSTORE_3);
+    const matches = await handleSwaggerSearch(reg, "pet");
+    expect(matches.length).toBeGreaterThan(0);
+    // 점수화 검색은 operationId / path / summary / description 모두를 본다 — petstore
+    // 의 store / user 도메인도 summary 에 "pet" 단어가 있으면 매칭될 수 있다. 핵심은
+    // 첫 매칭이 path / operationId 같은 high-score 필드에서 잡혔는지.
+    const top = matches[0];
+    expect(top).toBeDefined();
+    expect(
+      top!.path.toLowerCase().includes("pet") ||
+        top!.operationId.toLowerCase().includes("pet"),
+    ).toBe(true);
 
-  it("openapi_get with a 16-hex key recovers the spec URL via meta and refetches", async () => {
-    const url = `${baseUrl}/spec.json`;
-    const first = await handleSwaggerGet(oaCache, url);
-    expect(first.fromCache).toBe(false);
-
-    // 본문만 날리고 메타 유지 → 캐시 miss 지만 specUrl 은 복구 가능.
-    const { rmSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    rmSync(join(oaDir, `${first.entry.key}.spec.json`));
-
-    const recovered = await handleSwaggerGet(oaCache, first.entry.key);
-    expect(recovered.fromCache).toBe(false);
-    expect(recovered.entry.specUrl).toBe(url);
-    expect(oaCalls).toBe(2);
-  });
-
-  it("openapi_get with a 16-hex key throws clearly when meta is also gone", async () => {
-    const url = `${baseUrl}/spec.json`;
-    const first = await handleSwaggerGet(oaCache, url);
-    const { rmSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    rmSync(join(oaDir, `${first.entry.key}.spec.json`));
-    rmSync(join(oaDir, `${first.entry.key}.json`));
-
-    await expect(handleSwaggerGet(oaCache, first.entry.key)).rejects.toThrow(
-      /no recoverable spec URL/i,
-    );
-  });
-
-  it("openapi_status returns endpointCount on cache hit", async () => {
-    const url = `${baseUrl}/spec.json`;
-    await handleSwaggerGet(oaCache, url);
-    const s = await handleSwaggerStatus(oaCache, url);
-    expect(s.endpointCount).toBe(3);
-  });
-
-  it("openapi_search spans every cached spec", async () => {
-    await handleSwaggerGet(oaCache, `${baseUrl}/spec.json`);
-    await handleSwaggerGet(oaCache, `${baseUrl}/other.json`);
-
-    const pets = await handleSwaggerSearch(oaCache, "pet");
-    expect(pets.length).toBe(2);
-    expect(pets.every((p) => p.path === "/pets")).toBe(true);
-    expect(pets.map((p) => p.method).sort()).toEqual(["GET", "POST"]);
-
-    const health = await handleSwaggerSearch(oaCache, "health");
-    expect(health.length).toBe(1);
-    expect(health[0]?.specTitle).toBe("Other");
-    expect(health[0]?.path).toBe("/health");
-
-    const all = await handleSwaggerSearch(oaCache, "");
-    expect(all.length).toBe(4);
-
-    const limited = await handleSwaggerSearch(oaCache, "", { limit: 2 });
+    const limited = await handleSwaggerSearch(reg, "", { limit: 2 });
     expect(limited.length).toBe(2);
+  });
+
+  it("openapi_endpoint: returns full detail with fullUrl", async () => {
+    const reg = createAgentToolkitRegistry({ diskCacheDisabled: true });
+    const detail = await handleSwaggerEndpoint(reg, PETSTORE_3, {
+      method: "GET",
+      path: "/pet/{petId}",
+    });
+    expect(detail.endpoint.method).toBe("GET");
+    expect(detail.endpoint.path).toBe("/pet/{petId}");
+    expect(detail.endpoint.parameters.some((p) => p.name === "petId")).toBe(
+      true,
+    );
+    // baseUrl 미선언이라 fullUrl 은 path 자체.
+    expect(detail.endpoint.fullUrl).toBe("/pet/{petId}");
+  });
+
+  it("openapi_tags: returns tag summaries", async () => {
+    const reg = createAgentToolkitRegistry({ diskCacheDisabled: true });
+    const r = await handleSwaggerTags(reg, PETSTORE_3);
+    expect(r.tags.length).toBeGreaterThan(0);
+    expect(r.tags[0]).toHaveProperty("endpointCount");
+  });
+
+  it("rejects non-URL non-handle inputs clearly", async () => {
+    const reg = createAgentToolkitRegistry({ diskCacheDisabled: true });
+    await expect(handleSwaggerGet(reg, "not-a-url")).rejects.toThrow(
+      /not a host:env:spec handle or http\(s\)\/file URL/,
+    );
   });
 });
 
 describe("openapi handlers — registry handles", () => {
-  let oaDir: string;
-  let oaCache: OpenapiCache;
-  let oaServer: ReturnType<typeof Bun.serve>;
-  let baseUrl: string;
   let registry: OpenapiRegistry;
 
-  const SAMPLE = (title: string) => ({
-    openapi: "3.0.0",
-    info: { title, version: "1.0.0" },
-    paths: {
-      "/pets": {
-        get: {
-          operationId: `${title}-listPets`,
-          summary: "List",
-          tags: ["pet"],
-        },
-      },
-    },
-  });
-
   beforeEach(() => {
-    oaDir = mkdtempSync(join(tmpdir(), "plugin-oa-reg-"));
-    oaCache = new OpenapiCache({ baseDir: oaDir, defaultTtlSeconds: 60 });
-    oaServer = Bun.serve({
-      port: 0,
-      hostname: "127.0.0.1",
-      fetch(req) {
-        const u = new URL(req.url);
-        if (u.pathname === "/dev/users.json")
-          return Response.json(SAMPLE("dev-users"));
-        if (u.pathname === "/dev/orders.json")
-          return Response.json(SAMPLE("dev-orders"));
-        if (u.pathname === "/prod/users.json")
-          return Response.json(SAMPLE("prod-users"));
-        return new Response("not found", { status: 404 });
-      },
-    });
-    baseUrl = `http://${oaServer.hostname}:${oaServer.port}`;
+    // string leaf (legacy) 와 object leaf (baseUrl 포함) 를 섞어 둔다.
     registry = {
       acme: {
         dev: {
-          users: `${baseUrl}/dev/users.json`,
-          orders: `${baseUrl}/dev/orders.json`,
+          users: PETSTORE_3,
+          // object leaf — baseUrl 합성을 검증.
+          orders: { url: PETSTORE_3, baseUrl: "https://api.dev/orders" },
         },
         prod: {
-          users: `${baseUrl}/prod/users.json`,
+          users: PETSTORE_3,
         },
       },
     };
   });
 
-  afterEach(() => {
-    oaServer.stop(true);
+  it("openapi_get accepts a host:env:spec handle and returns flat spec name", async () => {
+    const reg = createAgentToolkitRegistry({
+      registry,
+      diskCacheDisabled: true,
+    });
+    const r = await handleSwaggerGet(reg, "acme:dev:users", registry);
+    expect(r.spec).toBe("acme:dev:users");
+    expect(r.environment).toBe("default");
   });
 
-  it("openapi_get accepts a host:env:spec handle and resolves via registry", async () => {
-    const r = await handleSwaggerGet(oaCache, "acme:dev:users", registry);
-    expect(r.fromCache).toBe(false);
-    expect(r.entry.title).toBe("dev-users");
-    // 캐시에 같은 URL 로 박혀 있어야 — handle 이 아니라.
-    const status = await handleSwaggerStatus(
-      oaCache,
-      `${baseUrl}/dev/users.json`,
+  it("openapi_endpoint with a baseUrl-bearing leaf returns a synthesized fullUrl", async () => {
+    const reg = createAgentToolkitRegistry({
+      registry,
+      diskCacheDisabled: true,
+    });
+    const detail = await handleSwaggerEndpoint(
+      reg,
+      "acme:dev:orders",
+      { method: "GET", path: "/pet/{petId}" },
+      registry,
     );
-    expect(status.exists).toBe(true);
+    expect(detail.endpoint.fullUrl).toBe("https://api.dev/orders/pet/{petId}");
   });
 
   it("openapi_get throws on unregistered handle", async () => {
+    const reg = createAgentToolkitRegistry({
+      registry,
+      diskCacheDisabled: true,
+    });
     await expect(
-      handleSwaggerGet(oaCache, "acme:dev:missing", registry),
+      handleSwaggerGet(reg, "acme:dev:missing", registry),
     ).rejects.toThrow(/acme:dev:missing/);
   });
 
-  it("openapi_search scope=host:env limits the search to that env", async () => {
-    await handleSwaggerGet(oaCache, "acme:dev:users", registry);
-    await handleSwaggerGet(oaCache, "acme:dev:orders", registry);
-    await handleSwaggerGet(oaCache, "acme:prod:users", registry);
-
-    const dev = await handleSwaggerSearch(
-      oaCache,
-      "pet",
-      { scope: "acme:dev" },
-      registry,
-    );
-    expect(dev.length).toBe(2);
-    expect(dev.every((m) => m.specTitle.startsWith("dev-"))).toBe(true);
-
-    const prod = await handleSwaggerSearch(
-      oaCache,
-      "pet",
-      { scope: "acme:prod" },
-      registry,
-    );
-    expect(prod.length).toBe(1);
-    expect(prod[0]?.specTitle).toBe("prod-users");
-  });
-
-  it("openapi_search throws on unknown scope", async () => {
-    await handleSwaggerGet(oaCache, "acme:dev:users", registry);
-    await expect(
-      handleSwaggerSearch(oaCache, "pet", { scope: "nope" }, registry),
-    ).rejects.toThrow(/scope.*nope/i);
-  });
-
-  it("openapi_envs returns the flat registry list", () => {
+  it("openapi_envs returns the flat registry list with baseUrl when present", () => {
     const flat = handleSwaggerEnvs({ openapi: { registry } });
     expect(flat.length).toBe(3);
-    const names = flat.map((e) => `${e.host}:${e.env}:${e.spec}`).sort();
-    expect(names).toEqual([
-      "acme:dev:orders",
-      "acme:dev:users",
-      "acme:prod:users",
-    ]);
+    const orders = flat.find((r) => r.spec === "orders");
+    expect(orders?.baseUrl).toBe("https://api.dev/orders");
+    const users = flat.find((r) => r.spec === "users" && r.env === "dev");
+    expect(users?.baseUrl).toBeUndefined();
   });
 
   it("openapi_envs returns [] for empty config", () => {
@@ -978,6 +845,8 @@ describe("plugin config hook", () => {
     "openapi_status",
     "openapi_search",
     "openapi_envs",
+    "openapi_endpoint",
+    "openapi_tags",
     "journal_append",
     "journal_read",
     "journal_search",
@@ -1018,10 +887,10 @@ describe("plugin config hook", () => {
     expect(cfg.agent.mindy.prompt).toContain("# mindy");
   });
 
-  it("registers exactly the 25 expected tools", async () => {
+  it("registers exactly the 27 expected tools", async () => {
     const plugin = await agentToolkitPlugin({});
     const actualToolNames = Object.keys(plugin.tool).sort();
-    expect(actualToolNames).toHaveLength(25);
+    expect(actualToolNames).toHaveLength(27);
     expect(actualToolNames).toEqual([...expectedToolNames].sort());
   });
 

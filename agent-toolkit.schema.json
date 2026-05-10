@@ -28,10 +28,41 @@
                   "minProperties": 1,
                   "patternProperties": {
                     "^[a-zA-Z0-9_-]+$": {
-                      "type": "string",
-                      "format": "uri",
-                      "minLength": 1,
-                      "description": "Direct URL (https / http / file) to the OpenAPI / Swagger JSON document. YAML is not supported in this MVP."
+                      "description": "Spec leaf. 두 모양 중 하나: (1) URL 문자열만 (legacy / 간단한 경우) (2) `{ url, baseUrl?, format? }` — baseUrl 은 `openapi_endpoint` 의 fullUrl 합성에 사용. format 은 'openapi3' / 'swagger2' / 'auto' (기본 auto). YAML / JSON 둘 다 지원.",
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "format": "uri",
+                          "minLength": 1,
+                          "description": "Direct URL (https / http / file) to the OpenAPI / Swagger document."
+                        },
+                        {
+                          "type": "object",
+                          "description": "Spec leaf object with optional baseUrl / format.",
+                          "properties": {
+                            "url": {
+                              "type": "string",
+                              "format": "uri",
+                              "minLength": 1,
+                              "description": "Direct URL (https / http / file) to the OpenAPI / Swagger document."
+                            },
+                            "baseUrl": {
+                              "type": "string",
+                              "format": "uri",
+                              "pattern": "^https?://",
+                              "minLength": 1,
+                              "description": "Real API base URL — `openapi_endpoint` 의 fullUrl 합성에 사용. http / https URL 만 허용 (런타임의 `validateRegistryLeaf` 가 protocol 을 검사하며 schema 의 pattern 도 동일 제약)."
+                            },
+                            "format": {
+                              "type": "string",
+                              "enum": ["openapi3", "swagger2", "auto"],
+                              "description": "Spec format hint. 미지정 시 본문의 openapi / swagger 필드로 자동 감지."
+                            }
+                          },
+                          "required": ["url"],
+                          "additionalProperties": false
+                        }
+                      ]
                     }
                   },
                   "additionalProperties": false
