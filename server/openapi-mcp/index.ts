@@ -10,7 +10,6 @@
  * 두 진입점이 똑같이 노출한다.
  */
 
-import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -317,6 +316,3 @@ export async function startStdioServer(
   );
   return handle;
 }
-
-// path import 만 형식상 유지 — 실제 사용은 caller (`bin/openapi-mcp`) 가 함.
-void path;

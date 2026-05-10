@@ -80,7 +80,7 @@ config leaf 는 두 형태를 받는다:
 
 - **What**: spec 을 캐시 우선으로 적재. swagger 2.0 은 자동으로 OpenAPI 3.0 으로 변환되고 `$ref` 는 모두 deref 된다. hit 면 메모리 캐시, 만료된 hit 면 stale 반환 + 백그라운드 conditional GET, miss 면 fetch + parse + index + 캐시 저장.
 - **Input**: `input` — spec URL (`https://…` / `http://…` / `file://…`) 또는 `agent-toolkit.json` 에 등록된 `host:env:spec` 핸들.
-- **Output**: `SwaggerGetResult` — `{ spec, environment, fromCache, document, baseUrl? }`. `document` 는 deref 완료된 OpenAPI 3.x 문서. `spec` 은 flatten 된 내부 이름 (`<host>__<env>__<spec>` 또는 `url__<sha1-16>`).
+- **Output**: `SwaggerGetResult` — `{ spec, environment, fromCache, document, baseUrl? }`. `document` 는 deref 완료된 OpenAPI 3.x 문서. `spec` 은 flatten 된 내부 이름 (`host:env:spec` 또는 `url:<sha1-16>`, 예: `acme:dev:users`, `url:0123abcd…`).
 - **Owner**: `openapi-client` 스킬 (rocky 가 conduct).
 - **Side effects**: miss 시 `<AGENT_TOOLKIT_OPENAPI_CACHE_DIR>/<sha1-16>.json` 작성 (schemaVersion 1).
 - **Related config**: `AGENT_TOOLKIT_OPENAPI_CACHE_DIR`, `AGENT_TOOLKIT_OPENAPI_CACHE_TTL`, `agent-toolkit.json` 의 `openapi.registry`.

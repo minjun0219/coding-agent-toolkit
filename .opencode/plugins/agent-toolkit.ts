@@ -600,7 +600,7 @@ export async function handleNotionExtract(
  * input 형태:
  *   - `host:env:spec` handle → registry 에서 leaf 찾아 flatten 된 specName + DEFAULT_ENVIRONMENT
  *   - URL (`http://`/`https://`/`file://`) → ad-hoc spec 으로 SpecRegistry 에 등록
- *     (`url__<sha1-16>`) + DEFAULT_ENVIRONMENT
+ *     (`url:<sha1-16>`) + DEFAULT_ENVIRONMENT
  *   - 그 외 → throw (16-hex disk key 같은 legacy 키 형태는 v0.2 부터 미지원)
  */
 function resolveSwaggerInput(
@@ -1391,7 +1391,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
       },
       openapi_get: {
         description:
-          "OpenAPI / Swagger spec 을 캐시 우선 정책으로 가져온다. swagger 2.0 은 자동으로 OpenAPI 3.0 으로 변환되고 $ref 는 모두 deref 된다. 캐시 hit 이면 remote 호출 없음. (input: spec URL 또는 agent-toolkit.json 의 host:env:spec handle)",
+          "OpenAPI / Swagger spec 을 캐시 우선 정책으로 가져온다. swagger 2.0 은 자동으로 OpenAPI 3.0 으로 변환되고 $ref 는 모두 deref 된다. fresh hit 은 remote 호출 없음. stale hit (TTL 경과) 은 즉시 stale 데이터로 응답하고 백그라운드 conditional GET (If-None-Match / If-Modified-Since) 으로 재검증. miss 면 fetch + parse + index. (input: spec URL 또는 agent-toolkit.json 의 host:env:spec handle)",
         parameters: { input: { type: "string", required: true } },
         async handler({ input }: { input: string }) {
           return handleSwaggerGet(openapiRegistry, input, registry);

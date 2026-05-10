@@ -120,7 +120,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
     "openapi_get",
     {
       description:
-        "OpenAPI / Swagger spec 을 캐시 우선 정책으로 가져온다. swagger 2.0 은 자동으로 OpenAPI 3.0 으로 변환되고 $ref 는 모두 deref 된다. 캐시 hit 이면 remote 호출 없음. (input: spec URL 또는 agent-toolkit.json 의 host:env:spec handle)",
+        "OpenAPI / Swagger spec 을 캐시 우선 정책으로 가져온다. swagger 2.0 은 자동으로 OpenAPI 3.0 으로 변환되고 $ref 는 모두 deref 된다. fresh hit 은 remote 호출 없음. stale hit (TTL 경과) 은 즉시 stale 데이터로 응답하고 백그라운드 conditional GET (If-None-Match / If-Modified-Since) 으로 재검증. miss 면 fetch + parse + index. (input: spec URL 또는 agent-toolkit.json 의 host:env:spec handle)",
       inputSchema: { input: z.string() },
     },
     async ({ input }) =>

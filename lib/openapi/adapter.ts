@@ -292,7 +292,7 @@ export interface FlatRegistryRow {
   url: string;
   baseUrl?: string;
   format?: "openapi3" | "swagger2" | "auto";
-  /** flatten 된 SpecRegistry 등록 이름 (`host__env__spec`). 디버깅용. */
+  /** flatten 된 SpecRegistry 등록 이름 (`host:env:spec`). 디버깅용. */
   registryName: string;
 }
 
