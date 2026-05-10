@@ -118,6 +118,49 @@ export function resolveScopeToUrls(
   return [];
 }
 
+/**
+ * scope (`host` / `host:env` / `host:env:spec`) 를 매칭되는 canonical handle
+ * (`host:env:spec`) 리스트로 풀어 준다. URL 기반 (`resolveScopeToUrls`) 과 다른 점:
+ * 같은 URL 을 공유하는 다른 handle 까지 같이 끌려오지 않는다 — scope 는 사용자가
+ * 지정한 registry path 자체의 제한이라 handle 단위로 좁혀야 한다.
+ */
+export function resolveScopeToHandles(
+  scope: string,
+  registry: OpenapiRegistry | undefined,
+): string[] {
+  if (!registry || !scope) return [];
+  if (HANDLE_FULL.test(scope)) {
+    const m = HANDLE_FULL.exec(scope) as unknown as [
+      string,
+      string,
+      string,
+      string,
+    ];
+    const [, host, env, spec] = m;
+    return registry[host]?.[env]?.[spec] !== undefined
+      ? [`${host}:${env}:${spec}`]
+      : [];
+  }
+  const fullEnv = HANDLE_HOST_ENV.exec(scope);
+  if (fullEnv) {
+    const [, host, env] = fullEnv as unknown as [string, string, string];
+    const specs = registry[host]?.[env];
+    return specs ? Object.keys(specs).map((s) => `${host}:${env}:${s}`) : [];
+  }
+  if (HANDLE_HOST.test(scope)) {
+    const envs = registry[scope];
+    if (!envs) return [];
+    const out: string[] = [];
+    for (const [env, specs] of Object.entries(envs)) {
+      for (const spec of Object.keys(specs)) {
+        out.push(`${scope}:${env}:${spec}`);
+      }
+    }
+    return out;
+  }
+  return [];
+}
+
 /** registry 트리를 평면 (host, env, spec, url, baseUrl?, format?) 리스트로 펼친다. */
 export function listRegistry(config: ToolkitConfig): OpenapiRegistryEntry[] {
   const reg = config.openapi?.registry ?? {};

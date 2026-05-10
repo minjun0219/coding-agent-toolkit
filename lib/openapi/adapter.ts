@@ -207,14 +207,20 @@ export function createAgentToolkitRegistry(
   });
   // SpecRegistry 의 zod 스키마는 specs 가 1개 이상이어야 통과하지만, 우린 zod 검증을
   // 거치지 않고 직접 타입 캐스팅한 config 를 넣는다 — registry 비었을 때도 동작 가능.
-  const fetcher = createFetcher({
+  const fetcherOptions: FetcherOptions = {
     ...resolveFetcherOptionsFromEnv(),
     ...(options.fetcherOverrides ?? {}),
-  });
+  };
+  const fetcher = createFetcher(fetcherOptions);
   const diskCache: DiskCache = options.diskCacheDisabled
     ? createNoopDiskCache()
     : createDiskCache(resolveOpenapiCacheDir());
-  return createSpecRegistry(config, fetcher, { diskCache });
+  // parseFetcherOptions 도 동일 옵션으로 — 외부 `$ref` 다운로드가 root spec 과
+  // 같은 timeout / TLS 정책을 따르게.
+  return createSpecRegistry(config, fetcher, {
+    diskCache,
+    parseFetcherOptions: fetcherOptions,
+  });
 }
 
 function resolveOpenapiCacheDir(): string {

@@ -94,6 +94,8 @@ export function buildServer(
 
   const registry = createSpecRegistry(config, fetcher, {
     diskCache,
+    // 외부 `$ref` 다운로드도 root fetcher 와 같은 timeout / TLS 정책을 따르게 한다.
+    parseFetcherOptions: fetcherOptions,
     ...(options.configDir ? { configDir: options.configDir } : {}),
   });
 

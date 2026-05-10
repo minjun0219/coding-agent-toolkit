@@ -1,6 +1,7 @@
 import SwaggerParser from "@apidevtools/swagger-parser";
 import yaml from "js-yaml";
 import type { OpenAPIV3 } from "openapi-types";
+import { type FetcherOptions, createFetcher } from "./fetcher";
 import type { SpecFormat } from "./schema";
 
 /**
@@ -34,10 +35,20 @@ export interface ParsedSpec {
  * 상대 `$ref` (`./components.yaml#/...` 등) 를 SwaggerParser 가 정확한 base 위에서
  * resolve 하기 위해 필요하다. 미지정이면 SwaggerParser 가 process.cwd() 를 base 로
  * 떨어뜨리므로 외부 ref 가 있는 spec 은 깨질 수 있다.
+ *
+ * `fetcherOptions` 는 외부 `$ref` 다운로드에 적용할 timeout / TLS 옵션이다.
+ * SwaggerParser 의 기본 HTTP resolver 는 우리 undici 기반 fetcher 와 별개로 동작해
+ * agent-toolkit 의 `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` /
+ * `AGENT_TOOLKIT_OPENAPI_INSECURE_TLS` / `AGENT_TOOLKIT_OPENAPI_EXTRA_CA_CERTS`
+ * 가 component 파일 / URL 에 적용되지 않는다. 옵션이 주어지면 SwaggerParser 의
+ * `resolve.http.read` 를 우리 fetcher 로 위임해 root spec 과 동일한 timeout / TLS
+ * 정책을 외부 ref 에도 적용한다.
  */
 export interface ParseSpecOptions {
   /** 원본 spec 의 절대 경로 또는 URL (외부 / 상대 `$ref` resolve base). */
   sourceLocation?: string;
+  /** 외부 `$ref` 다운로드에 적용할 timeout / TLS 옵션. */
+  fetcherOptions?: FetcherOptions;
 }
 
 export async function parseSpecText(
@@ -73,14 +84,15 @@ export async function parseSpecObject(
     // resolve 한다 — api 는 이미 파싱된 객체이므로 path 가 다시 fetch 되지는 않는다.
     // sourceLocation 이 없는 경우 (raw text 로만 들어온 경우) 는 1-arg 폴백.
     const cloned = structuredClone(openapi3) as never;
+    const swaggerOptions = buildSwaggerParserOptions(options);
     if (options.sourceLocation) {
       dereferenced = await SwaggerParser.dereference(
         options.sourceLocation,
         cloned,
-        {} as never,
+        swaggerOptions,
       );
     } else {
-      dereferenced = await SwaggerParser.dereference(cloned);
+      dereferenced = await SwaggerParser.dereference(cloned, swaggerOptions);
     }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -149,6 +161,42 @@ function detectFormat(doc: object, hint: SpecFormat): "openapi3" | "swagger2" {
 function hasStringField(doc: object, field: string): boolean {
   const value = (doc as Record<string, unknown>)[field];
   return typeof value === "string";
+}
+
+/**
+ * SwaggerParser 의 dereference 옵션을 구성. fetcherOptions 가 있으면 외부 `$ref`
+ * 다운로드를 우리 undici 기반 fetcher 로 위임해 root spec 과 동일한 timeout / TLS
+ * 정책을 적용한다.
+ *
+ * `resolve.http.read` 는 `(file: { url: string }) => Promise<string>` 시그니처 —
+ * SwaggerParser 가 외부 ref 를 만났을 때 이 콜백으로 본문을 받아간다. 미지정이면
+ * SwaggerParser 의 기본 resolver (자체 HTTP) 가 그대로 동작.
+ */
+type SwaggerParserOptions = Parameters<typeof SwaggerParser.dereference>[2];
+
+function buildSwaggerParserOptions(
+  options: ParseSpecOptions,
+): SwaggerParserOptions {
+  const fetcherOpts = options.fetcherOptions;
+  if (!fetcherOpts) return {} as SwaggerParserOptions;
+  // 한 parse 호출 안에서만 쓰는 fetcher — TLS dispatcher 를 그 호출 범위에 가둔다.
+  const fetcher = createFetcher(fetcherOpts);
+  return {
+    resolve: {
+      http: {
+        // SwaggerParser 의 read 콜백 — file.url 로 들어오는 외부 ref 를 동일 fetcher 로.
+        read: async (file: { url: string }): Promise<string> => {
+          const result = await fetcher.fetch({ type: "url", url: file.url });
+          if (result.notModified) {
+            throw new Error(
+              `unexpected 304 fetching external $ref ${file.url} — fetcher should not pass conditional headers here`,
+            );
+          }
+          return result.body;
+        },
+      },
+    },
+  } as SwaggerParserOptions;
 }
 
 async function convertSwagger2(input: object): Promise<object> {

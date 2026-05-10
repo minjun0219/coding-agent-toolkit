@@ -662,11 +662,17 @@ function validateRegistryLeaf(leaf: unknown, where: string): void {
     if (typeof obj.baseUrl !== "string" || obj.baseUrl.trim().length === 0) {
       throw new Error(`${where}.baseUrl must be a non-empty string`);
     }
+    let parsed: URL;
     try {
-      new URL(obj.baseUrl);
+      parsed = new URL(obj.baseUrl);
     } catch {
       throw new Error(
         `${where}.baseUrl is not a valid URL — got "${obj.baseUrl}"`,
+      );
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(
+        `${where}.baseUrl uses unsupported scheme "${parsed.protocol}" — only http / https are accepted`,
       );
     }
   }

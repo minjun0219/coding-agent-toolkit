@@ -5,7 +5,7 @@ import {
   type DiskCacheEntry,
 } from "./cache";
 import { getLogger } from "./logger";
-import type { SpecFetcher } from "./fetcher";
+import type { FetcherOptions, SpecFetcher } from "./fetcher";
 import type { OpenAPIV3 } from "openapi-types";
 import { indexSpec, type IndexedSpec } from "./indexer";
 import { parseSpecText } from "./parser";
@@ -134,6 +134,12 @@ export interface SpecRegistryOptions {
    * 위치한 디렉토리. 미지정 시 process.cwd() 로 떨어진다.
    */
   configDir?: string;
+  /**
+   * 외부 `$ref` 다운로드에 적용할 timeout / TLS 옵션. root spec fetcher 와 동일
+   * 정책을 component 파일 / URL 에도 흘려보낼 때 caller (factory) 가 root fetcher
+   * 와 같은 옵션을 그대로 넘긴다.
+   */
+  parseFetcherOptions?: FetcherOptions;
 }
 
 export function createSpecRegistry(
@@ -146,6 +152,7 @@ export function createSpecRegistry(
     fetcher,
     options.diskCache ?? createNoopDiskCache(),
     options.configDir,
+    options.parseFetcherOptions,
   );
 }
 
@@ -159,6 +166,7 @@ class InMemorySpecRegistry implements SpecRegistry {
     private readonly fetcher: SpecFetcher,
     private readonly diskCache: DiskCache,
     private readonly configDir?: string,
+    private readonly parseFetcherOptions?: FetcherOptions,
   ) {}
 
   hasSpec(specName: string): boolean {
@@ -379,6 +387,9 @@ class InMemorySpecRegistry implements SpecRegistry {
     }
     const parsed = await parseSpecText(fetched.body, source.format, {
       sourceLocation: this.sourceLocationOf(source),
+      ...(this.parseFetcherOptions
+        ? { fetcherOptions: this.parseFetcherOptions }
+        : {}),
     });
     const indexed = indexSpec(specName, parsed.document);
     const cached: CachedSpec = {

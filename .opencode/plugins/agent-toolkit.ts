@@ -44,11 +44,10 @@ import {
   isFullHandle,
   listRegistry,
   resolveHandleToUrl,
-  resolveScopeToUrls,
+  resolveScopeToHandles,
   type OpenapiRegistryEntry,
 } from "../../lib/openapi-registry";
 import {
-  getRegistryUrl,
   isMergeMode,
   loadConfig,
   MERGE_MODES,
@@ -750,26 +749,23 @@ export async function handleSwaggerSearch(
   const allSpecs = registry.listSpecs();
   let candidates = allSpecs.map((s) => s.name);
   if (scope) {
-    const allowed = new Set(resolveScopeToUrls(scope, toolkitRegistry));
-    if (allowed.size === 0) {
+    // scope 는 사용자가 지정한 registry path 단위 (host / host:env / host:env:spec)
+    // 이므로 같은 URL 을 공유하는 다른 handle 까지 끌려가지 않게 handle 자체로
+    // 좁힌다. URL 기반 매칭 (resolveScopeToUrls) 은 두 handle 이 같은 URL 을
+    // 가리키는 케이스에서 admin handle 로 호출해도 public handle 까지 후보에
+    // 들이는 회귀를 만든다.
+    const handles = resolveScopeToHandles(scope, toolkitRegistry);
+    if (handles.length === 0) {
       throw new Error(
         `openapi_search: scope "${scope}" matched no entries in openapi.registry — check ./.opencode/agent-toolkit.json or ~/.config/opencode/agent-toolkit/agent-toolkit.json`,
       );
     }
-    // scope 와 매칭되는 leaf 의 host:env:spec 만 후보에 포함시킨다 — 이전 구현은
-    // toolkitRegistry 의 모든 leaf 를 무조건 추가해서 scope 가 무시됐다.
-    const flatNames = new Set<string>();
-    if (toolkitRegistry) {
-      for (const [host, envs] of Object.entries(toolkitRegistry)) {
-        for (const [env, specs] of Object.entries(envs)) {
-          for (const [spec, leaf] of Object.entries(specs)) {
-            if (allowed.has(getRegistryUrl(leaf))) {
-              flatNames.add(flattenHandle(host, env, spec));
-            }
-          }
-        }
-      }
-    }
+    const flatNames = new Set(
+      handles.map((h) => {
+        const [host, env, spec] = h.split(":") as [string, string, string];
+        return flattenHandle(host, env, spec);
+      }),
+    );
     candidates = candidates.filter((n) => flatNames.has(n));
   }
 
