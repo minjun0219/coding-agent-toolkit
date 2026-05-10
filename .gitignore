@@ -7,3 +7,6 @@ dist/
 .env
 .env.local
 *.tsbuildinfo
+# bun build 가 outfile 미지정 시 만드는 sibling artifacts (예: bin/openapi-mcp-<hash>)
+bin/openapi-mcp-*
+

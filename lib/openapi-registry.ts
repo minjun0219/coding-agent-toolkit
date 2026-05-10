@@ -1,4 +1,7 @@
 import {
+  getRegistryBaseUrl,
+  getRegistryFormat,
+  getRegistryUrl,
   ID_BODY,
   type OpenapiRegistry,
   type ToolkitConfig,
@@ -14,6 +17,10 @@ import {
  *
  * 식별자는 `agent-toolkit.schema.json` 의 패턴(`^[a-zA-Z0-9_-]+$`)을 따라야 한다 — 콜론은
  * separator 로 예약. 등록되지 않은 handle 은 lookup 실패 시 명확한 에러로 거부한다.
+ *
+ * leaf 는 string (URL only) 또는 object (`{ url, baseUrl?, format? }`) — 두 모양 모두
+ * 받는다. 외부 caller 는 `resolveScopeToUrls` 가 URL 만, `listRegistry` 가 baseUrl /
+ * format 도 함께 채워 평탄화한 row 를 반환한다는 점만 알면 된다.
  */
 
 /** 평면화된 한 항목. listRegistry 의 결과 row. */
@@ -22,6 +29,9 @@ export interface OpenapiRegistryEntry {
   env: string;
   spec: string;
   url: string;
+  /** leaf 가 object 형태일 때만 채워진다. */
+  baseUrl?: string;
+  format?: "openapi3" | "swagger2" | "auto";
 }
 
 // 식별자 본문은 toolkit-config 의 ID_BODY 와 동일해야 한다 (스키마 / config 검증과 동기).
@@ -64,13 +74,13 @@ export function resolveHandleToUrl(
     );
   }
   const [, host, env, spec] = m as unknown as [string, string, string, string];
-  const url = registry?.[host]?.[env]?.[spec];
-  if (!url) {
+  const leaf = registry?.[host]?.[env]?.[spec];
+  if (leaf === undefined) {
     throw new Error(
       `Handle "${handle}" not found in openapi.registry. Check ./.opencode/agent-toolkit.json or ~/.config/opencode/agent-toolkit/agent-toolkit.json.`,
     );
   }
-  return url;
+  return getRegistryUrl(leaf);
 }
 
 /**
@@ -94,28 +104,38 @@ export function resolveScopeToUrls(
   if (fullEnv) {
     const [, host, env] = fullEnv as unknown as [string, string, string];
     const specs = registry[host]?.[env];
-    return specs ? Object.values(specs) : [];
+    return specs ? Object.values(specs).map(getRegistryUrl) : [];
   }
   if (HANDLE_HOST.test(scope)) {
     const envs = registry[scope];
     if (!envs) return [];
     const out: string[] = [];
     for (const env of Object.values(envs)) {
-      for (const url of Object.values(env)) out.push(url);
+      for (const leaf of Object.values(env)) out.push(getRegistryUrl(leaf));
     }
     return out;
   }
   return [];
 }
 
-/** registry 트리를 평면 (host, env, spec, url) 리스트로 펼친다 — `swagger_envs` 의 출력 그대로. */
+/** registry 트리를 평면 (host, env, spec, url, baseUrl?, format?) 리스트로 펼친다. */
 export function listRegistry(config: ToolkitConfig): OpenapiRegistryEntry[] {
   const reg = config.openapi?.registry ?? {};
   const out: OpenapiRegistryEntry[] = [];
   for (const [host, envs] of Object.entries(reg)) {
     for (const [env, specs] of Object.entries(envs)) {
-      for (const [spec, url] of Object.entries(specs)) {
-        out.push({ host, env, spec, url });
+      for (const [spec, leaf] of Object.entries(specs)) {
+        const baseUrl = getRegistryBaseUrl(leaf);
+        const format = getRegistryFormat(leaf);
+        const row: OpenapiRegistryEntry = {
+          host,
+          env,
+          spec,
+          url: getRegistryUrl(leaf),
+        };
+        if (baseUrl !== undefined) row.baseUrl = baseUrl;
+        if (format !== undefined) row.format = format;
+        out.push(row);
       }
     }
   }

@@ -14,13 +14,53 @@ import { join, resolve } from "node:path";
  * 런타임은 외부 JSON Schema 라이브러리에 의존하지 않고 직접 검증한다 (의존성 0 유지).
  */
 
-/** spec 등록 단위. host → env → spec → URL 평면 트리. */
+/**
+ * spec 등록 단위. host → env → spec → leaf 평면 트리.
+ *
+ * leaf 형태:
+ *   - **string** (legacy / 기본): spec URL 만. baseUrl 미선언 → `openapi_endpoint`
+ *     의 fullUrl 합성 시 path 자체로만 떨어진다.
+ *   - **object**: `{ url, baseUrl?, format? }` — 환경별 baseUrl 을 선언해 fullUrl
+ *     합성 가능. format 으로 `openapi3` / `swagger2` / `auto` 강제 가능 (기본 auto).
+ */
+export interface OpenapiRegistryLeafObject {
+  /** 다운로드할 OpenAPI / Swagger 본문 URL (http / https / file). */
+  url: string;
+  /** 환경의 실제 API base URL — `openapi_endpoint` 의 fullUrl 합성에 사용. */
+  baseUrl?: string;
+  /** 형식 hint. 미지정이면 본문의 `openapi` / `swagger` 필드로 자동 감지. */
+  format?: "openapi3" | "swagger2" | "auto";
+}
+
+export type OpenapiRegistryLeaf = string | OpenapiRegistryLeafObject;
+
 export interface OpenapiRegistry {
   [host: string]: {
     [env: string]: {
-      [spec: string]: string;
+      [spec: string]: OpenapiRegistryLeaf;
     };
   };
+}
+
+/** leaf 가 string 이든 object 이든 spec URL 을 꺼낸다. */
+export function getRegistryUrl(leaf: OpenapiRegistryLeaf): string {
+  return typeof leaf === "string" ? leaf : leaf.url;
+}
+
+/** leaf 의 baseUrl. string leaf 또는 baseUrl 미선언 object 면 undefined. */
+export function getRegistryBaseUrl(
+  leaf: OpenapiRegistryLeaf,
+): string | undefined {
+  if (typeof leaf === "string") return undefined;
+  return leaf.baseUrl;
+}
+
+/** leaf 의 format hint. string leaf 또는 format 미선언 object 면 undefined. */
+export function getRegistryFormat(
+  leaf: OpenapiRegistryLeaf,
+): "openapi3" | "swagger2" | "auto" | undefined {
+  if (typeof leaf === "string") return undefined;
+  return leaf.format;
 }
 
 /**
@@ -203,6 +243,16 @@ const ALLOWED_GITHUB_MERGE_MODES: ReadonlySet<string> = new Set(MERGE_MODES);
 
 /** 레지스트리 leaf URL 에 허용되는 스킴. spec 다운로드 단이 받는 종류와 동일. */
 const URL_SCHEMES = new Set(["http:", "https:", "file:"]);
+
+/** registry leaf object 에서 허용하는 키 (오타 가드, 스키마 lockstep). */
+const ALLOWED_REGISTRY_LEAF_KEYS = new Set(["url", "baseUrl", "format"]);
+
+/** registry leaf object 의 format 필드에 허용되는 값. */
+const ALLOWED_REGISTRY_LEAF_FORMATS = new Set([
+  "openapi3",
+  "swagger2",
+  "auto",
+]);
 
 /**
  * 파싱된 JSON 값이 ToolkitConfig 인지 검증한다. 어긋나면 throw — 메시지에 source(path) 포함.
@@ -566,7 +616,7 @@ function validateRegistry(
           `${source}: openapi.registry["${host}"]["${env}"] must be an object of specs`,
         );
       }
-      for (const [spec, url] of Object.entries(
+      for (const [spec, leaf] of Object.entries(
         specs as Record<string, unknown>,
       )) {
         if (!ID_PATTERN.test(spec)) {
@@ -574,26 +624,76 @@ function validateRegistry(
             `${source}: spec name "${host}:${env}:${spec}" must match ${ID_PATTERN}`,
           );
         }
-        if (typeof url !== "string" || url.trim().length === 0) {
-          throw new Error(
-            `${source}: openapi.registry["${host}"]["${env}"]["${spec}"] must be a non-empty URL string`,
-          );
-        }
-        let parsed: URL;
-        try {
-          parsed = new URL(url);
-        } catch {
-          throw new Error(
-            `${source}: openapi.registry["${host}"]["${env}"]["${spec}"] is not a valid URL — got "${url}"`,
-          );
-        }
-        if (!URL_SCHEMES.has(parsed.protocol)) {
-          throw new Error(
-            `${source}: openapi.registry["${host}"]["${env}"]["${spec}"] uses unsupported scheme "${parsed.protocol}" — only http / https / file are accepted`,
-          );
-        }
+        validateRegistryLeaf(
+          leaf,
+          `${source}: openapi.registry["${host}"]["${env}"]["${spec}"]`,
+        );
       }
     }
+  }
+}
+
+/**
+ * registry leaf 검증. string (URL only) 또는 object (`{ url, baseUrl?, format? }`)
+ * 모두 받는다. URL 은 둘 다 같은 스킴 / non-empty 검증을 통과해야 한다.
+ */
+function validateRegistryLeaf(leaf: unknown, where: string): void {
+  if (typeof leaf === "string") {
+    validateRegistryUrlString(leaf, where);
+    return;
+  }
+  if (leaf === null || typeof leaf !== "object" || Array.isArray(leaf)) {
+    throw new Error(
+      `${where} must be a non-empty URL string or object { url, baseUrl?, format? }`,
+    );
+  }
+  const obj = leaf as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    if (!ALLOWED_REGISTRY_LEAF_KEYS.has(key)) {
+      throw new Error(
+        `${where} has unsupported key "${key}" — allowed: ${[...ALLOWED_REGISTRY_LEAF_KEYS].join(", ")}`,
+      );
+    }
+  }
+  if (typeof obj.url !== "string" || obj.url.trim().length === 0) {
+    throw new Error(`${where}.url must be a non-empty URL string`);
+  }
+  validateRegistryUrlString(obj.url, `${where}.url`);
+  if (obj.baseUrl !== undefined) {
+    if (typeof obj.baseUrl !== "string" || obj.baseUrl.trim().length === 0) {
+      throw new Error(`${where}.baseUrl must be a non-empty string`);
+    }
+    try {
+      new URL(obj.baseUrl);
+    } catch {
+      throw new Error(
+        `${where}.baseUrl is not a valid URL — got "${obj.baseUrl}"`,
+      );
+    }
+  }
+  if (obj.format !== undefined) {
+    if (
+      typeof obj.format !== "string" ||
+      !ALLOWED_REGISTRY_LEAF_FORMATS.has(obj.format)
+    ) {
+      throw new Error(
+        `${where}.format must be one of ${[...ALLOWED_REGISTRY_LEAF_FORMATS].join(" / ")}`,
+      );
+    }
+  }
+}
+
+function validateRegistryUrlString(url: string, where: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`${where} is not a valid URL — got "${url}"`);
+  }
+  if (!URL_SCHEMES.has(parsed.protocol)) {
+    throw new Error(
+      `${where} uses unsupported scheme "${parsed.protocol}" — only http / https / file are accepted`,
+    );
   }
 }
 
@@ -628,8 +728,9 @@ export function mergeConfigs(
       out.openapi.registry[host] ??= {};
       for (const [env, specs] of Object.entries(envs)) {
         out.openapi.registry[host]![env] ??= {};
-        for (const [spec, url] of Object.entries(specs)) {
-          out.openapi.registry[host]![env]![spec] = url;
+        for (const [spec, leaf] of Object.entries(specs)) {
+          // leaf 는 string 또는 object — 둘 다 통째로 덮어쓴다 (project 가 이긴다).
+          out.openapi.registry[host]![env]![spec] = leaf;
         }
       }
     }

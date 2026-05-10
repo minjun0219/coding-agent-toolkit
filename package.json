@@ -1,17 +1,23 @@
 {
   "name": "agent-toolkit",
-  "version": "0.1.0",
-  "description": "opencode plugin: Notion page cache + skill (Bun)",
+  "version": "0.2.0",
+  "description": "Dual-host MCP / plugin toolkit (Claude Code + opencode): OpenAPI / Swagger spec cache + endpoint search + standalone openapi-mcp + MySQL read-only inspection + journal + spec-pact + PR review watch (Bun)",
   "license": "MIT",
   "author": "Minjun Kim",
   "private": true,
   "main": "./.opencode/plugins/agent-toolkit-server.ts",
+  "bin": {
+    "openapi-mcp": "./bin/openapi-mcp"
+  },
   "exports": {
     ".": {
       "import": "./.opencode/plugins/agent-toolkit-server.ts"
     },
     "./server": {
       "import": "./.opencode/plugins/agent-toolkit-server.ts"
+    },
+    "./openapi-mcp": {
+      "import": "./server/openapi-mcp/index.ts"
     }
   },
   "type": "module",
@@ -28,14 +34,22 @@
     "typecheck": "bun x tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@apidevtools/swagger-parser": "^10.1.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@opencode-ai/plugin": "1.14.35",
+    "js-yaml": "^4.1.0",
     "mysql2": "^3.11.0",
+    "openapi-types": "^12.1.3",
+    "pino": "^9.5.0",
+    "swagger2openapi": "^7.0.8",
+    "undici": "^7.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
     "@types/bun": "^1.1.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/swagger2openapi": "^7.0.4",
     "typescript": "^5.4.5"
   }
 }
