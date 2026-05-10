@@ -37,7 +37,7 @@ export interface ParsedSpec {
  * 떨어뜨리므로 외부 ref 가 있는 spec 은 깨질 수 있다.
  *
  * `fetcherOptions` 는 외부 `$ref` 다운로드에 적용할 timeout / TLS 옵션이다.
- * SwaggerParser 의 기본 HTTP resolver 는 우리 undici 기반 fetcher 와 별개로 동작해
+ * SwaggerParser 의 기본 HTTP resolver 는 우리 Bun fetch 기반 fetcher 와 별개로 동작해
  * agent-toolkit 의 `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` /
  * `AGENT_TOOLKIT_OPENAPI_INSECURE_TLS` / `AGENT_TOOLKIT_OPENAPI_EXTRA_CA_CERTS`
  * 가 component 파일 / URL 에 적용되지 않는다. 옵션이 주어지면 SwaggerParser 의
@@ -165,7 +165,7 @@ function hasStringField(doc: object, field: string): boolean {
 
 /**
  * SwaggerParser 의 dereference 옵션을 구성. fetcherOptions 가 있으면 외부 `$ref`
- * 다운로드를 우리 undici 기반 fetcher 로 위임해 root spec 과 동일한 timeout / TLS
+ * 다운로드를 우리 Bun fetch 기반 fetcher 로 위임해 root spec 과 동일한 timeout / TLS
  * 정책을 적용한다.
  *
  * `resolve.http.read` 는 `(file: { url: string }) => Promise<string>` 시그니처 —

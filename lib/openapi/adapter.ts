@@ -257,7 +257,7 @@ export function resolveOpenapiTtlSecondsFromEnv(): number | undefined {
  * `openapi-mcp.json` 의 `http.*` 를 쓰므로 이 함수를 거치지 않는다.
  *
  *   - `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` — HTTP 요청 timeout (ms,
- *     양수 정수). 미지정 시 undici 기본 (10s).
+ *     양수 정수). 미지정 시 fetcher 기본 (10s).
  *   - `AGENT_TOOLKIT_OPENAPI_INSECURE_TLS` — `1` / `true` 면 TLS 검증 비활성화.
  *     사내 self-signed 인증서 환경 / 개발용. **production 에선 사용 금지.**
  *   - `AGENT_TOOLKIT_OPENAPI_EXTRA_CA_CERTS` — 추가 CA pem 파일 경로. 콜론(`:`)

@@ -6,9 +6,24 @@ import type { SpecSource } from "./schema";
  * spec 소스 (URL 또는 file path) 에서 raw 본문을 가져온다. URL 모드에서는 etag /
  * lastModified conditional GET 을 지원해 304 응답을 그대로 흘린다.
  *
- * undici 가 fetch 보다 dispatcher / TLS 옵션 처리가 명확해서 그대로 채택. Bun 도
- * undici 를 정상 import 한다.
+ * HTTP transport 는 Bun 의 `fetch` 를 그대로 쓴다. 초기 구현은 undici 를 거쳐
+ * `Agent({ connect: { rejectUnauthorized } })` 로 TLS 옵션을 주입했지만, Bun /
+ * undici v7 조합에서 self-signed 서버에 대해 dispatcher 가 실제 핸드셰이크에
+ * 적용되지 않는 회귀가 확인됐다 (dongle-agent#65 reproducer). Bun 의 `fetch` 는
+ * `tls.rejectUnauthorized` / `tls.ca` 등을 표준 옵션으로 받으므로 그쪽이 더
+ * 신뢰성 있다.
  */
+
+/**
+ * Bun 의 fetch 가 표준 RequestInit 위에 추가로 받는 옵션. 타입 정의가 lib.dom 에
+ * 없으므로 한 단 끼워서 type-safe 하게 호출한다.
+ */
+interface BunRequestInit extends RequestInit {
+  tls?: {
+    rejectUnauthorized?: boolean;
+    ca?: string | string[];
+  };
+}
 
 export class SpecFetchError extends Error {
   constructor(
@@ -61,7 +76,9 @@ export function createFetcher(options: FetcherOptions = {}): SpecFetcher {
 }
 
 class DefaultSpecFetcher implements SpecFetcher {
-  private dispatcher: unknown;
+  /** TLS 옵션이 한 번 빌드되면 캐시 — extraCaCerts 의 파일 read 를 매 요청마다 하지 않음. */
+  private tlsInitCache: BunRequestInit["tls"] | undefined;
+  private tlsInitResolved = false;
 
   constructor(private readonly options: FetcherOptions) {}
 
@@ -101,8 +118,6 @@ class DefaultSpecFetcher implements SpecFetcher {
     source: Extract<SpecSource, { type: "url" }>,
     conditional?: ConditionalHeaders,
   ): Promise<FetchOutcome> {
-    const { request } = await import("undici");
-    const dispatcher = await this.getDispatcher();
     const headers: Record<string, string> = {
       Accept:
         "application/json, application/yaml;q=0.9, text/yaml;q=0.9, */*;q=0.1",
@@ -118,33 +133,37 @@ class DefaultSpecFetcher implements SpecFetcher {
     );
 
     try {
-      const response = await request(source.url, {
+      const tls = await this.resolveTlsInit();
+      const init: BunRequestInit = {
         method: "GET",
         headers,
         signal: controller.signal,
-        ...(dispatcher ? { dispatcher: dispatcher as never } : {}),
-      });
+        // redirect 는 follow (기본) — spec serve 가 흔히 redirect 를 끼므로.
+        redirect: "follow",
+        ...(tls ? { tls } : {}),
+      };
+      const response = await fetch(source.url, init);
 
       const fetchedAt = new Date().toISOString();
-      if (response.statusCode === 304) {
-        await response.body.dump();
+      if (response.status === 304) {
+        await drainBody(response);
         return { notModified: true, fetchedAt, source };
       }
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        await response.body.dump();
+      if (!response.ok) {
+        await drainBody(response);
         throw new SpecFetchError(
-          `unexpected HTTP ${response.statusCode} fetching ${source.url}`,
-          response.statusCode,
+          `unexpected HTTP ${response.status} fetching ${source.url}`,
+          response.status,
         );
       }
 
-      const body = await response.body.text();
-      const etag = headerString(response.headers.etag);
-      const lastModified = headerString(response.headers["last-modified"]);
+      const body = await response.text();
+      const etag = response.headers.get("etag") ?? undefined;
+      const lastModified = response.headers.get("last-modified") ?? undefined;
       return {
         body,
-        etag,
-        lastModified,
+        ...(etag !== undefined ? { etag } : {}),
+        ...(lastModified !== undefined ? { lastModified } : {}),
         fetchedAt,
         notModified: false,
         source,
@@ -162,20 +181,20 @@ class DefaultSpecFetcher implements SpecFetcher {
     }
   }
 
-  private async getDispatcher(): Promise<unknown> {
-    const wantsCustomTls =
-      this.options.insecureTls === true ||
-      (this.options.extraCaCerts !== undefined &&
-        this.options.extraCaCerts.length > 0);
-    if (!wantsCustomTls) return undefined;
-    if (this.dispatcher) return this.dispatcher;
-
-    const { Agent } = await import("undici");
-    const connect: Record<string, unknown> = {};
-    if (this.options.insecureTls) {
-      connect.rejectUnauthorized = false;
+  /**
+   * Bun fetch 의 `tls` 옵션을 만든다.
+   *   - `insecureTls=true` → `{ rejectUnauthorized: false }`
+   *   - `extraCaCerts` → 파일 본문을 읽어 `{ ca: [...] }`
+   *   - 둘 다 없으면 undefined → fetch 가 시스템 기본 TLS 정책으로 동작.
+   *
+   * `extraCaCerts` 의 파일 read 는 첫 호출에서만 일어나고 결과 객체를 캐시한다.
+   */
+  private async resolveTlsInit(): Promise<BunRequestInit["tls"] | undefined> {
+    if (this.tlsInitResolved) return this.tlsInitCache;
+    if (this.options.insecureTls === true) {
+      this.tlsInitCache = { rejectUnauthorized: false };
     } else if (
-      this.options.extraCaCerts &&
+      this.options.extraCaCerts !== undefined &&
       this.options.extraCaCerts.length > 0
     ) {
       const cas = await Promise.all(
@@ -192,16 +211,22 @@ class DefaultSpecFetcher implements SpecFetcher {
           }
         }),
       );
-      connect.ca = cas;
+      this.tlsInitCache = { ca: cas };
+    } else {
+      this.tlsInitCache = undefined;
     }
-    this.dispatcher = new Agent({ connect });
-    return this.dispatcher;
+    this.tlsInitResolved = true;
+    return this.tlsInitCache;
   }
 }
 
-function headerString(
-  value: string | string[] | undefined,
-): string | undefined {
-  if (Array.isArray(value)) return value[0];
-  return value;
+/** 응답 본문을 수동으로 비우는 helper — 상태 코드만 보고 끝낼 때 누수 방지. */
+async function drainBody(response: Response): Promise<void> {
+  if (response.body) {
+    try {
+      await response.body.cancel();
+    } catch {
+      // 이미 닫혔거나 한 번 읽혔으면 무시.
+    }
+  }
 }
