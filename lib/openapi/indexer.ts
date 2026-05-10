@@ -117,9 +117,9 @@ export function indexSpec(
   for (const [pathKey, pathItem] of Object.entries(paths)) {
     if (!pathItem) continue;
     for (const method of HTTP_METHODS) {
-      const op = (pathItem as Record<string, unknown>)[
-        method.toLowerCase()
-      ] as OpenAPIV3.OperationObject | undefined;
+      const op = (pathItem as Record<string, unknown>)[method.toLowerCase()] as
+        | OpenAPIV3.OperationObject
+        | undefined;
       if (!op) continue;
 
       const synthetic = syntheticOperationId(method, pathKey);
@@ -345,7 +345,8 @@ function collectExamples(
     }
     if (Object.keys(perStatus).length > 0) responseExamples[status] = perStatus;
   }
-  if (Object.keys(responseExamples).length > 0) set.responses = responseExamples;
+  if (Object.keys(responseExamples).length > 0)
+    set.responses = responseExamples;
 
   // parameter examples 는 ParameterDetail 안에 그대로 보존된다 — examples 집합엔 따로 안 넣음.
   void parameters;

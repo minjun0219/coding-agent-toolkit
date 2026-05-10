@@ -3,10 +3,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import yaml from "js-yaml";
 import { ZodError } from "zod";
-import {
-  OpenApiMcpConfigSchema,
-  type OpenApiMcpConfig,
-} from "./schema";
+import { OpenApiMcpConfigSchema, type OpenApiMcpConfig } from "./schema";
 
 /**
  * `bin/openapi-mcp` 단독 진입점이 받는 config 파일 (`openapi-mcp.json` /
@@ -32,8 +29,7 @@ export interface LoadedConfig {
 /** XDG 우선 기본 config 경로. CLI `--config` 가 없을 때 사용. */
 export function defaultConfigPath(): string {
   const xdg = process.env.XDG_CONFIG_HOME;
-  const base =
-    xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), ".config");
+  const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), ".config");
   return path.join(base, "openapi-mcp", "openapi-mcp.json");
 }
 
@@ -75,20 +71,14 @@ function parseByExtension(filePath: string, raw: string): unknown {
     try {
       return JSON.parse(raw);
     } catch (err) {
-      throw new ConfigError(
-        `failed to parse JSON config at ${filePath}`,
-        err,
-      );
+      throw new ConfigError(`failed to parse JSON config at ${filePath}`, err);
     }
   }
   if (ext === ".yaml" || ext === ".yml") {
     try {
       return yaml.load(raw);
     } catch (err) {
-      throw new ConfigError(
-        `failed to parse YAML config at ${filePath}`,
-        err,
-      );
+      throw new ConfigError(`failed to parse YAML config at ${filePath}`, err);
     }
   }
   throw new ConfigError(

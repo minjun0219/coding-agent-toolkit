@@ -7,9 +7,7 @@
   "host": "petstore.swagger.io",
   "basePath": "/v2",
   "schemes": ["https"],
-  "tags": [
-    { "name": "pet", "description": "Operations about pets" }
-  ],
+  "tags": [{ "name": "pet", "description": "Operations about pets" }],
   "paths": {
     "/pet": {
       "post": {

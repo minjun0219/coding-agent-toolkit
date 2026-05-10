@@ -5,9 +5,10 @@ import {
   type DiskCacheEntry,
 } from "./cache";
 import { getLogger } from "./logger";
-import { type SpecFetcher } from "./fetcher";
+import type { SpecFetcher } from "./fetcher";
+import type { OpenAPIV3 } from "openapi-types";
 import { indexSpec, type IndexedSpec } from "./indexer";
-import { parseSpecObject, parseSpecText } from "./parser";
+import { parseSpecText } from "./parser";
 import {
   DEFAULT_CACHE_TTL_SECONDS,
   type EnvironmentConfig,
@@ -130,7 +131,7 @@ class InMemorySpecRegistry implements SpecRegistry {
   ) {}
 
   hasSpec(specName: string): boolean {
-    return Object.prototype.hasOwnProperty.call(this.config.specs, specName);
+    return Object.hasOwn(this.config.specs, specName);
   }
 
   registerSpec(name: string, spec: SpecConfig): void {
@@ -148,7 +149,9 @@ class InMemorySpecRegistry implements SpecRegistry {
   listSpecs(): SpecSummary[] {
     return Object.entries(this.config.specs).map(([name, spec]) => ({
       name,
-      ...(spec.description !== undefined ? { description: spec.description } : {}),
+      ...(spec.description !== undefined
+        ? { description: spec.description }
+        : {}),
       environments: Object.keys(spec.environments),
       cacheStatus: this.cacheStatus(name, spec),
     }));
@@ -159,7 +162,9 @@ class InMemorySpecRegistry implements SpecRegistry {
     return Object.entries(spec.environments).map(([name, env]) => ({
       name,
       baseUrl: env.baseUrl,
-      ...(env.description !== undefined ? { description: env.description } : {}),
+      ...(env.description !== undefined
+        ? { description: env.description }
+        : {}),
     }));
   }
 
@@ -197,41 +202,51 @@ class InMemorySpecRegistry implements SpecRegistry {
 
   async refresh(specName?: string): Promise<RefreshOutcome[]> {
     const targets = specName ? [specName] : Object.keys(this.config.specs);
-    const outcomes: RefreshOutcome[] = [];
-    for (const name of targets) {
-      try {
-        const spec = this.requireSpec(name);
-        const ttlSeconds = spec.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
-        const sourcesByKey = new Map<string, SpecSource>();
-        sourcesByKey.set(this.cacheKey(name, spec.source), spec.source);
-        for (const env of Object.values(spec.environments)) {
-          if (env.source) {
-            sourcesByKey.set(this.cacheKey(name, env.source), env.source);
-          }
+    // 각 spec 의 refresh 는 독립적이므로 모두 병렬로 처리한다. 한 spec 안의 여러
+    // source (default + env override) 도 같이 병렬 — 한 spec 의 source 하나가
+    // 실패해도 같은 spec 의 다른 source 까지 끌어내리지 않게 try/catch 는 spec
+    // 단위로 둔다.
+    const settled = await Promise.all(
+      targets.map((name) => this.refreshOne(name)),
+    );
+    return settled;
+  }
+
+  private async refreshOne(name: string): Promise<RefreshOutcome> {
+    try {
+      const spec = this.requireSpec(name);
+      const ttlSeconds = spec.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
+      const sourcesByKey = new Map<string, SpecSource>();
+      sourcesByKey.set(this.cacheKey(name, spec.source), spec.source);
+      for (const env of Object.values(spec.environments)) {
+        if (env.source) {
+          sourcesByKey.set(this.cacheKey(name, env.source), env.source);
         }
-        let fetchedAt: string | undefined;
-        for (const [key, source] of sourcesByKey) {
+      }
+      // source 별로 캐시 정리 + 재다운로드를 병렬로 — 같은 spec 안에서도 여러
+      // env override 가 있으면 모두 동시에 fetch.
+      await Promise.all(
+        Array.from(sourcesByKey.entries()).map(async ([key, source]) => {
           this.cache.delete(key);
           this.inFlight.delete(key);
           this.backgroundRefreshes.delete(key);
           await this.diskCache.delete(key);
           await this.fetchAndStore(name, source, ttlSeconds);
-          fetchedAt = this.cache.get(key)?.fetchedAt ?? fetchedAt;
-        }
-        outcomes.push({
-          spec: name,
-          success: true,
-          fetchedAt: fetchedAt ?? new Date().toISOString(),
-        });
-      } catch (err) {
-        outcomes.push({
-          spec: name,
-          success: false,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+        }),
+      );
+      // fetchedAt 는 sourcesByKey 의 첫 entry 기준 — 보고 용도라 정확성보다 일관성 우선.
+      const firstKey = sourcesByKey.keys().next().value;
+      const fetchedAt =
+        (firstKey ? this.cache.get(firstKey)?.fetchedAt : undefined) ??
+        new Date().toISOString();
+      return { spec: name, success: true, fetchedAt };
+    } catch (err) {
+      return {
+        spec: name,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
-    return outcomes;
   }
 
   private async hydrateOrFetch(
@@ -243,16 +258,16 @@ class InMemorySpecRegistry implements SpecRegistry {
     const disk = await this.diskCache.read(key);
     if (disk) {
       try {
-        // 디스크 캐시는 항상 OpenAPI 3.x 로 변환된 document 를 보관한다. hydrate 시에는
-        // 원본 hint 를 다시 적용하지 않고 'openapi3' 로 강제 — 이미 변환된 본문을 다시
-        // swagger2 hint 로 감지하면 detectFormat 이 throw 한다.
-        const parsed = await parseSpecObject(disk.document, "openapi3");
-        const indexed = indexSpec(specName, parsed.document);
+        // 디스크 캐시는 이미 deref 된 OpenAPI 3.x document 를 보관하므로, 다시
+        // SwaggerParser.dereference 를 돌리지 않고 곧장 indexSpec 으로 넘긴다 —
+        // 큰 spec 일수록 deref 비용이 가장 무거우므로 hydrate 경로의 핵심 최적화.
+        const document = disk.document as OpenAPIV3.Document;
+        const indexed = indexSpec(specName, document);
         const cached: CachedSpec = {
           indexed,
           fetchedAt: disk.cachedAt,
           source,
-          document: disk.document,
+          document,
           detectedFormat: disk.detectedFormat,
           ...(disk.etag !== undefined ? { etag: disk.etag } : {}),
           ...(disk.lastModified !== undefined

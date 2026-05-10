@@ -31,7 +31,10 @@ describe("registryToOpenApiMcpConfig", () => {
       acme: {
         dev: {
           users: "https://example.com/u.json",
-          orders: { url: "https://example.com/o.json", baseUrl: "https://api.dev/o" },
+          orders: {
+            url: "https://example.com/o.json",
+            baseUrl: "https://api.dev/o",
+          },
         },
       },
     };
@@ -84,7 +87,11 @@ describe("buildCombinedConfig + flattenRegistry", () => {
       acme: {
         dev: {
           a: "https://example.com/a.json",
-          b: { url: "https://example.com/b.json", baseUrl: "https://api/b", format: "swagger2" },
+          b: {
+            url: "https://example.com/b.json",
+            baseUrl: "https://api/b",
+            format: "swagger2",
+          },
         },
       },
     };

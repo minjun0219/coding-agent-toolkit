@@ -8,16 +8,8 @@ import {
   getRegistryBaseUrl,
   getRegistryFormat,
 } from "../toolkit-config";
-import type {
-  EnvironmentConfig,
-  OpenApiMcpConfig,
-  SpecConfig,
-} from "./schema";
-import {
-  createDiskCache,
-  createNoopDiskCache,
-  type DiskCache,
-} from "./cache";
+import type { EnvironmentConfig, OpenApiMcpConfig, SpecConfig } from "./schema";
+import { createDiskCache, createNoopDiskCache, type DiskCache } from "./cache";
 import { createFetcher } from "./fetcher";
 import { createSpecRegistry, type SpecRegistry } from "./registry";
 
@@ -85,8 +77,8 @@ export function registryToOpenApiMcpConfig(
           baseUrl: baseUrl ?? "",
         };
         const source = format
-          ? ({ type: "url" as const, url, format })
-          : ({ type: "url" as const, url });
+          ? { type: "url" as const, url, format }
+          : { type: "url" as const, url };
         specs[name] = {
           source,
           environments: { [DEFAULT_ENVIRONMENT]: environment },

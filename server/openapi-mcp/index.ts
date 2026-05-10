@@ -155,10 +155,12 @@ export function buildServer(
   server.registerTool(
     "openapi_refresh",
     {
-      description: "캐시를 비우고 spec 을 강제 재다운로드. (input: spec name 옵션)",
+      description:
+        "캐시를 비우고 spec 을 강제 재다운로드. (input: spec name 옵션)",
       inputSchema: { input: z.string().optional() },
     },
-    async ({ input }) => jsonResult({ refreshed: await registry.refresh(input) }),
+    async ({ input }) =>
+      jsonResult({ refreshed: await registry.refresh(input) }),
   );
 
   server.registerTool(
@@ -189,17 +191,20 @@ export function buildServer(
     },
     async ({ query, spec, tag, method, limit }) => {
       try {
-        const targets = spec
-          ? [spec]
-          : registry.listSpecs().map((s) => s.name);
-        const all = [];
+        const targets = spec ? [spec] : registry.listSpecs().map((s) => s.name);
         for (const name of targets) {
           if (!registry.hasSpec(name)) {
             return errorResult(`unknown spec '${name}'`);
           }
-          const ix = await registry.loadSpec(name);
-          all.push(...ix.endpoints);
         }
+        // 후보 spec 들을 병렬 로드. 한 spec fetch 실패는 그 spec 만 빼고 나머지는
+        // 계속 (allSettled).
+        const settled = await Promise.allSettled(
+          targets.map((name) => registry.loadSpec(name)),
+        );
+        const all = settled.flatMap((r) =>
+          r.status === "fulfilled" ? r.value.endpoints : [],
+        );
         const filter: Parameters<typeof filterEndpoints>[1] = {};
         if (spec) filter.spec = spec;
         if (tag) filter.tag = tag;
@@ -257,7 +262,9 @@ export function buildServer(
           const where = operationId
             ? `operationId='${operationId}'`
             : `${method?.toUpperCase()} ${path}`;
-          return errorResult(`endpoint not found in spec '${spec}' for ${where}`);
+          return errorResult(
+            `endpoint not found in spec '${spec}' for ${where}`,
+          );
         }
         const detail = buildEndpointDetail(indexed, ep, env.baseUrl);
         return jsonResult({ spec, environment, endpoint: detail });
@@ -281,7 +288,8 @@ export function buildServer(
     },
     async ({ spec }) => {
       try {
-        if (!registry.hasSpec(spec)) return errorResult(`unknown spec '${spec}'`);
+        if (!registry.hasSpec(spec))
+          return errorResult(`unknown spec '${spec}'`);
         const indexed = await registry.loadSpec(spec);
         return jsonResult({ spec, tags: indexed.tags });
       } catch (err) {

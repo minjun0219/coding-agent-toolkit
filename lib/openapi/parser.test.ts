@@ -30,7 +30,9 @@ describe("parseSpecText", () => {
     const { document, detectedFormat } = await parseSpecText(raw);
     expect(detectedFormat).toBe("swagger2");
     expect(document.openapi?.startsWith("3.")).toBe(true);
-    expect((document as Record<string, unknown>).swagger).toBeUndefined();
+    expect(
+      (document as unknown as Record<string, unknown>).swagger,
+    ).toBeUndefined();
   });
 
   it("throws SpecParseError when neither openapi nor swagger field present", async () => {
@@ -46,7 +48,7 @@ describe("parseSpecText", () => {
     // 'parameters' should be inline objects after deref, not $ref placeholders.
     expect(Array.isArray(op?.parameters)).toBe(true);
     for (const p of op?.parameters ?? []) {
-      expect((p as Record<string, unknown>).$ref).toBeUndefined();
+      expect((p as unknown as Record<string, unknown>).$ref).toBeUndefined();
     }
   });
 });

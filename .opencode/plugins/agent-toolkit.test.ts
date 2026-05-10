@@ -275,7 +275,9 @@ describe("openapi handlers — file URL inputs", () => {
     const r = await handleSwaggerGet(reg, PETSTORE_2);
     expect(r.document.openapi?.startsWith("3.")).toBe(true);
     // swagger 본문엔 swagger 필드가 있었지만 변환 후엔 openapi 만 있어야 한다.
-    expect((r.document as Record<string, unknown>).swagger).toBeUndefined();
+    expect(
+      (r.document as unknown as Record<string, unknown>).swagger,
+    ).toBeUndefined();
   });
 
   it("openapi_status / openapi_refresh: cache lifecycle", async () => {
@@ -297,9 +299,9 @@ describe("openapi handlers — file URL inputs", () => {
     await handleSwaggerGet(reg, PETSTORE_3);
     const matches = await handleSwaggerSearch(reg, "pet");
     expect(matches.length).toBeGreaterThan(0);
-    expect(matches.every((m) => m.path.includes("pet") || m.tags?.includes("pet"))).toBe(
-      true,
-    );
+    expect(
+      matches.every((m) => m.path.includes("pet") || m.tags?.includes("pet")),
+    ).toBe(true);
 
     const limited = await handleSwaggerSearch(reg, "", { limit: 2 });
     expect(limited.length).toBe(2);

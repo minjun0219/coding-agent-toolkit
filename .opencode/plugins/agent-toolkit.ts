@@ -770,16 +770,16 @@ export async function handleSwaggerSearch(
     candidates = candidates.filter((n) => flatNames.has(n));
   }
 
-  const indexedSpecs: IndexedSpec[] = [];
-  for (const name of candidates) {
-    try {
-      const ix = await registry.loadSpec(name);
-      indexedSpecs.push(ix);
-    } catch (err) {
-      // 한 spec 이 실패해도 나머지는 계속.
-      void err;
-    }
-  }
+  // 후보 spec 들을 병렬 로드. 한 spec 이 실패해도 나머지는 계속 진행하도록
+  // allSettled 사용. 등록된 spec 이 많을수록 효과 큼.
+  const settled = await Promise.allSettled(
+    candidates.map((name) => registry.loadSpec(name)),
+  );
+  const indexedSpecs: IndexedSpec[] = settled
+    .filter(
+      (r): r is PromiseFulfilledResult<IndexedSpec> => r.status === "fulfilled",
+    )
+    .map((r) => r.value);
 
   const merged = indexedSpecs.flatMap((ix) => ix.endpoints);
   const filter = query?.trim() ? { keyword: query.trim() } : {};

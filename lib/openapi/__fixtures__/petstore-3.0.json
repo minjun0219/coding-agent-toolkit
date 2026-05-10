@@ -5,9 +5,7 @@
     "version": "1.0.0",
     "description": "Sample Petstore for openapi-mcp tests."
   },
-  "servers": [
-    { "url": "https://petstore3.swagger.io/api/v3" }
-  ],
+  "servers": [{ "url": "https://petstore3.swagger.io/api/v3" }],
   "tags": [
     { "name": "pet", "description": "Operations about pets" },
     { "name": "store", "description": "Pet store orders" }
@@ -138,7 +136,10 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": { "type": "integer", "format": "int32" }
+                  "additionalProperties": {
+                    "type": "integer",
+                    "format": "int32"
+                  }
                 }
               }
             }

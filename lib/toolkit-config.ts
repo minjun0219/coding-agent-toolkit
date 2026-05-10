@@ -248,11 +248,7 @@ const URL_SCHEMES = new Set(["http:", "https:", "file:"]);
 const ALLOWED_REGISTRY_LEAF_KEYS = new Set(["url", "baseUrl", "format"]);
 
 /** registry leaf object 의 format 필드에 허용되는 값. */
-const ALLOWED_REGISTRY_LEAF_FORMATS = new Set([
-  "openapi3",
-  "swagger2",
-  "auto",
-]);
+const ALLOWED_REGISTRY_LEAF_FORMATS = new Set(["openapi3", "swagger2", "auto"]);
 
 /**
  * 파싱된 JSON 값이 ToolkitConfig 인지 검증한다. 어긋나면 throw — 메시지에 source(path) 포함.
@@ -639,6 +635,9 @@ function validateRegistry(
  */
 function validateRegistryLeaf(leaf: unknown, where: string): void {
   if (typeof leaf === "string") {
+    if (leaf.trim().length === 0) {
+      throw new Error(`${where} must be a non-empty URL string`);
+    }
     validateRegistryUrlString(leaf, where);
     return;
   }
