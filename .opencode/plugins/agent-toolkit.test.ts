@@ -299,8 +299,14 @@ describe("openapi handlers — file URL inputs", () => {
     await handleSwaggerGet(reg, PETSTORE_3);
     const matches = await handleSwaggerSearch(reg, "pet");
     expect(matches.length).toBeGreaterThan(0);
+    // 점수화 검색은 operationId / path / summary / description 모두를 본다 — petstore
+    // 의 store / user 도메인도 summary 에 "pet" 단어가 있으면 매칭될 수 있다. 핵심은
+    // 첫 매칭이 path / operationId 같은 high-score 필드에서 잡혔는지.
+    const top = matches[0];
+    expect(top).toBeDefined();
     expect(
-      matches.every((m) => m.path.includes("pet") || m.tags?.includes("pet")),
+      top!.path.toLowerCase().includes("pet") ||
+        top!.operationId.toLowerCase().includes("pet"),
     ).toBe(true);
 
     const limited = await handleSwaggerSearch(reg, "", { limit: 2 });
@@ -839,6 +845,8 @@ describe("plugin config hook", () => {
     "openapi_status",
     "openapi_search",
     "openapi_envs",
+    "openapi_endpoint",
+    "openapi_tags",
     "journal_append",
     "journal_read",
     "journal_search",
@@ -879,10 +887,10 @@ describe("plugin config hook", () => {
     expect(cfg.agent.mindy.prompt).toContain("# mindy");
   });
 
-  it("registers exactly the 25 expected tools", async () => {
+  it("registers exactly the 27 expected tools", async () => {
     const plugin = await agentToolkitPlugin({});
     const actualToolNames = Object.keys(plugin.tool).sort();
-    expect(actualToolNames).toHaveLength(25);
+    expect(actualToolNames).toHaveLength(27);
     expect(actualToolNames).toEqual([...expectedToolNames].sort());
   });
 
