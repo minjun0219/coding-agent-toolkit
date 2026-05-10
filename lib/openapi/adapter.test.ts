@@ -11,22 +11,29 @@ import {
 import type { OpenapiRegistry } from "../toolkit-config";
 
 describe("flatten / parse handle", () => {
-  it("round-trips host:env:spec via __ separator", () => {
-    expect(flattenHandle("acme", "dev", "users")).toBe("acme__dev__users");
-    expect(parseFlatHandle("acme__dev__users")).toEqual({
+  it("round-trips host:env:spec via ':' separator", () => {
+    expect(flattenHandle("acme", "dev", "users")).toBe("acme:dev:users");
+    expect(parseFlatHandle("acme:dev:users")).toEqual({
       host: "acme",
       env: "dev",
       spec: "users",
     });
   });
   it("rejects shapes that aren't exactly three parts", () => {
-    expect(parseFlatHandle("acme__dev")).toBeNull();
-    expect(parseFlatHandle("acme__dev__users__extra")).toBeNull();
+    expect(parseFlatHandle("acme:dev")).toBeNull();
+    expect(parseFlatHandle("acme:dev:users:extra")).toBeNull();
+  });
+  it("does not collide on identifiers that contain underscores", () => {
+    // ID_BODY 가 `_` 를 허용하므로 구 separator (`__`) 였다면 충돌했을 두 핸들이
+    // 새 separator (`:`) 에선 서로 다른 specName 으로 떨어진다.
+    expect(flattenHandle("a", "b__c", "d")).not.toBe(
+      flattenHandle("a__b", "c", "d"),
+    );
   });
 });
 
 describe("registryToOpenApiMcpConfig", () => {
-  it("flattens host:env:spec into specs.<host__env__spec>", () => {
+  it("flattens host:env:spec into specs.<host:env:spec>", () => {
     const reg: OpenapiRegistry = {
       acme: {
         dev: {
@@ -40,11 +47,11 @@ describe("registryToOpenApiMcpConfig", () => {
     };
     const cfg = registryToOpenApiMcpConfig(reg);
     expect(Object.keys(cfg.specs).sort()).toEqual([
-      "acme__dev__orders",
-      "acme__dev__users",
+      "acme:dev:orders",
+      "acme:dev:users",
     ]);
-    expect(cfg.specs.acme__dev__users?.environments.default?.baseUrl).toBe("");
-    expect(cfg.specs.acme__dev__orders?.environments.default?.baseUrl).toBe(
+    expect(cfg.specs["acme:dev:users"]?.environments.default?.baseUrl).toBe("");
+    expect(cfg.specs["acme:dev:orders"]?.environments.default?.baseUrl).toBe(
       "https://api.dev/o",
     );
   });
@@ -52,18 +59,30 @@ describe("registryToOpenApiMcpConfig", () => {
   it("returns empty specs map when registry is undefined", () => {
     expect(registryToOpenApiMcpConfig(undefined)).toEqual({ specs: {} });
   });
+
+  it("injects defaultCacheTtlSeconds into each spec when provided", () => {
+    const reg: OpenapiRegistry = {
+      h: { e: { s: "https://example.com/x.json" } },
+    };
+    const cfg = registryToOpenApiMcpConfig(reg, 42);
+    expect(cfg.specs["h:e:s"]?.cacheTtlSeconds).toBe(42);
+  });
 });
 
 describe("ephemeral spec helpers", () => {
-  it("ephemeralSpecName uses url__<sha1-16> shape", () => {
+  it("ephemeralSpecName uses url:<sha1-16> shape", () => {
     const n = ephemeralSpecName("https://example.com/a.json");
-    expect(n.startsWith("url__")).toBe(true);
-    expect(n.length).toBe("url__".length + 16);
+    expect(n.startsWith("url:")).toBe(true);
+    expect(n.length).toBe("url:".length + 16);
   });
   it("buildEphemeralSpec attaches an empty-baseUrl environment", () => {
     const { name, spec } = buildEphemeralSpec("https://example.com/a.json");
-    expect(name.startsWith("url__")).toBe(true);
+    expect(name.startsWith("url:")).toBe(true);
     expect(spec.environments.default?.baseUrl).toBe("");
+  });
+  it("buildEphemeralSpec applies defaultCacheTtlSeconds when provided", () => {
+    const { spec } = buildEphemeralSpec("https://example.com/a.json", 99);
+    expect(spec.cacheTtlSeconds).toBe(99);
   });
 });
 

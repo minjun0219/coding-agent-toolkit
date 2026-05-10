@@ -52,12 +52,11 @@ export function filterEndpoints(
 
 function scoreKeyword(ep: IndexedEndpoint, keyword: string): number {
   let score = 0;
-  const opId = ep.operationId?.toLowerCase();
-  if (opId && opId.includes(keyword)) score += SCORE_OPERATION_ID;
+  if (ep.operationId?.toLowerCase().includes(keyword))
+    score += SCORE_OPERATION_ID;
   if (ep.path.toLowerCase().includes(keyword)) score += SCORE_PATH;
-  if (ep.summary && ep.summary.toLowerCase().includes(keyword))
-    score += SCORE_SUMMARY;
-  if (ep.description && ep.description.toLowerCase().includes(keyword))
+  if (ep.summary?.toLowerCase().includes(keyword)) score += SCORE_SUMMARY;
+  if (ep.description?.toLowerCase().includes(keyword))
     score += SCORE_DESCRIPTION;
   return score;
 }

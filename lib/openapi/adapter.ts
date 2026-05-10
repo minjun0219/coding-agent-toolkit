@@ -18,8 +18,11 @@ import { createSpecRegistry, type SpecRegistry } from "./registry";
  * 형태로 변환한다.
  *
  * 평탄화 규칙:
- *   - specName       = `<host>__<env>__<spec>` (콜론은 SpecRegistry 의 cacheKey 와
- *                      충돌하므로 더블 언더스코어로 escape)
+ *   - specName       = `<host>:<env>:<spec>` (canonical handle 표기 그대로 — `:` 는
+ *                      ID_BODY (`[a-zA-Z0-9_-]+`) 가 허용하지 않으므로 식별자에
+ *                      섞일 수 없어 충돌 불가능. SpecRegistry 의 `cacheKey` 는
+ *                      sha1 해시로만 사용되므로 specName 안의 `:` 가 따로 문제
+ *                      되지 않는다.)
  *   - environment    = `default` 한 개 — registry leaf 가 host:env:spec 단위라 이미
  *                      env 가 분리돼 있다. baseUrl 은 leaf 의 `baseUrl` 또는 빈 문자열.
  *   - source         = `{ type: 'url', url, format? }`
@@ -31,8 +34,8 @@ import { createSpecRegistry, type SpecRegistry } from "./registry";
  * `lib/openapi/config-loader.ts` 가 직접 OpenApiMcpConfig 로 받는다.
  */
 
-/** flat handle (`host__env__spec`) 과 원래 host/env/spec 을 양방향 변환. */
-export const HANDLE_SEPARATOR = "__";
+/** flat handle (`host:env:spec`) 과 원래 host/env/spec 을 양방향 변환. */
+export const HANDLE_SEPARATOR = ":";
 
 export function flattenHandle(host: string, env: string, spec: string): string {
   return `${host}${HANDLE_SEPARATOR}${env}${HANDLE_SEPARATOR}${spec}`;
@@ -58,9 +61,14 @@ export const DEFAULT_ENVIRONMENT = "default";
  * registry 트리 → OpenApiMcpConfig.specs 변환. registry 가 비어 있거나 undefined 면
  * specs 가 빈 객체 — caller (SpecRegistry) 가 이 빈 config 를 거부하지 않도록
  * 호출 측에서 leaf 0 개 케이스를 분기한다.
+ *
+ * `defaultCacheTtlSeconds` 가 주어지면 각 SpecConfig 의 `cacheTtlSeconds` 기본값으로
+ * 주입된다 — agent-toolkit 진입점이 `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` 을 읽어
+ * 넘기면 SpecRegistry 의 stale 판정 / background revalidation 이 그 값으로 동작한다.
  */
 export function registryToOpenApiMcpConfig(
   registry: OpenapiRegistry | undefined,
+  defaultCacheTtlSeconds?: number,
 ): OpenApiMcpConfig {
   const specs: Record<string, SpecConfig> = {};
   if (!registry) {
@@ -82,6 +90,9 @@ export function registryToOpenApiMcpConfig(
         specs[name] = {
           source,
           environments: { [DEFAULT_ENVIRONMENT]: environment },
+          ...(defaultCacheTtlSeconds !== undefined
+            ? { cacheTtlSeconds: defaultCacheTtlSeconds }
+            : {}),
         };
       }
     }
@@ -94,14 +105,18 @@ export function registryToOpenApiMcpConfig(
  * `openapi_get(<URL>)` 처럼 registry 외 URL 을 받을 때 SpecRegistry 가 그래도
  * `loadSpec(name)` 으로 다룰 수 있도록 한다.
  *
- * specName 은 URL 의 sha1 앞 16자에 `url__` 접두 — flat handle 과 충돌하지 않게.
+ * specName 은 URL 의 sha1 앞 16자에 `url:` 접두 — flat handle 과는 part 개수가
+ * 달라서 (2 vs 3) 충돌하지 않는다.
  */
 export function ephemeralSpecName(url: string): string {
   const hash = createHash("sha1").update(url).digest("hex").slice(0, 16);
-  return `url__${hash}`;
+  return `url${HANDLE_SEPARATOR}${hash}`;
 }
 
-export function buildEphemeralSpec(url: string): {
+export function buildEphemeralSpec(
+  url: string,
+  defaultCacheTtlSeconds?: number,
+): {
   name: string;
   spec: SpecConfig;
 } {
@@ -111,6 +126,9 @@ export function buildEphemeralSpec(url: string): {
     environments: {
       [DEFAULT_ENVIRONMENT]: { baseUrl: "" },
     },
+    ...(defaultCacheTtlSeconds !== undefined
+      ? { cacheTtlSeconds: defaultCacheTtlSeconds }
+      : {}),
   };
   return { name, spec };
 }
@@ -130,18 +148,26 @@ export interface CombinedConfigOptions {
   registry?: OpenapiRegistry;
   /** registry 외 추가로 받을 ad-hoc URL 목록 (중복은 deduplicate). */
   ephemeralUrls?: string[];
+  /** registry / ephemeral 두 갈래 모두에 적용되는 기본 TTL (초). */
+  defaultCacheTtlSeconds?: number;
 }
 
 export function buildCombinedConfig(
   options: CombinedConfigOptions,
 ): OpenApiMcpConfig {
-  const base = registryToOpenApiMcpConfig(options.registry);
+  const base = registryToOpenApiMcpConfig(
+    options.registry,
+    options.defaultCacheTtlSeconds,
+  );
   if (options.ephemeralUrls) {
     const seen = new Set<string>();
     for (const url of options.ephemeralUrls) {
       if (seen.has(url)) continue;
       seen.add(url);
-      const { name, spec } = buildEphemeralSpec(url);
+      const { name, spec } = buildEphemeralSpec(
+        url,
+        options.defaultCacheTtlSeconds,
+      );
       base.specs[name] = spec;
     }
   }
@@ -166,11 +192,13 @@ export interface CreateAgentToolkitRegistryOptions {
 export function createAgentToolkitRegistry(
   options: CreateAgentToolkitRegistryOptions,
 ): SpecRegistry {
+  const ttl = resolveOpenapiTtlSecondsFromEnv();
   const config = buildCombinedConfig({
     ...(options.registry !== undefined ? { registry: options.registry } : {}),
     ...(options.ephemeralUrls !== undefined
       ? { ephemeralUrls: options.ephemeralUrls }
       : {}),
+    ...(ttl !== undefined ? { defaultCacheTtlSeconds: ttl } : {}),
   });
   // SpecRegistry 의 zod 스키마는 specs 가 1개 이상이어야 통과하지만, 우린 zod 검증을
   // 거치지 않고 직접 타입 캐스팅한 config 를 넣는다 — registry 비었을 때도 동작 가능.
@@ -193,6 +221,20 @@ function resolveOpenapiCacheDir(): string {
     "agent-toolkit",
     "openapi-specs",
   );
+}
+
+/**
+ * `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` 을 양수 정수로 파싱. 미설정 / 비양수 / 파싱 실패는
+ * undefined → SpecRegistry 의 schema 기본값 (300초) 적용.
+ *
+ * 구 `lib/openapi-context.ts` 의 `createOpenapiCacheFromEnv` 와 동일한 시맨틱.
+ */
+export function resolveOpenapiTtlSecondsFromEnv(): number | undefined {
+  const raw = process.env.AGENT_TOOLKIT_OPENAPI_CACHE_TTL;
+  if (raw === undefined) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return parsed;
 }
 
 /** registry leaf 만 받아 한 줄 평탄 row 로 만든다 — `handleSwaggerEnvs` 의 출력 형태. */

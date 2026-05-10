@@ -48,6 +48,7 @@ import {
   type OpenapiRegistryEntry,
 } from "../../lib/openapi-registry";
 import {
+  getRegistryUrl,
   isMergeMode,
   loadConfig,
   MERGE_MODES,
@@ -683,16 +684,15 @@ export async function handleSwaggerGet(
     input,
     toolkitRegistry,
   );
-  const before = registry
-    .listSpecs()
-    .find((s) => s.name === specName)?.cacheStatus;
-  const indexed = await registry.loadSpec(specName, environment);
-  const fromCache = before?.cached === true;
+  // loadSpecDetailed 가 memory / disk / remote 중 어디서 왔는지 알려준다.
+  // listSpecs().cacheStatus 만 본 이전 구현은 디스크 hydrate 케이스 (프로세스
+  // 재시작 후 첫 호출) 를 fromCache:false 로 잘못 보고했다.
+  const detailed = await registry.loadSpecDetailed(specName, environment);
   const result: SwaggerGetResult = {
     spec: specName,
     environment,
-    fromCache,
-    document: indexed.document,
+    fromCache: detailed.fromCache,
+    document: detailed.indexed.document,
   };
   if (baseUrl) result.baseUrl = baseUrl;
   return result;
@@ -753,16 +753,16 @@ export async function handleSwaggerSearch(
         `openapi_search: scope "${scope}" matched no entries in openapi.registry — check ./.opencode/agent-toolkit.json or ~/.config/opencode/agent-toolkit/agent-toolkit.json`,
       );
     }
-    // toolkit-config registry 에서 scope 가 매칭된 URL 들로 specName 후보를 좁힌다.
+    // scope 와 매칭되는 leaf 의 host:env:spec 만 후보에 포함시킨다 — 이전 구현은
+    // toolkitRegistry 의 모든 leaf 를 무조건 추가해서 scope 가 무시됐다.
     const flatNames = new Set<string>();
     if (toolkitRegistry) {
       for (const [host, envs] of Object.entries(toolkitRegistry)) {
         for (const [env, specs] of Object.entries(envs)) {
-          for (const [spec] of Object.entries(specs)) {
-            // resolveScopeToUrls 가 URL 만 알려주므로, 같은 URL 을 가진 host:env:spec 핸들들을
-            // 다시 모은다.
-            // 효율성보다 정확성 우선 — registry 가 작다는 가정.
-            flatNames.add(flattenHandle(host, env, spec));
+          for (const [spec, leaf] of Object.entries(specs)) {
+            if (allowed.has(getRegistryUrl(leaf))) {
+              flatNames.add(flattenHandle(host, env, spec));
+            }
           }
         }
       }
@@ -770,16 +770,20 @@ export async function handleSwaggerSearch(
     candidates = candidates.filter((n) => flatNames.has(n));
   }
 
-  // 후보 spec 들을 병렬 로드. 한 spec 이 실패해도 나머지는 계속 진행하도록
-  // allSettled 사용. 등록된 spec 이 많을수록 효과 큼.
+  // remote-free 보장: cached-only loader 를 써서 캐시 (메모리 / 디스크 hydrate)
+  // 에 있는 spec 만 검색한다. 미캐시 spec 은 결과에 빠지며, 사용자가 먼저
+  // openapi_get 으로 가져와야 한다 — 검색이 의도치 않은 네트워크 호출을 일으키지
+  // 않게 하기 위함.
   const settled = await Promise.allSettled(
-    candidates.map((name) => registry.loadSpec(name)),
+    candidates.map((name) => registry.loadSpecCachedOnly(name)),
   );
   const indexedSpecs: IndexedSpec[] = settled
     .filter(
-      (r): r is PromiseFulfilledResult<IndexedSpec> => r.status === "fulfilled",
+      (r): r is PromiseFulfilledResult<IndexedSpec | null> =>
+        r.status === "fulfilled",
     )
-    .map((r) => r.value);
+    .map((r) => r.value)
+    .filter((v): v is IndexedSpec => v !== null);
 
   const merged = indexedSpecs.flatMap((ix) => ix.endpoints);
   const filter = query?.trim() ? { keyword: query.trim() } : {};
@@ -1412,7 +1416,7 @@ export default async function agentToolkitPlugin(_input: unknown) {
       },
       openapi_search: {
         description:
-          "캐시된 OpenAPI spec 들을 가로질러 endpoint 를 점수화 검색한다 (operationId>path>summary>description). remote 호출 없음. (query: 검색어, limit?: 결과 최대 개수 기본 20, scope?: agent-toolkit.json 에 등록된 host / host:env / host:env:spec — 주면 그 안에서만 검색)",
+          "캐시 (메모리 또는 디스크) 에 있는 OpenAPI spec 들을 가로질러 endpoint 를 점수화 검색한다 (operationId>path>summary>description). remote 호출 없음 — 미캐시 spec 은 결과에 포함되지 않으니 먼저 `openapi_get` 으로 받아둬야 한다. (query: 검색어, limit?: 결과 최대 개수 기본 20, scope?: agent-toolkit.json 에 등록된 host / host:env / host:env:spec — 주면 그 안에서만 검색)",
         parameters: {
           query: { type: "string", required: true },
           limit: { type: "number", required: false },

@@ -29,17 +29,30 @@ export interface ParsedSpec {
   detectedFormat: "openapi3" | "swagger2";
 }
 
+/**
+ * 옵션의 `sourceLocation` 은 spec 의 원본 절대 경로 (file://) 또는 URL — 외부 /
+ * 상대 `$ref` (`./components.yaml#/...` 등) 를 SwaggerParser 가 정확한 base 위에서
+ * resolve 하기 위해 필요하다. 미지정이면 SwaggerParser 가 process.cwd() 를 base 로
+ * 떨어뜨리므로 외부 ref 가 있는 spec 은 깨질 수 있다.
+ */
+export interface ParseSpecOptions {
+  /** 원본 spec 의 절대 경로 또는 URL (외부 / 상대 `$ref` resolve base). */
+  sourceLocation?: string;
+}
+
 export async function parseSpecText(
   raw: string,
   hint: SpecFormat = "auto",
+  options: ParseSpecOptions = {},
 ): Promise<ParsedSpec> {
   const parsed = parseStructured(raw);
-  return parseSpecObject(parsed, hint);
+  return parseSpecObject(parsed, hint, options);
 }
 
 export async function parseSpecObject(
   input: unknown,
   hint: SpecFormat = "auto",
+  options: ParseSpecOptions = {},
 ): Promise<ParsedSpec> {
   if (input === null || typeof input !== "object") {
     throw new SpecParseError("spec root must be an object");
@@ -55,9 +68,20 @@ export async function parseSpecObject(
 
   let dereferenced: unknown;
   try {
-    dereferenced = await SwaggerParser.dereference(
-      structuredClone(openapi3) as never,
-    );
+    // SwaggerParser.dereference 의 3-arg 시그니처: (path, api, options).
+    // path 를 함께 넘기면 swagger-parser 가 외부 / 상대 `$ref` 를 그 base 에서
+    // resolve 한다 — api 는 이미 파싱된 객체이므로 path 가 다시 fetch 되지는 않는다.
+    // sourceLocation 이 없는 경우 (raw text 로만 들어온 경우) 는 1-arg 폴백.
+    const cloned = structuredClone(openapi3) as never;
+    if (options.sourceLocation) {
+      dereferenced = await SwaggerParser.dereference(
+        options.sourceLocation,
+        cloned,
+        {} as never,
+      );
+    } else {
+      dereferenced = await SwaggerParser.dereference(cloned);
+    }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new SpecParseError(`failed to dereference spec: ${reason}`, err);

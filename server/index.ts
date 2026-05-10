@@ -152,7 +152,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
     "openapi_search",
     {
       description:
-        "캐시된 OpenAPI spec 들을 가로질러 endpoint 를 점수화 검색한다 (operationId>path>summary>description). remote 호출 없음.",
+        "캐시 (메모리 또는 디스크) 에 있는 OpenAPI spec 들을 가로질러 endpoint 를 점수화 검색한다 (operationId>path>summary>description). remote 호출 없음 — 미캐시 spec 은 결과에 포함되지 않으니 먼저 `openapi_get` 으로 받아둬야 한다.",
       inputSchema: {
         query: z.string(),
         limit: z.number().int().positive().optional(),

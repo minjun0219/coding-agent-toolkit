@@ -368,7 +368,7 @@ describe("openapi handlers — registry handles", () => {
       diskCacheDisabled: true,
     });
     const r = await handleSwaggerGet(reg, "acme:dev:users", registry);
-    expect(r.spec).toBe("acme__dev__users");
+    expect(r.spec).toBe("acme:dev:users");
     expect(r.environment).toBe("default");
   });
 

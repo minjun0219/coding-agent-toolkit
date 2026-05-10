@@ -60,10 +60,41 @@ interface CachedSpec {
   ttlSeconds: number;
 }
 
+/**
+ * loadSpec 결과가 어디서 왔는지. handler 가 사용자에게 "remote 호출 발생 여부"
+ * 를 정확히 보고하기 위해 필요 — 디스크 hydrate 도 cache hit 으로 친다.
+ */
+export type LoadSource = "memory" | "disk" | "remote";
+
+export interface DetailedLoadResult {
+  indexed: IndexedSpec;
+  source: LoadSource;
+  /** 메모리 또는 디스크에서 왔으면 true (네트워크 fetch 가 일어나지 않았음). */
+  fromCache: boolean;
+}
+
 export interface SpecRegistry {
   listSpecs(): SpecSummary[];
   listEnvironments(specName: string): ResolvedEnvironment[];
   loadSpec(specName: string, environment?: string): Promise<IndexedSpec>;
+  /**
+   * `loadSpec` 과 동일하게 spec 을 로드하되 "어디서 왔는지" 까지 보고한다.
+   * remote fetch 를 일으키지 않은 호출인지 (memory / disk hit) 또는 remote
+   * 였는지 caller 가 그대로 사용자에게 노출할 수 있다.
+   */
+  loadSpecDetailed(
+    specName: string,
+    environment?: string,
+  ): Promise<DetailedLoadResult>;
+  /**
+   * 메모리 또는 디스크 캐시에서만 spec 을 로드. cache miss 면 null —
+   * remote fetch 는 절대 일으키지 않는다. `openapi_search` 처럼 "remote 호출
+   * 없음" 을 계약으로 보장해야 하는 경로에서 사용.
+   */
+  loadSpecCachedOnly(
+    specName: string,
+    environment?: string,
+  ): Promise<IndexedSpec | null>;
   getEnvironment(specName: string, environment: string): EnvironmentConfig;
   refresh(specName?: string): Promise<RefreshOutcome[]>;
   hasSpec(specName: string): boolean;
@@ -120,7 +151,7 @@ export function createSpecRegistry(
 
 class InMemorySpecRegistry implements SpecRegistry {
   private readonly cache = new Map<string, CachedSpec>();
-  private readonly inFlight = new Map<string, Promise<IndexedSpec>>();
+  private readonly inFlight = new Map<string, Promise<DetailedLoadResult>>();
   private readonly backgroundRefreshes = new Set<string>();
 
   constructor(
@@ -176,6 +207,13 @@ class InMemorySpecRegistry implements SpecRegistry {
   }
 
   async loadSpec(specName: string, environment?: string): Promise<IndexedSpec> {
+    return (await this.loadSpecDetailed(specName, environment)).indexed;
+  }
+
+  async loadSpecDetailed(
+    specName: string,
+    environment?: string,
+  ): Promise<DetailedLoadResult> {
     const spec = this.requireSpec(specName);
     const source = this.resolveSource(specName, spec, environment);
     const ttlSeconds = spec.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
@@ -185,7 +223,7 @@ class InMemorySpecRegistry implements SpecRegistry {
     if (memHit) {
       if (this.isStale(memHit))
         this.scheduleBackgroundRefresh(specName, source, ttlSeconds);
-      return memHit.indexed;
+      return { indexed: memHit.indexed, source: "memory", fromCache: true };
     }
 
     const inFlight = this.inFlight.get(key);
@@ -198,6 +236,22 @@ class InMemorySpecRegistry implements SpecRegistry {
     );
     this.inFlight.set(key, promise);
     return promise;
+  }
+
+  async loadSpecCachedOnly(
+    specName: string,
+    environment?: string,
+  ): Promise<IndexedSpec | null> {
+    const spec = this.requireSpec(specName);
+    const source = this.resolveSource(specName, spec, environment);
+    const ttlSeconds = spec.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
+    const key = this.cacheKey(specName, source);
+
+    const memHit = this.cache.get(key);
+    if (memHit) return memHit.indexed;
+
+    const hydrated = await this.hydrateFromDisk(specName, source, ttlSeconds);
+    return hydrated?.indexed ?? null;
   }
 
   async refresh(specName?: string): Promise<RefreshOutcome[]> {
@@ -216,11 +270,16 @@ class InMemorySpecRegistry implements SpecRegistry {
     try {
       const spec = this.requireSpec(name);
       const ttlSeconds = spec.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
+      // 상대 `file` source 는 configDir 기준으로 절대 경로화 — loadSpec 의
+      // resolveSource 와 동일한 처리. 빠뜨리면 첫 load 는 성공해도 refresh 시
+      // process.cwd() 기준이 되어 같은 파일을 못 찾는 회귀가 생긴다.
       const sourcesByKey = new Map<string, SpecSource>();
-      sourcesByKey.set(this.cacheKey(name, spec.source), spec.source);
+      const baseSource = this.resolveFilePath(spec.source);
+      sourcesByKey.set(this.cacheKey(name, baseSource), baseSource);
       for (const env of Object.values(spec.environments)) {
         if (env.source) {
-          sourcesByKey.set(this.cacheKey(name, env.source), env.source);
+          const envSource = this.resolveFilePath(env.source);
+          sourcesByKey.set(this.cacheKey(name, envSource), envSource);
         }
       }
       // source 별로 캐시 정리 + 재다운로드를 병렬로 — 같은 spec 안에서도 여러
@@ -253,41 +312,57 @@ class InMemorySpecRegistry implements SpecRegistry {
     specName: string,
     source: SpecSource,
     ttlSeconds: number,
-  ): Promise<IndexedSpec> {
+  ): Promise<DetailedLoadResult> {
+    const hydrated = await this.hydrateFromDisk(specName, source, ttlSeconds);
+    if (hydrated)
+      return { indexed: hydrated.indexed, source: "disk", fromCache: true };
+    const indexed = await this.fetchAndStore(specName, source, ttlSeconds);
+    return { indexed, source: "remote", fromCache: false };
+  }
+
+  /**
+   * 디스크 캐시에서만 hydrate 시도. cache miss 또는 깨진 entry 면 null —
+   * remote fetch 는 절대 트리거하지 않는다. `loadSpec` (fall-through to fetch)
+   * 과 `loadSpecCachedOnly` (no fetch) 두 경로의 공통 본문.
+   */
+  private async hydrateFromDisk(
+    specName: string,
+    source: SpecSource,
+    ttlSeconds: number,
+  ): Promise<{ indexed: IndexedSpec } | null> {
     const key = this.cacheKey(specName, source);
     const disk = await this.diskCache.read(key);
-    if (disk) {
-      try {
-        // 디스크 캐시는 이미 deref 된 OpenAPI 3.x document 를 보관하므로, 다시
-        // SwaggerParser.dereference 를 돌리지 않고 곧장 indexSpec 으로 넘긴다 —
-        // 큰 spec 일수록 deref 비용이 가장 무거우므로 hydrate 경로의 핵심 최적화.
-        const document = disk.document as OpenAPIV3.Document;
-        const indexed = indexSpec(specName, document);
-        const cached: CachedSpec = {
-          indexed,
-          fetchedAt: disk.cachedAt,
-          source,
-          document,
-          detectedFormat: disk.detectedFormat,
-          ...(disk.etag !== undefined ? { etag: disk.etag } : {}),
-          ...(disk.lastModified !== undefined
-            ? { lastModified: disk.lastModified }
-            : {}),
-          ttlSeconds,
-        };
-        this.cache.set(key, cached);
-        if (this.isStale(cached))
-          this.scheduleBackgroundRefresh(specName, source, ttlSeconds);
-        return indexed;
-      } catch (err) {
-        getLogger().warn(
-          { err, spec: specName },
-          "disk cache hydrate failed; falling back to fresh fetch",
-        );
-        await this.diskCache.delete(key);
-      }
+    if (!disk) return null;
+    try {
+      // 디스크 캐시는 이미 deref 된 OpenAPI 3.x document 를 보관하므로, 다시
+      // SwaggerParser.dereference 를 돌리지 않고 곧장 indexSpec 으로 넘긴다 —
+      // 큰 spec 일수록 deref 비용이 가장 무거우므로 hydrate 경로의 핵심 최적화.
+      const document = disk.document as OpenAPIV3.Document;
+      const indexed = indexSpec(specName, document);
+      const cached: CachedSpec = {
+        indexed,
+        fetchedAt: disk.cachedAt,
+        source,
+        document,
+        detectedFormat: disk.detectedFormat,
+        ...(disk.etag !== undefined ? { etag: disk.etag } : {}),
+        ...(disk.lastModified !== undefined
+          ? { lastModified: disk.lastModified }
+          : {}),
+        ttlSeconds,
+      };
+      this.cache.set(key, cached);
+      if (this.isStale(cached))
+        this.scheduleBackgroundRefresh(specName, source, ttlSeconds);
+      return { indexed };
+    } catch (err) {
+      getLogger().warn(
+        { err, spec: specName },
+        "disk cache hydrate failed; falling back to fresh fetch",
+      );
+      await this.diskCache.delete(key);
+      return null;
     }
-    return this.fetchAndStore(specName, source, ttlSeconds);
   }
 
   private async fetchAndStore(
@@ -302,7 +377,9 @@ class InMemorySpecRegistry implements SpecRegistry {
         `unexpected 304 response for spec '${specName}' on initial load`,
       );
     }
-    const parsed = await parseSpecText(fetched.body, source.format);
+    const parsed = await parseSpecText(fetched.body, source.format, {
+      sourceLocation: this.sourceLocationOf(source),
+    });
     const indexed = indexSpec(specName, parsed.document);
     const cached: CachedSpec = {
       indexed,
@@ -362,7 +439,9 @@ class InMemorySpecRegistry implements SpecRegistry {
         await this.diskCache.write(key, this.toDiskEntry(refreshed));
         return;
       }
-      const parsed = await parseSpecText(fetched.body, source.format);
+      const parsed = await parseSpecText(fetched.body, source.format, {
+        sourceLocation: this.sourceLocationOf(source),
+      });
       if (Date.parse(fetched.fetchedAt) < Date.parse(current.fetchedAt)) {
         return;
       }
@@ -436,6 +515,16 @@ class InMemorySpecRegistry implements SpecRegistry {
     if (source.type !== "file" || path.isAbsolute(source.path)) return source;
     const baseDir = this.configDir ?? process.cwd();
     return { ...source, path: path.resolve(baseDir, source.path) };
+  }
+
+  /**
+   * SwaggerParser.dereference 의 base 로 쓰기 위한 절대 경로 / URL 문자열.
+   * `file` source 는 `path` (이미 resolveFilePath 를 통과해 절대 경로),
+   * `url` source 는 `url` 자체. 외부 / 상대 `$ref` 가 있는 spec 의 deref 가
+   * 정확한 base 위에서 동작하도록.
+   */
+  private sourceLocationOf(source: SpecSource): string {
+    return source.type === "file" ? source.path : source.url;
   }
 
   private cacheKey(specName: string, source: SpecSource): string {
