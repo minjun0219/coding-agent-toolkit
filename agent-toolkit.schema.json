@@ -48,8 +48,9 @@
                             },
                             "baseUrl": {
                               "type": "string",
+                              "format": "uri",
                               "minLength": 1,
-                              "description": "Real API base URL — `openapi_endpoint` 의 fullUrl 합성에 사용."
+                              "description": "Real API base URL — `openapi_endpoint` 의 fullUrl 합성에 사용. http / https URL 만 허용 (런타임에서 `new URL()` 검증)."
                             },
                             "format": {
                               "type": "string",

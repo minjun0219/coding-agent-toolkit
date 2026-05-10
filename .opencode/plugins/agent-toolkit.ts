@@ -609,10 +609,13 @@ function resolveSwaggerInput(
   input: string,
   toolkitRegistry?: OpenapiRegistry,
 ): { specName: string; environment: string; baseUrl?: string } {
-  if (isFullHandle(input)) {
+  // MCP 호출에서 흔히 따라붙는 앞뒤 공백 / 개행을 입력 검증 전에 정규화 — 그렇지 않으면
+  // "https://… \n" 같은 입력이 handle / URL 둘 다에서 곧장 throw 된다.
+  const trimmed = input.trim();
+  if (isFullHandle(trimmed)) {
     // handle → URL 까지는 toolkit-config 가 책임. specName 은 flatten 된 이름.
-    const url = resolveHandleToUrl(input, toolkitRegistry);
-    const [host, env, spec] = input.split(":") as [string, string, string];
+    const url = resolveHandleToUrl(trimmed, toolkitRegistry);
+    const [host, env, spec] = trimmed.split(":") as [string, string, string];
     const flat = flattenHandle(host, env, spec);
     if (!registry.hasSpec(flat)) {
       // registry 가 toolkit-config 로 만들어지지 않은 (단독 진입점) 경우 ad-hoc 등록.
@@ -630,10 +633,10 @@ function resolveSwaggerInput(
       ...(baseUrlMaybe ? { baseUrl: baseUrlMaybe } : {}),
     };
   }
-  if (looksLikeUrl(input)) {
-    const name = ephemeralSpecName(input);
+  if (looksLikeUrl(trimmed)) {
+    const name = ephemeralSpecName(trimmed);
     if (!registry.hasSpec(name)) {
-      const { spec } = buildEphemeralSpec(input);
+      const { spec } = buildEphemeralSpec(trimmed);
       registry.registerSpec(name, spec);
     }
     return { specName: name, environment: DEFAULT_ENVIRONMENT };
@@ -731,8 +734,8 @@ export async function handleSwaggerStatus(
  * - `options.limit` 는 결과 최대 개수 (기본 20).
  * - 빈 query 는 (scope 안의) 모든 endpoint 를 limit 까지 나열.
  *
- * 검색 대상은 *현재 등록된* spec 들의 `loadSpec` 결과 — 미캐시 spec 은 백그라운드에서
- * 로드된다.
+ * remote-free 보장: 메모리 또는 디스크 캐시에 있는 spec 만 검색한다. 미캐시 spec 은
+ * 결과에서 빠지며, 사용자가 먼저 `openapi_get` 으로 받아두어야 한다.
  */
 export async function handleSwaggerSearch(
   registry: SpecRegistry,

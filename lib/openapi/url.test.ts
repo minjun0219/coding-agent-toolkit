@@ -7,7 +7,10 @@ describe("joinBaseAndPath", () => {
       "https://api.example.com/pet",
     );
   });
-  it("avoids double slashes", () => {
+  it("strips trailing slashes from baseUrl and keeps the path verbatim", () => {
+    // baseUrl 끝의 `/` 를 모두 제거한 뒤 path 를 그대로 이어 붙인다 — path 안의
+    // `//` 는 정규화 대상이 아님 (OpenAPI path 가 의도해서 비워 둔 segment 일 수 있어
+    // joinBaseAndPath 가 자의적으로 합치지 않는다).
     expect(joinBaseAndPath("https://api.example.com/", "/pet")).toBe(
       "https://api.example.com/pet",
     );

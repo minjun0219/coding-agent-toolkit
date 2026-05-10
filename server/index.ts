@@ -28,6 +28,7 @@ import { z } from "zod";
 import pkg from "../package.json" with { type: "json" };
 import { createJournalFromEnv } from "../lib/agent-journal";
 import { createAgentToolkitRegistry } from "../lib/openapi/adapter";
+import { HTTP_METHODS } from "../lib/openapi/indexer";
 import { MysqlExecutorRegistry } from "../lib/mysql-context";
 import {
   loadSpecPactFragment,
@@ -188,7 +189,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
       inputSchema: {
         input: z.string(),
         operationId: z.string().optional(),
-        method: z.string().optional(),
+        method: z.enum(HTTP_METHODS).optional(),
         path: z.string().optional(),
       },
     },

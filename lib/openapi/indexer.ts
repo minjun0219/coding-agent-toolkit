@@ -18,7 +18,7 @@ export type HttpMethod =
   | "OPTIONS"
   | "TRACE";
 
-const HTTP_METHODS: readonly HttpMethod[] = [
+export const HTTP_METHODS = [
   "GET",
   "POST",
   "PUT",
@@ -27,7 +27,7 @@ const HTTP_METHODS: readonly HttpMethod[] = [
   "HEAD",
   "OPTIONS",
   "TRACE",
-];
+] as const satisfies readonly HttpMethod[];
 
 export interface IndexedEndpoint {
   specName: string;

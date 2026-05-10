@@ -14,6 +14,7 @@ import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import pkg from "../../package.json" with { type: "json" };
 import {
   createDiskCache,
   createNoopDiskCache,
@@ -23,6 +24,7 @@ import { defaultDiskCacheDir } from "../../lib/openapi/config-loader";
 import { createFetcher } from "../../lib/openapi/fetcher";
 import {
   buildEndpointDetail,
+  HTTP_METHODS,
   resolveEndpoint,
 } from "../../lib/openapi/indexer";
 import { filterEndpoints } from "../../lib/openapi/filter";
@@ -36,7 +38,8 @@ import type { OpenApiMcpConfig } from "../../lib/openapi/schema";
 import { getLogger } from "../../lib/openapi/logger";
 
 export const SERVER_NAME = "openapi-mcp";
-export const SERVER_VERSION = "0.2.0";
+/** package.json 의 version 을 단일 source 로 사용 — `bin/openapi-mcp -V` 와 동기. */
+export const SERVER_VERSION = pkg.version;
 
 export interface BuildServerOptions {
   /** 상대 file 소스 경로의 기준 디렉토리. 보통 config 파일이 있는 디렉토리. */
@@ -185,7 +188,7 @@ export function buildServer(
         query: z.string().optional(),
         spec: z.string().optional(),
         tag: z.string().optional(),
-        method: z.string().optional(),
+        method: z.enum(HTTP_METHODS).optional(),
         limit: z.number().int().positive().max(200).optional(),
       },
     },
@@ -208,10 +211,7 @@ export function buildServer(
         const filter: Parameters<typeof filterEndpoints>[1] = {};
         if (spec) filter.spec = spec;
         if (tag) filter.tag = tag;
-        if (method)
-          filter.method = method.toUpperCase() as Parameters<
-            typeof filterEndpoints
-          >[1]["method"];
+        if (method) filter.method = method;
         if (query?.trim()) filter.keyword = query.trim();
         const filtered = filterEndpoints(all, filter);
         const cap = limit ?? 50;
@@ -244,7 +244,7 @@ export function buildServer(
         spec: z.string(),
         environment: z.string(),
         operationId: z.string().optional(),
-        method: z.string().optional(),
+        method: z.enum(HTTP_METHODS).optional(),
         path: z.string().optional(),
       },
     },
@@ -261,7 +261,7 @@ export function buildServer(
         if (!ep) {
           const where = operationId
             ? `operationId='${operationId}'`
-            : `${method?.toUpperCase()} ${path}`;
+            : `${method} ${path}`;
           return errorResult(
             `endpoint not found in spec '${spec}' for ${where}`,
           );

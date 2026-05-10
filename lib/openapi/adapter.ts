@@ -10,7 +10,7 @@ import {
 } from "../toolkit-config";
 import type { EnvironmentConfig, OpenApiMcpConfig, SpecConfig } from "./schema";
 import { createDiskCache, createNoopDiskCache, type DiskCache } from "./cache";
-import { createFetcher } from "./fetcher";
+import { createFetcher, type FetcherOptions } from "./fetcher";
 import { createSpecRegistry, type SpecRegistry } from "./registry";
 
 /**
@@ -177,16 +177,21 @@ export function buildCombinedConfig(
 /**
  * agent-toolkit MCP 진입점이 사용하는 SpecRegistry factory.
  *
- * `AGENT_TOOLKIT_OPENAPI_CACHE_DIR` / `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` 환경변수를
- * 인지해 디스크 캐시 dir 와 TTL 기본값을 잡는다 (구 `lib/openapi-context.ts` 와
- * 호환). registry leaf 가 0 개여도 SpecRegistry 는 정상 생성 — caller 가 ad-hoc
- * URL 을 넘겨 동적으로 spec 을 등록할 수 있어야 한다.
+ * `AGENT_TOOLKIT_OPENAPI_CACHE_DIR` / `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` /
+ * `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` /
+ * `AGENT_TOOLKIT_OPENAPI_INSECURE_TLS` /
+ * `AGENT_TOOLKIT_OPENAPI_EXTRA_CA_CERTS` 환경변수를 인지해 디스크 캐시 dir,
+ * TTL 기본값, HTTP timeout / TLS 옵션을 잡는다 (구 `lib/openapi-context.ts`
+ * 와 호환). registry leaf 가 0 개여도 SpecRegistry 는 정상 생성 — caller 가
+ * ad-hoc URL 을 넘겨 동적으로 spec 을 등록할 수 있어야 한다.
  */
 export interface CreateAgentToolkitRegistryOptions {
   registry?: OpenapiRegistry;
   ephemeralUrls?: string[];
   /** 디스크 캐시 강제 비활성화 (테스트). */
   diskCacheDisabled?: boolean;
+  /** env 위에 한 번 더 덮어쓸 fetcher 옵션 (테스트 / 단독 caller 용). */
+  fetcherOverrides?: FetcherOptions;
 }
 
 export function createAgentToolkitRegistry(
@@ -202,7 +207,10 @@ export function createAgentToolkitRegistry(
   });
   // SpecRegistry 의 zod 스키마는 specs 가 1개 이상이어야 통과하지만, 우린 zod 검증을
   // 거치지 않고 직접 타입 캐스팅한 config 를 넣는다 — registry 비었을 때도 동작 가능.
-  const fetcher = createFetcher();
+  const fetcher = createFetcher({
+    ...resolveFetcherOptionsFromEnv(),
+    ...(options.fetcherOverrides ?? {}),
+  });
   const diskCache: DiskCache = options.diskCacheDisabled
     ? createNoopDiskCache()
     : createDiskCache(resolveOpenapiCacheDir());
@@ -235,6 +243,39 @@ export function resolveOpenapiTtlSecondsFromEnv(): number | undefined {
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
   return parsed;
+}
+
+/**
+ * agent-toolkit 진입점 (Claude Code MCP / opencode plugin) 의 OpenAPI fetcher
+ * 옵션을 환경변수에서 읽어 조합. 단독 진입점 (`server/openapi-mcp`) 은
+ * `openapi-mcp.json` 의 `http.*` 를 쓰므로 이 함수를 거치지 않는다.
+ *
+ *   - `AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS` — HTTP 요청 timeout (ms,
+ *     양수 정수). 미지정 시 undici 기본 (10s).
+ *   - `AGENT_TOOLKIT_OPENAPI_INSECURE_TLS` — `1` / `true` 면 TLS 검증 비활성화.
+ *     사내 self-signed 인증서 환경 / 개발용. **production 에선 사용 금지.**
+ *   - `AGENT_TOOLKIT_OPENAPI_EXTRA_CA_CERTS` — 추가 CA pem 파일 경로. 콜론(`:`)
+ *     으로 여러 개 구분 (Unix `PATH` 형식). insecureTls 보다 안전한 사내 CA 옵션.
+ */
+export function resolveFetcherOptionsFromEnv(): FetcherOptions {
+  const out: FetcherOptions = {};
+  const timeoutRaw = process.env.AGENT_TOOLKIT_OPENAPI_DOWNLOAD_TIMEOUT_MS;
+  if (timeoutRaw !== undefined) {
+    const parsed = Number.parseInt(timeoutRaw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) out.timeoutMs = parsed;
+  }
+  const insecureRaw = process.env.AGENT_TOOLKIT_OPENAPI_INSECURE_TLS;
+  if (insecureRaw === "1" || insecureRaw === "true") {
+    out.insecureTls = true;
+  }
+  const cas = process.env.AGENT_TOOLKIT_OPENAPI_EXTRA_CA_CERTS;
+  if (cas !== undefined && cas.trim().length > 0) {
+    out.extraCaCerts = cas
+      .split(":")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+  return out;
 }
 
 /** registry leaf 만 받아 한 줄 평탄 row 로 만든다 — `handleSwaggerEnvs` 의 출력 형태. */
