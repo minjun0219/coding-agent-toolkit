@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/minjun0219/agent-toolkit/main/agent-toolkit.schema.json",
   "title": "agent-toolkit config",
-  "description": "Plugin-wide configuration for the agent-toolkit opencode plugin. Project config (./.opencode/agent-toolkit.json) overrides user config (~/.config/opencode/agent-toolkit/agent-toolkit.json) at the leaf level.",
+  "description": "Plugin-wide configuration for the agent-toolkit plugins (Claude Code + opencode) — `agent-toolkit.json`. Project config (./.opencode/agent-toolkit.json) overrides user config (~/.config/opencode/agent-toolkit/agent-toolkit.json) at the leaf level. The standalone openapi-mcp CLI uses a separate file (`openapi-mcp.json`) with a different shape — see packages/openapi-core/src/schema.ts and packages/openapi-mcp/README.md.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -51,7 +51,7 @@
                               "format": "uri",
                               "pattern": "^https?://",
                               "minLength": 1,
-                              "description": "Real API base URL — `openapi_endpoint` 의 fullUrl 합성에 사용. http / https URL 만 허용 (런타임의 `validateRegistryLeaf` 가 protocol 을 검사하며 schema 의 pattern 도 동일 제약)."
+                              "description": "Real API base URL — `openapi_endpoint` 의 fullUrl 합성에 사용. http / https URL 만 허용."
                             },
                             "format": {
                               "type": "string",
@@ -74,140 +74,6 @@
           "additionalProperties": false
         }
       }
-    },
-    "spec": {
-      "type": "object",
-      "description": "SPEC-합의 lifecycle (`spec-pact` skill, conducted by the `grace` sub-agent) layout. Controls where SPEC files live, whether `**/SPEC.md` directory-mode files are surfaced, and the INDEX file name.",
-      "properties": {
-        "dir": {
-          "type": "string",
-          "minLength": 1,
-          "default": ".agent/specs",
-          "description": "Directory holding slug-mode SPEC files (`<dir>/<slug>.md`) and the INDEX (`<dir>/<indexFile>`). Project-relative; trailing slash optional."
-        },
-        "scanDirectorySpec": {
-          "type": "boolean",
-          "default": true,
-          "description": "When true, `grace` also surfaces every `**/SPEC.md` discovered in the project tree (AGENTS.md-style directory mode) into the INDEX. Set false to restrict the wiki to slug-mode entries only."
-        },
-        "indexFile": {
-          "type": "string",
-          "minLength": 1,
-          "default": "INDEX.md",
-          "description": "File name (inside `spec.dir`) of the wiki-style entry-point INDEX that lists every SPEC's slug, source page, status, version, sections, path, and tags."
-        }
-      },
-      "additionalProperties": false
-    },
-    "mysql": {
-      "type": "object",
-      "description": "MySQL read-only inspection registry. Maps `host:env:db` handles to connection profiles. Plaintext passwords are forbidden — each profile must declare exactly one of `passwordEnv` or `dsnEnv`.",
-      "properties": {
-        "connections": {
-          "type": "object",
-          "description": "host name → environment name → db name → connection profile. Names must match ^[a-zA-Z0-9_-]+$ (handles are colon-separated, so colons are reserved).",
-          "patternProperties": {
-            "^[a-zA-Z0-9_-]+$": {
-              "type": "object",
-              "description": "Environments under one logical host (project / cluster).",
-              "minProperties": 1,
-              "patternProperties": {
-                "^[a-zA-Z0-9_-]+$": {
-                  "type": "object",
-                  "description": "DB name → connection profile.",
-                  "minProperties": 1,
-                  "patternProperties": {
-                    "^[a-zA-Z0-9_-]+$": {
-                      "type": "object",
-                      "description": "MySQL connection profile. `passwordEnv` and `dsnEnv` are mutually exclusive — exactly one is required. Plaintext credentials in this file are not supported.",
-                      "properties": {
-                        "host": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "TCP host. Required when using `passwordEnv`. Ignored when using `dsnEnv`."
-                        },
-                        "port": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 65535,
-                          "description": "TCP port (1..65535). Optional. Ignored when using `dsnEnv`."
-                        },
-                        "user": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "Login user. Required when using `passwordEnv`. Should be a read-only account (e.g. `GRANT SELECT` only). Ignored when using `dsnEnv`."
-                        },
-                        "database": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "Default database. Required when using `passwordEnv`. Ignored when using `dsnEnv`."
-                        },
-                        "passwordEnv": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "Name of the environment variable holding the password. Mutually exclusive with `dsnEnv`."
-                        },
-                        "dsnEnv": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "Name of the environment variable holding a `mysql://user:pass@host:port/db` DSN. Mutually exclusive with `passwordEnv`. When set, decomposed fields (host / port / user / database) must NOT be declared."
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  },
-                  "additionalProperties": false
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    "github": {
-      "type": "object",
-      "description": "GitHub configuration for the PR review watch flow (`pr-review-watch` skill / `mindy` sub-agent — uses `repositories`). No tokens are stored here: PR-watch auth lives with the external GitHub MCP server.",
-      "properties": {
-        "repositories": {
-          "type": "object",
-          "description": "owner/repo → metadata, used by `pr-review-watch`. The key matches GitHub's repo-name shape (`^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$`).",
-          "patternProperties": {
-            "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$": {
-              "type": "object",
-              "description": "Per-repo metadata. All fields optional. No tokens — auth is owned by the external GitHub MCP server.",
-              "properties": {
-                "alias": {
-                  "type": "string",
-                  "pattern": "^[a-zA-Z0-9_-]+$",
-                  "minLength": 1,
-                  "description": "Short alias for the repo. Future-only — alias-prefixed handles like `<alias>#<num>` are not parsed in MVP."
-                },
-                "labels": {
-                  "type": "array",
-                  "items": { "type": "string", "minLength": 1 },
-                  "description": "Advisory list of labels mindy should consider when drafting replies. Strict label gating happens server-side at the external MCP layer, not here."
-                },
-                "defaultBranch": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Repository's default branch (`main` / `master` / etc.). Surfaced for prompts; not validated against the live repo."
-                },
-                "mergeMode": {
-                  "type": "string",
-                  "enum": ["merge", "squash", "rebase"],
-                  "description": "Recommended merge mode. The actual merge is performed by the external GitHub MCP — this is a hint passed through to mindy's reply / merge advice."
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
     }
   }
 }
