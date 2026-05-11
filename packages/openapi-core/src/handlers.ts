@@ -3,7 +3,6 @@ import {
   buildEphemeralSpec,
   DEFAULT_ENVIRONMENT,
   ephemeralSpecName,
-  flattenHandle,
 } from "./adapter";
 import {
   buildEndpointDetail,
@@ -54,8 +53,9 @@ function resolveSwaggerInput(
   const trimmed = input.trim();
   if (isFullHandle(trimmed)) {
     const url = resolveHandleToUrl(trimmed, toolkitRegistry);
-    const [host, env, spec] = trimmed.split(":") as [string, string, string];
-    const flat = flattenHandle(host, env, spec);
+    // isFullHandle 통과 시점에 `host:env:spec` 형식이 검증됐고, `flattenHandle` 의 결과는
+    // 같은 `:` 조인이라 trimmed 자체를 그대로 SpecRegistry key 로 쓴다 (split + flatten 왕복 제거).
+    const flat = trimmed;
     if (!registry.hasSpec(flat)) {
       // registry 가 toolkit-config 로 만들어지지 않은 (단독 진입점) 경우 ad-hoc 등록.
       registry.registerSpec(flat, {
@@ -192,12 +192,9 @@ export async function handleSwaggerSearch(
         `openapi_search: scope "${scope}" matched no entries in openapi.registry — check ./.opencode/agent-toolkit.json or ~/.config/opencode/agent-toolkit/agent-toolkit.json`,
       );
     }
-    const flatNames = new Set(
-      handles.map((h) => {
-        const [host, env, spec] = h.split(":") as [string, string, string];
-        return flattenHandle(host, env, spec);
-      }),
-    );
+    // resolveScopeToHandles 가 이미 `host:env:spec` 형태의 canonical handle 을 반환하므로
+    // 그 문자열이 곧 SpecRegistry key — split + flatten 왕복 없이 set 으로 직접 좁힌다.
+    const flatNames = new Set(handles);
     candidates = candidates.filter((n) => flatNames.has(n));
   }
 
@@ -216,7 +213,8 @@ export async function handleSwaggerSearch(
     .filter((v): v is IndexedSpec => v !== null);
 
   const merged = indexedSpecs.flatMap((ix) => ix.endpoints);
-  const filter = query?.trim() ? { keyword: query.trim() } : {};
+  const trimmedQuery = query?.trim();
+  const filter = trimmedQuery ? { keyword: trimmedQuery } : {};
   const filtered = filterEndpoints(merged, filter);
   const truncated = filtered.slice(0, cap);
 

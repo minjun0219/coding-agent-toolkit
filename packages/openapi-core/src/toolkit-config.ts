@@ -294,8 +294,9 @@ export function mergeConfigs(
   user: ToolkitConfig,
   project: ToolkitConfig,
 ): ToolkitConfig {
-  // structuredClone 도 가능하지만 Bun runtime 호환성을 보수적으로 — JSON round-trip 으로 deep clone.
-  const out = JSON.parse(JSON.stringify(user)) as ToolkitConfig;
+  // Bun ≥ 1.0 / Node ≥ 17 모두 structuredClone 표준 지원. JSON round-trip 보다 성능과
+  // 의도가 명확 — 입력은 plain JSON 모양이라 Date / Map / Set 호환은 신경 쓰지 않아도 된다.
+  const out = structuredClone(user) as ToolkitConfig;
   if (project.openapi?.registry) {
     out.openapi ??= {};
     out.openapi.registry ??= {};
