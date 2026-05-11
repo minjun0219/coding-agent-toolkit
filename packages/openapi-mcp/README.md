@@ -47,22 +47,27 @@ stdout 은 MCP JSON-RPC stream 전용 — 로그는 모두 stderr.
 {
   "specs": {
     "acme-users": {
+      "source": { "type": "url", "url": "https://api.acme.example/openapi.json" },
+      "cacheTtlSeconds": 300,
       "environments": {
         "dev": {
           "baseUrl": "https://dev.acme.example",
           "source": { "type": "url", "url": "https://dev.acme.example/openapi.json" }
         },
         "prod": {
-          "baseUrl": "https://api.acme.example",
-          "source": { "type": "url", "url": "https://api.acme.example/openapi.json" }
+          "baseUrl": "https://api.acme.example"
         }
       }
     }
   },
-  "cache": { "diskCache": true, "ttlSeconds": 300 },
+  "cache": { "diskCache": true },
   "http":  { "timeoutMs": 30000, "insecureTls": false }
 }
 ```
+
+- `specs.<name>.source` 는 필수 (스펙 다운로드 본진).
+- `environments.<env>.source` 는 environment 별 override — 생략하면 spec-level `source` 를 그대로 쓴다.
+- `specs.<name>.cacheTtlSeconds` 는 spec 단위 캐시 TTL (초). 미지정 시 기본값 300.
 
 ## 다른 host 에 등록
 
@@ -101,10 +106,14 @@ stdout 은 MCP JSON-RPC stream 전용 — 로그는 모두 stderr.
 
 ## 환경 변수
 
+standalone `openapi-mcp` CLI 는 표준 XDG 변수 두 개만 직접 읽는다 — 나머지 캐시 / TTL / TLS 설정은 모두 config 파일로 표현한다.
+
 | 변수 | 기본값 | 영향 |
 | --- | --- | --- |
-| `AGENT_TOOLKIT_OPENAPI_CACHE_DIR` | `$XDG_CACHE_HOME/openapi-mcp` 또는 `~/.cache/openapi-mcp` | 디스크 캐시 위치. |
-| `AGENT_TOOLKIT_OPENAPI_CACHE_TTL` | `300` | 캐시 TTL (초). config 의 `cache.ttlSeconds` 가 우선. |
+| `XDG_CONFIG_HOME` | `~/.config` | 기본 config 검색 경로의 prefix (`$XDG_CONFIG_HOME/openapi-mcp/openapi-mcp.json`). |
+| `XDG_CACHE_HOME` | `~/.cache` | 기본 디스크 캐시 디렉토리의 prefix (`$XDG_CACHE_HOME/openapi-mcp`). config 의 `cache.diskCachePath` 가 우선. |
+
+> `AGENT_TOOLKIT_OPENAPI_*` 류 환경 변수는 [agent-toolkit Claude Code plugin](../agent-toolkit-claude-code) / [opencode plugin](../agent-toolkit-opencode) 진입점 전용 — standalone CLI 는 인지하지 않으니 config 파일로만 조정한다.
 
 ## 라이선스
 
